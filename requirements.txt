@@ -1,1 +1,7 @@
 python-dotenv
+flask
+beautifulsoup4
+openpyxl
+reportlab
+pdfplumber
+python-docx

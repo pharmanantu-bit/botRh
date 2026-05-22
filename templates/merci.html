@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relevé envoyé</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .carte {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 40px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+    .check { font-size: 3em; margin-bottom: 16px; }
+    h2 { color: #1F4E79; margin-bottom: 12px; }
+    p { color: #555; line-height: 1.6; margin-bottom: 8px; }
+    .recap {
+      background: #f0f4f8;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .recap p { font-size: 0.95em; color: #333; }
+    .recap strong { color: #1F4E79; }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="check">✅</div>
+    <h2>Merci {{ prenom }} !</h2>
+    <p>Votre relevé d'heures de <strong>{{ mois_annee }}</strong> a bien été enregistré.</p>
+
+    <div class="recap">
+      <p>📈 Heures en + : <strong>{{ heures_plus }}h</strong></p>
+      <p>📉 Heures en − : <strong>{{ heures_moins }}h</strong></p>
+    </div>
+
+    <p style="margin-top:20px; font-size:0.85em; color:#888;">
+      Pharmacie Apothical Nanterre Université<br>
+      390 Bd des Provinces Françaises — 92000 Nanterre
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relevé d'heures — {{ mois_annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+
+    .carte {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 30px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .entete { text-align: center; margin-bottom: 24px; }
+    .entete h1 { color: #1F4E79; font-size: 1.4em; letter-spacing: 1px; }
+    .entete h2 { color: #2E75B6; font-size: 1.1em; margin-top: 4px; }
+    .entete p  { color: #555; margin-top: 6px; }
+
+    .deja-rempli {
+      background: #fff3cd; border: 1px solid #ffc107;
+      border-radius: 8px; padding: 10px;
+      color: #856404; font-size: 0.9em;
+      margin-bottom: 16px; text-align: center;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+
+    th {
+      background: #1F4E79; color: white;
+      padding: 10px 8px; text-align: center;
+    }
+    .section-mois {
+      background: #2E75B6; color: white;
+      text-align: center; font-weight: bold;
+      padding: 6px; font-size: 0.85em;
+      letter-spacing: 1px;
+    }
+    tr:nth-child(even) td { background: #f5f8fc; }
+
+    td {
+      padding: 5px 8px;
+      border: 1px solid #ddd;
+      text-align: center;
+      vertical-align: middle;
+    }
+    td.jour { font-weight: bold; color: #333; width: 60px; }
+
+    input[type="number"] {
+      width: 90px; padding: 5px 8px;
+      border: 1px solid #ccc; border-radius: 5px;
+      font-size: 0.9em; text-align: center;
+    }
+    input[type="number"]:focus { border-color: #2E75B6; outline: none; }
+
+    .total-row td {
+      background: #1F4E79 !important;
+      color: white; font-weight: bold;
+      padding: 10px 8px;
+    }
+
+    .signature-bloc {
+      display: flex; gap: 20px;
+      margin-top: 20px; flex-wrap: wrap;
+    }
+    .signature-bloc div { flex: 1; min-width: 200px; }
+    .signature-bloc label { font-size: 0.85em; color: #555; display: block; margin-bottom: 4px; }
+    .signature-bloc input {
+      width: 100%; padding: 8px;
+      border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em;
+    }
+
+    textarea {
+      width: 100%; padding: 10px;
+      border: 1px solid #ccc; border-radius: 6px;
+      font-size: 0.9em; resize: vertical;
+      min-height: 60px; margin-top: 16px;
+    }
+
+    .btn {
+      display: block; width: 100%;
+      padding: 14px; margin-top: 20px;
+      background: #1F4E79; color: white;
+      border: none; border-radius: 8px;
+      font-size: 1.05em; font-weight: bold;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .btn:hover { background: #163d60; }
+
+    .legende { font-size: 0.78em; color: #888; margin-top: 6px; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>RELEVÉ D'HEURES</h1>
+    <h2>{{ mois_annee }}</h2>
+    <p>Bonjour <strong>{{ prenom }}</strong>, veuillez remplir votre relevé ci-dessous.</p>
+  </div>
+
+  {% if deja_rempli %}
+  <div class="deja-rempli">⚠️ Vous avez déjà soumis votre relevé. Vous pouvez le modifier.</div>
+  {% endif %}
+
+  <form method="POST" action="/envoyer">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="prenom" value="{{ prenom }}">
+
+    <table>
+      <thead>
+        <tr>
+          <th>Jour</th>
+          <th>Heures en plus</th>
+          <th>Heures en moins</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Mois précédent -->
+        <tr><td colspan="3" class="section-mois">{{ mois_prec_nom }}</td></tr>
+        {% for j in jours_prec %}
+        <tr>
+          <td class="jour">{{ j }}</td>
+          <td><input type="number" name="prec_plus_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
+          <td><input type="number" name="prec_moins_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
+        </tr>
+        {% endfor %}
+
+        <!-- Mois courant -->
+        <tr><td colspan="3" class="section-mois">{{ mois_nom }}</td></tr>
+        {% for j in jours_mois %}
+        <tr>
+          <td class="jour">{{ j }}</td>
+          <td><input type="number" name="mois_plus_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
+          <td><input type="number" name="mois_moins_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
+        </tr>
+        {% endfor %}
+
+        <!-- Totaux -->
+        <tr class="total-row">
+          <td>TOTAL</td>
+          <td id="total-plus">0 h</td>
+          <td id="total-moins">0 h</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <input type="hidden" name="heures_plus" id="hidden-plus" value="0">
+    <input type="hidden" name="heures_moins" id="hidden-moins" value="0">
+
+    <div class="signature-bloc">
+      <div>
+        <label>Date</label>
+        <input type="text" name="date_signature" placeholder="ex: 25/05/2026">
+      </div>
+      <div>
+        <label>Signature (votre prénom + nom)</label>
+        <input type="text" name="signature" placeholder="ex: Marie Dupont">
+      </div>
+    </div>
+
+    <textarea name="commentaire" placeholder="Commentaire (optionnel) : absences, congés, remarques..."></textarea>
+
+    <button type="submit" class="btn">Envoyer mon relevé ✓</button>
+    <p class="legende">Les heures effectuées après le 25 du mois seront comptabilisées le mois suivant.</p>
+  </form>
+</div>
+
+<script>
+function calculerTotaux() {
+  let plus = 0, moins = 0;
+  document.querySelectorAll('input[name$="_plus_"]').forEach(i => {});
+  document.querySelectorAll('input[type="number"]').forEach(input => {
+    const name = input.name;
+    const val = parseFloat(input.value) || 0;
+    if (name.includes('_plus_')) plus += val;
+    if (name.includes('_moins_')) moins += val;
+  });
+  document.getElementById('total-plus').textContent = plus.toFixed(1) + ' h';
+  document.getElementById('total-moins').textContent = moins.toFixed(1) + ' h';
+  document.getElementById('hidden-plus').value = plus.toFixed(1);
+  document.getElementById('hidden-moins').value = moins.toFixed(1);
+}
+</script>
+</body>
+</html>
