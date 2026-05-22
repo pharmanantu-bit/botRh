@@ -28,32 +28,46 @@ def load_employees():
     with open(EMPLOYEES_FILE, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            employees.append(row)
+            email = row.get("E-mail 1 - Value", "").strip()
+            if not email:
+                continue
+            employees.append({
+                "nom": row.get("Last Name", "").strip(),
+                "prenom": row.get("First Name", "").strip(),
+                "email": email,
+                "poste": row.get("Organization Title", "").strip(),
+            })
     return employees
 
 
+MOIS_FICHIER = {
+    1: "Janvier", 2: "Fevrier", 3: "Mars", 4: "Avril",
+    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Aout",
+    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Decembre"
+}
+
 def get_documents():
-    docs = []
-    if os.path.isdir(DOCUMENTS_FOLDER):
-        for filename in os.listdir(DOCUMENTS_FOLDER):
-            if filename.endswith((".docx", ".doc", ".pdf")):
-                docs.append(os.path.join(DOCUMENTS_FOLDER, filename))
-    return docs
+    mois = datetime.now().month
+    annee = datetime.now().year
+    nom = f"Releve_heures_{MOIS_FICHIER[mois]}_{annee}.docx"
+    chemin = os.path.join(DOCUMENTS_FOLDER, nom)
+    if os.path.isfile(chemin):
+        return [chemin]
+    logging.warning(f"Document introuvable : {chemin}")
+    return []
 
 
 def build_email(employee, documents, mois_annee):
     msg = MIMEMultipart()
     msg["From"] = GMAIL_USER
     msg["To"] = employee["email"]
-    msg["Subject"] = f"Relevé mensuel des heures — {mois_annee}"
+    msg["Subject"] = f"Feuille d'heures — {mois_annee}"
 
     body = f"""Bonjour {employee['prenom']},
 
-Veuillez trouver en pièce jointe le document à compléter pour votre relevé mensuel des heures du mois de {mois_annee}.
+Vous trouverez ci-joint la feuille d'heures du mois de {mois_annee}. Merci de bien vouloir la compléter et nous la retourner au plus tard le 25 de ce mois.
 
-Merci de le retourner complété dès que possible.
-
-Cordialement,
+Belle journée,
 La direction
 """
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -72,7 +86,12 @@ La direction
 
 def send_emails():
     setup_logging()
-    mois_annee = datetime.now().strftime("%B %Y")
+    MOIS_FR = {
+        1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
+        5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
+        9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
+    }
+    mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
 
     employees = load_employees()
     documents = get_documents()

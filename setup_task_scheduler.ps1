@@ -1,30 +1,32 @@
 # Lance ce script en tant qu'Administrateur une seule fois
-# Il programme l'envoi automatique des mails le 20 de chaque mois a 8h00
+# Il programme l'envoi le 20 et la relance le 22 de chaque mois a 8h00
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$pythonScript = Join-Path $scriptPath "email_sender.py"
+$python = (Get-Command python).Source
 
-$action = New-ScheduledTaskAction `
-    -Execute "python" `
-    -Argument "`"$pythonScript`"" `
-    -WorkingDirectory $scriptPath
+$script1 = Join-Path $scriptPath "email_sender.py"
+$script2 = Join-Path $scriptPath "relance_sender.py"
 
-$trigger = New-ScheduledTaskTrigger `
-    -Monthly `
-    -DaysOfMonth 20 `
-    -At "08:00"
+# --- Tache 1 : Envoi du releve le 20 ---
+schtasks /create /tn "BotMail_Releve" `
+    /tr "`"$python`" `"$script1`"" `
+    /sc monthly /d 20 /st 08:00 `
+    /f
 
-$settings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
-    -StartWhenAvailable
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Tache 1 creee : envoi des releves le 20 de chaque mois a 8h00."
+} else {
+    Write-Host "Erreur creation tache 1."
+}
 
-Register-ScheduledTask `
-    -TaskName "BotMailPharmanadie" `
-    -Action $action `
-    -Trigger $trigger `
-    -Settings $settings `
-    -Description "Envoi automatique des releves mensuels aux employes" `
-    -RunLevel Highest `
-    -Force
+# --- Tache 2 : Relance le 22 ---
+schtasks /create /tn "BotMail_Relance" `
+    /tr "`"$python`" `"$script2`"" `
+    /sc monthly /d 22 /st 08:00 `
+    /f
 
-Write-Host "Tache planifiee creee avec succes ! Le bot enverra les mails le 20 de chaque mois a 8h00."
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Tache 2 creee : relances le 22 de chaque mois a 8h00."
+} else {
+    Write-Host "Erreur creation tache 2."
+}
