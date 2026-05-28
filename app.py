@@ -1,9 +1,12 @@
 import json
 import os
 import csv
+import io
 import hashlib
 from datetime import datetime
-from flask import Flask, request, render_template, abort, redirect, url_for, session
+from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 app = Flask(__name__)
 app.secret_key = "botRh-admin-2026"
@@ -156,6 +159,66 @@ def admin():
 def admin_logout():
     session.pop("admin", None)
     return redirect(url_for("admin"))
+
+
+@app.route("/admin/export")
+def admin_export():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    reponses = charger_reponses()
+    employes = charger_employes()
+    mois = datetime.now().month
+    annee = datetime.now().year
+    mois_annee = f"{MOIS_FR[mois]} {annee}"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Relevés {mois_annee}"
+
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells("A1:G1")
+    ws["A1"] = f"Relevés d'heures — {mois_annee}"
+    ws["A1"].font = Font(bold=True, size=13, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="1F4E79")
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    headers = ["Prénom", "Nom", "H+", "H−", "Commentaire", "Date envoi", "Statut"]
+    ws.append(headers)
+    for cell in ws[2]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="2E75B6")
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = border
+
+    for emp in employes:
+        token = generer_token(emp["prenom"], emp["email"])
+        r = reponses.get(token)
+        if r:
+            statut = "Reçu"
+            fill = PatternFill("solid", fgColor="C6EFCE")
+            row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"], r.get("commentaire", ""), r["date"], statut]
+        else:
+            statut = "En attente"
+            fill = PatternFill("solid", fgColor="FFEB9C")
+            row = [emp["prenom"], emp["nom"], "-", "-", "", "-", statut]
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center")
+        ws[ws.max_row][6].fill = fill
+
+    for i, w in enumerate([14, 16, 8, 8, 30, 16, 12], 1):
+        ws.column_dimensions[chr(64+i)].width = w
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"Releves_{MOIS_FR[mois]}_{annee}.xlsx"
+    return send_file(output, as_attachment=True, download_name=filename,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/trigger")

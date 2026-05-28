@@ -11,6 +11,8 @@
     .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
     h1 { color: #1F4E79; font-size: 1.3em; }
     .compteur { background: #e8f0fe; color: #1F4E79; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.95em; }
+    .btn-export { background: #2E75B6; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
+    .btn-export:hover { background: #1F4E79; }
     .deconnexion { color: #888; font-size: 0.85em; text-decoration: none; }
     .deconnexion:hover { color: #333; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
@@ -29,6 +31,7 @@
     <h1>Relevés — {{ mois_annee }}</h1>
     <div style="display:flex; gap:16px; align-items:center;">
       <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
+      <a href="/admin/export" class="btn-export">⬇ Télécharger Excel</a>
       <a href="/admin/logout" class="deconnexion">Déconnexion</a>
     </div>
   </div>
