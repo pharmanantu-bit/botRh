@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absentéisme — {{ annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1100px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+
+    .annees { display:flex; gap:6px; margin-bottom: 24px; }
+    .annees a { padding:6px 14px; border-radius:6px; font-size:0.88em; font-weight:bold; text-decoration:none; background:#e8f0fe; color:#1F4E79; }
+    .annees a.actif { background:#1F4E79; color:white; }
+
+    /* Graphique */
+    .graph-wrap { background: #f9fbfd; border: 1px solid #dde3ed; border-radius: 10px; padding: 16px; margin-bottom: 28px; }
+    .graph-wrap h2 { color: #1F4E79; font-size: 0.95em; margin-bottom: 12px; }
+
+    /* Tableau classement */
+    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+    th { background: #1F4E79; color: white; padding: 10px 8px; text-align: center; }
+    th:first-child { text-align: left; }
+    tr:nth-child(even) td { background: #f5f8fc; }
+    td { padding: 8px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+    td:first-child { text-align: left; font-weight: bold; }
+    .badge-haut { background: #FFCCCC; color: #9C0006; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .badge-moyen { background: #FFEB9C; color: #9C6500; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .badge-bas { background: #C6EFCE; color: #276221; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .rang { color: #888; font-size: 0.85em; margin-right: 6px; }
+    .barre-wrap { background: #eee; border-radius: 4px; height: 8px; margin-top: 4px; }
+    .barre { background: #9C0006; border-radius: 4px; height: 8px; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>Absentéisme — {{ annee }}</h1>
+    <a href="/admin" class="btn-retour">Retour admin</a>
+  </div>
+
+  <div class="annees">
+    {% for a in annees_dispo %}
+    <a href="/admin/absences?annee={{ a }}" class="{% if a == annee %}actif{% endif %}">{{ a }}</a>
+    {% endfor %}
+  </div>
+
+  <!-- Graphique H- par mois (top 5) -->
+  <div class="graph-wrap">
+    <h2>H− par mois — Top 5 employés les plus absents</h2>
+    <canvas id="chartAbsences" height="120"></canvas>
+  </div>
+
+  <!-- Classement -->
+  <table>
+    <thead>
+      <tr>
+        <th>Collaborateur</th>
+        <th>Total H− annuel</th>
+        <th>Mois le plus absent</th>
+        <th>Niveau</th>
+        {% for m in mois_disponibles %}<th>{{ mois_noms[m] }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% set max_total = classement[0].total if classement else 1 %}
+      {% for r in classement %}
+      <tr>
+        <td>
+          <span class="rang">#{{ loop.index }}</span>{{ r.prenom }} {{ r.nom }}
+          <div class="barre-wrap"><div class="barre" style="width:{{ [(r.total / max_total * 100)|int, 100]|min }}%"></div></div>
+        </td>
+        <td><strong>{{ r.total }}h</strong></td>
+        <td>{{ r.mois_max }}{% if r.val_max > 0 %} ({{ r.val_max }}h){% endif %}</td>
+        <td>
+          {% if r.total >= 20 %}<span class="badge-haut">Élevé</span>
+          {% elif r.total >= 8 %}<span class="badge-moyen">Modéré</span>
+          {% else %}<span class="badge-bas">Faible</span>{% endif %}
+        </td>
+        {% for v in r.mois_data %}
+        <td>{% if v > 0 %}<span style="color:#9C0006; font-weight:bold;">{{ v }}h</span>{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const moisLabels = [{% for m in mois_disponibles %}"{{ mois_noms[m] }}"{% if not loop.last %},{% endif %}{% endfor %}];
+  const top5 = {{ classement[:5] | tojson }};
+  const colors = ['#9C0006','#c0392b','#e74c3c','#e67e22','#f39c12'];
+
+  new Chart(document.getElementById('chartAbsences'), {
+    type: 'line',
+    data: {
+      labels: moisLabels,
+      datasets: top5.map((emp, i) => ({
+        label: emp.prenom,
+        data: emp.mois_data,
+        borderColor: colors[i],
+        backgroundColor: colors[i] + '22',
+        tension: 0.3,
+        fill: false,
+        pointRadius: 4,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Heures (h)' } } }
+    }
+  });
+</script>
+</body>
+</html>
