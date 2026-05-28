@@ -102,6 +102,30 @@
     </div>
   </div>
 
+  <!-- Absentéisme -->
+  <h2 style="color:#1F4E79; font-size:1em; margin-bottom:12px;">Absentéisme — H− par employé</h2>
+  <div style="display:flex; gap:24px; margin-bottom:32px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:300px; background:#f9fbfd; border-radius:10px; padding:16px; border:1px solid #dde3ed;">
+      <h3 style="color:#9C0006; font-size:0.9em; margin-bottom:12px;">Évolution H− mensuelle (top 5)</h3>
+      <canvas id="chartAbs" height="180"></canvas>
+    </div>
+    <div style="flex:1; min-width:300px; background:#f9fbfd; border-radius:10px; padding:16px; border:1px solid #dde3ed;">
+      <h3 style="color:#9C0006; font-size:0.9em; margin-bottom:12px;">Classement annuel H−</h3>
+      {% set max_abs = classement_abs[0].total if classement_abs and classement_abs[0].total > 0 else 1 %}
+      {% for r in classement_abs %}
+      <div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:0.82em; margin-bottom:3px;">
+          <span style="font-weight:bold;">{{ r.prenom }}</span>
+          <span style="color:{% if r.total >= 20 %}#9C0006{% elif r.total >= 8 %}#9C6500{% else %}#276221{% endif %}; font-weight:bold;">{{ r.total }}h</span>
+        </div>
+        <div style="background:#eee; border-radius:4px; height:7px;">
+          <div style="background:{% if r.total >= 20 %}#9C0006{% elif r.total >= 8 %}#e67e22{% else %}#27ae60{% endif %}; border-radius:4px; height:7px; width:{{ [(r.total / max_abs * 100)|int, 100]|min }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
   <!-- Tableau détaillé -->
   <div class="tableau-wrap">
     <table>
@@ -192,6 +216,24 @@
         { label: 'H+', data: {{ plus_par_mois | tojson }}, backgroundColor: 'rgba(39,98,33,0.7)', borderRadius: 4 },
         { label: 'H−', data: {{ moins_par_mois | tojson }}, backgroundColor: 'rgba(156,0,6,0.7)', borderRadius: 4 }
       ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Graphique absentéisme : H- top 5
+  const top5abs = {{ classement_abs[:5] | tojson }};
+  const colorsAbs = ['#9C0006','#c0392b','#e74c3c','#e67e22','#f39c12'];
+  new Chart(document.getElementById('chartAbs'), {
+    type: 'line',
+    data: {
+      labels: moisLabels,
+      datasets: top5abs.map((emp, i) => ({
+        label: emp.prenom,
+        data: emp.mois_data,
+        borderColor: colorsAbs[i],
+        backgroundColor: colorsAbs[i] + '22',
+        tension: 0.3, fill: false, pointRadius: 4,
+      }))
     },
     options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
   });

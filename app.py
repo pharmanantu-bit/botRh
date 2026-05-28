@@ -450,6 +450,28 @@ def admin_dashboard():
             "solde": round(total_plus - total_moins, 2),
         }
 
+    # Classement absentéisme
+    classement_abs = []
+    for emp in employes:
+        p = emp["prenom"]
+        total_moins = sum(donnees[p][m]["moins"] for m in mois_disponibles if donnees.get(p, {}).get(m))
+        mois_max = None
+        val_max = 0
+        for m in mois_disponibles:
+            d = donnees[p].get(m)
+            if d and d["moins"] > val_max:
+                val_max = d["moins"]
+                mois_max = m
+        classement_abs.append({
+            "prenom": p,
+            "nom": emp["nom"],
+            "total": round(total_moins, 2),
+            "mois_max": MOIS_FR[mois_max] if mois_max else "-",
+            "val_max": val_max,
+            "mois_data": [donnees[p].get(m, {}).get("moins", 0) or 0 for m in mois_disponibles],
+        })
+    classement_abs.sort(key=lambda x: x["total"], reverse=True)
+
     return render_template("admin_dashboard.html",
         employes=employes,
         donnees=donnees,
@@ -458,6 +480,7 @@ def admin_dashboard():
         mois_noms={m: MOIS_FR[m][:3] for m in range(1, 13)},
         annee=annee,
         annees_dispo=annees_dispo,
+        classement_abs=classement_abs,
     )
 
 
