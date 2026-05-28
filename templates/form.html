@@ -49,7 +49,9 @@
       text-align: center;
       vertical-align: middle;
     }
-    td.jour { font-weight: bold; color: #333; width: 60px; }
+    td.jour { font-weight: bold; color: #333; width: 70px; }
+    tr.weekend td { background: #f0f4fa !important; }
+    tr.weekend td.jour { color: #2E75B6; }
 
     input[type="number"] {
       width: 90px; padding: 5px 8px;
@@ -123,8 +125,8 @@
         <!-- Mois précédent -->
         <tr><td colspan="3" class="section-mois">{{ mois_prec_nom }}</td></tr>
         {% for j in jours_prec %}
-        <tr>
-          <td class="jour">{{ j }}</td>
+        <tr{% if j in weekend_prec %} class="weekend"{% endif %}>
+          <td class="jour">{{ noms_jours_prec[j] }} {{ j }}</td>
           <td><input type="number" name="prec_plus_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
           <td><input type="number" name="prec_moins_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
         </tr>
@@ -133,8 +135,8 @@
         <!-- Mois courant -->
         <tr><td colspan="3" class="section-mois">{{ mois_nom }}</td></tr>
         {% for j in jours_mois %}
-        <tr>
-          <td class="jour">{{ j }}</td>
+        <tr{% if j in weekend_mois %} class="weekend"{% endif %}>
+          <td class="jour">{{ noms_jours_mois[j] }} {{ j }}</td>
           <td><input type="number" name="mois_plus_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
           <td><input type="number" name="mois_moins_{{ j }}" min="0" max="24" step="0.5" placeholder="0" oninput="calculerTotaux()"></td>
         </tr>

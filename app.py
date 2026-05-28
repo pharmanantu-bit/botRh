@@ -73,6 +73,14 @@ def formulaire():
     jours_prec = list(range(24, nb_jours_prec + 1))
     jours_mois = list(range(1, nb_jours_mois + 1))
 
+    JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    from datetime import date as dt_date
+
+    noms_jours_prec = {j: JOURS_FR[dt_date(annee_prec, mois_prec, j).weekday()] for j in jours_prec}
+    noms_jours_mois = {j: JOURS_FR[dt_date(annee, mois, j).weekday()] for j in jours_mois}
+    weekend_prec = {j for j in jours_prec if dt_date(annee_prec, mois_prec, j).weekday() >= 5}
+    weekend_mois = {j for j in jours_mois if dt_date(annee, mois, j).weekday() >= 5}
+
     reponses = charger_reponses()
     deja_rempli = token in reponses
 
@@ -84,6 +92,10 @@ def formulaire():
         mois_prec_nom=MOIS_FR[mois_prec].upper(),
         jours_prec=jours_prec,
         jours_mois=jours_mois,
+        noms_jours_prec=noms_jours_prec,
+        noms_jours_mois=noms_jours_mois,
+        weekend_prec=weekend_prec,
+        weekend_mois=weekend_mois,
         deja_rempli=deja_rempli
     )
 
