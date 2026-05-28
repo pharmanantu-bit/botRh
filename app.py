@@ -324,6 +324,22 @@ def admin_export():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+def envoyer_confirmation(sujet, message):
+    import smtplib
+    from email.mime.text import MIMEText
+    from dotenv import load_dotenv
+    load_dotenv()
+    gmail_user = os.getenv("GMAIL_USER")
+    gmail_pwd = os.getenv("GMAIL_APP_PASSWORD")
+    msg = MIMEText(message, "plain", "utf-8")
+    msg["From"] = gmail_user
+    msg["To"] = "pharmanantu@gmail.com"
+    msg["Subject"] = sujet
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(gmail_user, gmail_pwd)
+        server.sendmail(gmail_user, "pharmanantu@gmail.com", msg.as_string())
+
+
 @app.route("/trigger")
 def trigger():
     cle = request.args.get("cle", "")
@@ -331,13 +347,27 @@ def trigger():
         abort(403)
 
     jour = datetime.now().day
+    mois = datetime.now().month
+    annee = datetime.now().year
+    mois_annee = f"{MOIS_FR[mois]} {annee}"
+
     if jour == 20:
-        from email_sender import send_emails
+        from email_sender import send_emails, load_employees
         send_emails()
+        nb = len(load_employees())
+        envoyer_confirmation(
+            f"botRh — Relevés {mois_annee} envoyés",
+            f"Les relevés d'heures de {mois_annee} ont bien été envoyés à {nb} employés.\n\nConsulte l'admin : https://pharmacie92000.pythonanywhere.com/admin"
+        )
         return "Envoi relevés OK", 200
     elif jour == 22:
-        from relance_sender import send_relances
+        from relance_sender import send_relances, load_employees
         send_relances()
+        nb = len(load_employees())
+        envoyer_confirmation(
+            f"botRh — Relances {mois_annee} envoyées",
+            f"Les relances de {mois_annee} ont bien été envoyées.\n\nConsulte l'admin pour voir qui n'a pas encore répondu : https://pharmacie92000.pythonanywhere.com/admin"
+        )
         return "Envoi relances OK", 200
     else:
         return f"Rien à faire (jour {jour})", 200
