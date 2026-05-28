@@ -1,6 +1,8 @@
 import smtplib
 import os
 import csv
+import json
+import hashlib
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,8 +13,11 @@ load_dotenv()
 
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-CONTACTS_FILE = "contacts (3).csv"
+EMPLOYEES_FILE = "employees.csv"
+REPONSES_FILE = "reponses_web.json"
 LOGS_FOLDER = "logs"
+SECRET = "pharmacie-nanterre-2026"
+BASE_URL = "https://pharmacie92000.pythonanywhere.com"
 
 MOIS_FR = {
     1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -34,33 +39,57 @@ def setup_logging():
     )
 
 
+def generer_token(prenom, email):
+    chaine = f"{prenom}{email}{SECRET}"
+    return hashlib.md5(chaine.encode()).hexdigest()[:10]
+
+
 def load_employees():
     employees = []
-    with open(CONTACTS_FILE, newline="", encoding="utf-8") as f:
+    with open(EMPLOYEES_FILE, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            email = row.get("E-mail 1 - Value", "").strip()
-            if not email:
-                continue
             employees.append({
-                "nom": row.get("Last Name", "").strip(),
-                "prenom": row.get("First Name", "").strip(),
-                "email": email,
+                "nom": row["nom"].strip(),
+                "prenom": row["prenom"].strip(),
+                "email": row["email"].strip(),
             })
     return employees
+
+
+def charger_reponses():
+    if os.path.exists(REPONSES_FILE):
+        with open(REPONSES_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 
 def send_relances():
     setup_logging()
     mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
     employees = load_employees()
+    reponses = charger_reponses()
 
-    logging.info(f"Envoi relances — {len(employees)} employé(s)")
+    # Filtrer uniquement ceux qui n'ont pas encore répondu
+    a_relancer = []
+    for emp in employees:
+        token = generer_token(emp["prenom"], emp["email"])
+        if token not in reponses:
+            a_relancer.append(emp)
+
+    logging.info(f"Relances ciblées — {len(a_relancer)}/{len(employees)} employé(s) n'ont pas répondu")
+
+    if not a_relancer:
+        logging.info("Tous les employés ont répondu, aucune relance envoyée.")
+        return a_relancer
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        for emp in employees:
+        for emp in a_relancer:
             try:
+                token = generer_token(emp["prenom"], emp["email"])
+                lien = f"{BASE_URL}/releve?token={token}&prenom={emp['prenom']}"
+
                 msg = MIMEMultipart()
                 msg["From"] = GMAIL_USER
                 msg["To"] = emp["email"]
@@ -70,7 +99,10 @@ def send_relances():
 
 Sauf erreur de notre part, nous n'avons pas encore reçu votre feuille d'heures du mois de {mois_annee}.
 
-Merci de bien vouloir nous la retourner dès que possible.
+Vous pouvez la remplir directement en ligne via ce lien :
+{lien}
+
+Merci de bien vouloir le faire dès que possible.
 
 Belle journée,
 La direction
@@ -83,6 +115,7 @@ La direction
                 logging.error(f"Échec relance à {emp['email']}: {e}")
 
     logging.info("Relances terminées.")
+    return a_relancer
 
 
 if __name__ == "__main__":

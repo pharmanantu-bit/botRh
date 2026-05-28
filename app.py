@@ -362,12 +362,15 @@ def trigger():
         return "Envoi relevés OK", 200
     elif jour == 22:
         from relance_sender import send_relances, load_employees
-        send_relances()
-        nb = len(load_employees())
-        envoyer_confirmation(
-            f"botRh — Relances {mois_annee} envoyées",
-            f"Les relances de {mois_annee} ont bien été envoyées.\n\nConsulte l'admin pour voir qui n'a pas encore répondu : https://pharmacie92000.pythonanywhere.com/admin"
-        )
+        a_relancer = send_relances()
+        nb_total = len(load_employees())
+        nb_relances = len(a_relancer)
+        if nb_relances == 0:
+            msg_conf = f"Tous les employés ont répondu — aucune relance envoyée pour {mois_annee}."
+        else:
+            noms = ", ".join(e["prenom"] for e in a_relancer)
+            msg_conf = f"{nb_relances}/{nb_total} relances envoyées pour {mois_annee}.\n\nEmployés relancés : {noms}\n\nConsulte l'admin : https://pharmacie92000.pythonanywhere.com/admin"
+        envoyer_confirmation(f"botRh — Relances {mois_annee}", msg_conf)
         return "Envoi relances OK", 200
     else:
         return f"Rien à faire (jour {jour})", 200
