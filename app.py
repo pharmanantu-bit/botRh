@@ -128,6 +128,16 @@ def envoyer():
         "annee": annee,
     })
 
+    try:
+        solde = round(float(heures_plus or 0) - float(heures_moins or 0), 2)
+        signe = "+" if solde >= 0 else ""
+        envoyer_confirmation(
+            f"botRh — {prenom} a soumis son relevé {MOIS_FR[mois]} {annee}",
+            f"{prenom} vient de soumettre son relevé d'heures.\n\nH+ : {heures_plus}h\nH− : {heures_moins}h\nSolde : {signe}{solde}h\nCommentaire : {commentaire or 'aucun'}\n\nVoir l'admin : https://pharmacie92000.pythonanywhere.com/admin"
+        )
+    except Exception:
+        pass
+
     return render_template("merci.html", prenom=prenom,
         heures_plus=heures_plus, heures_moins=heures_moins,
         mois_annee=f"{MOIS_FR[mois]} {annee}"
