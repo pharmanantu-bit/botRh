@@ -1,0 +1,14 @@
+name: Deploy to PythonAnywhere
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy on PythonAnywhere
+        run: |
+          curl -f "https://pharmacie92000.pythonanywhere.com/deploy?cle=botRh-deploy-2026"

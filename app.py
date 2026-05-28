@@ -722,6 +722,23 @@ def envoyer_confirmation(sujet, message):
         server.sendmail(gmail_user, "pharmanantu@gmail.com", msg.as_string())
 
 
+@app.route("/deploy")
+def deploy():
+    import subprocess
+    cle = request.args.get("cle", "")
+    if cle != "botRh-deploy-2026":
+        abort(403)
+    try:
+        result = subprocess.run(["git", "pull"], cwd="/home/pharmacie92000/botRh",
+                                capture_output=True, text=True, timeout=30)
+        # Toucher le fichier WSGI force le reload sur PythonAnywhere
+        import pathlib
+        pathlib.Path("/var/www/pharmacie92000_pythonanywhere_com_wsgi.py").touch()
+        return f"OK\n{result.stdout}", 200
+    except Exception as e:
+        return f"Erreur: {e}", 500
+
+
 @app.route("/trigger")
 def trigger():
     cle = request.args.get("cle", "")
