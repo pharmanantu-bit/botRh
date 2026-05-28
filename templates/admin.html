@@ -34,6 +34,16 @@
     .lien { color: #2E75B6; font-size: 0.8em; text-decoration: none; }
     .lien:hover { text-decoration: underline; }
     .sep { background: #5c7a3e !important; }
+
+    @media print {
+      body { background: white; padding: 0; }
+      .carte { box-shadow: none; padding: 10px; }
+      .actions, #recherche, .deconnexion { display: none !important; }
+      .entete { margin-bottom: 10px; }
+      tr.recu td { background: #eafaf1 !important; -webkit-print-color-adjust: exact; }
+      tr.attente td { background: #fffbe6 !important; -webkit-print-color-adjust: exact; }
+      th { -webkit-print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
@@ -47,6 +57,7 @@
       <a href="/admin/historique" class="btn-planning" style="background:#6b5ea8;">Historique</a>
       <a href="/admin/planning" class="btn-planning">Saisir le planning</a>
       <a href="/admin/export" class="btn-export">Télécharger Excel</a>
+      <button onclick="window.print()" class="btn-export" style="background:#555; border:none; cursor:pointer;">Imprimer</button>
       <a href="/admin/logout" class="deconnexion">Déconnexion</a>
     </div>
   </div>
