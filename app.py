@@ -158,5 +158,24 @@ def admin_logout():
     return redirect(url_for("admin"))
 
 
+@app.route("/trigger")
+def trigger():
+    cle = request.args.get("cle", "")
+    if cle != "botRh-trigger-2026":
+        abort(403)
+
+    jour = datetime.now().day
+    if jour == 20:
+        from email_sender import send_emails
+        send_emails()
+        return "Envoi relevés OK", 200
+    elif jour == 22:
+        from relance_sender import send_relances
+        send_relances()
+        return "Envoi relances OK", 200
+    else:
+        return f"Rien à faire (jour {jour})", 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
