@@ -7,31 +7,40 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
-    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 960px; margin: 0 auto; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1200px; margin: 0 auto; }
     .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
     h1 { color: #1F4E79; font-size: 1.3em; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .compteur { background: #e8f0fe; color: #1F4E79; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.95em; }
     .btn-export { background: #2E75B6; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
     .btn-export:hover { background: #1F4E79; }
+    .btn-planning { background: #5c7a3e; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
+    .btn-planning:hover { background: #445c2e; }
     .deconnexion { color: #888; font-size: 0.85em; text-decoration: none; }
     .deconnexion:hover { color: #333; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
-    th { background: #1F4E79; color: white; padding: 10px 8px; text-align: left; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+    th { background: #1F4E79; color: white; padding: 10px 6px; text-align: center; white-space: nowrap; }
+    .th-planning { background: #5c7a3e; }
     tr:nth-child(even) td { background: #f5f8fc; }
-    td { padding: 8px; border: 1px solid #ddd; vertical-align: middle; }
-    .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
-    .badge-attente { background: #FFEB9C; color: #9C6500; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    td { padding: 7px 6px; border: 1px solid #ddd; vertical-align: middle; text-align: center; }
+    td.nom { text-align: left; font-weight: bold; }
+    .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    .badge-attente { background: #FFEB9C; color: #9C6500; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    .badge-verif { background: #FFCCCC; color: #9C0006; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    .badge-comp-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .lien { color: #2E75B6; font-size: 0.8em; text-decoration: none; }
     .lien:hover { text-decoration: underline; }
+    .sep { background: #5c7a3e !important; }
   </style>
 </head>
 <body>
 <div class="carte">
   <div class="entete">
     <h1>Relevés — {{ mois_annee }}</h1>
-    <div style="display:flex; gap:16px; align-items:center;">
+    <div class="actions">
       <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
-      <a href="/admin/export" class="btn-export">⬇ Télécharger Excel</a>
+      <a href="/admin/planning" class="btn-planning">Saisir le planning</a>
+      <a href="/admin/export" class="btn-export">Télécharger Excel</a>
       <a href="/admin/logout" class="deconnexion">Déconnexion</a>
     </div>
   </div>
@@ -39,21 +48,26 @@
   <table>
     <thead>
       <tr>
-        <th>Prénom</th>
-        <th>Nom</th>
+        <th>Collaborateur</th>
         <th>Statut</th>
         <th>H+</th>
         <th>H−</th>
+        <th>Solde déclaré</th>
         <th>Commentaire</th>
         <th>Date envoi</th>
+        <th class="th-planning">Trame</th>
+        <th class="th-planning">Total planning</th>
+        <th class="th-planning">Absences</th>
+        <th class="th-planning">Jours</th>
+        <th class="th-planning">Écart</th>
+        <th class="th-planning">Comparaison</th>
         <th>Lien</th>
       </tr>
     </thead>
     <tbody>
       {% for r in resultats %}
       <tr>
-        <td>{{ r.prenom }}</td>
-        <td>{{ r.nom }}</td>
+        <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>
@@ -63,8 +77,25 @@
         </td>
         <td>{{ r.heures_plus }}</td>
         <td>{{ r.heures_moins }}</td>
+        <td>{{ r.solde }}</td>
         <td>{{ r.commentaire }}</td>
         <td>{{ r.date }}</td>
+        <td>{{ r.plan_trame }}</td>
+        <td>{{ r.plan_total }}</td>
+        <td>{{ r.plan_absences }}</td>
+        <td>{{ r.plan_jours }}</td>
+        <td>
+          {% if r.ecart != "-" %}
+            {% if r.ecart > 0 %}+{{ r.ecart }}h{% else %}{{ r.ecart }}h{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if r.statut_comp == "OK" %}
+          <span class="badge-comp-ok">OK</span>
+          {% elif r.statut_comp == "A VERIFIER" %}
+          <span class="badge-verif">A VÉRIFIER</span>
+          {% else %}-{% endif %}
+        </td>
         <td><a href="{{ r.lien }}" class="lien" target="_blank">Voir</a></td>
       </tr>
       {% endfor %}

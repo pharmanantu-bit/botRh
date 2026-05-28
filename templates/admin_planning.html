@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saisie Planning — {{ mois_annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 900px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .sous-titre { color: #555; font-size: 0.9em; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+    th { background: #1F4E79; color: white; padding: 10px 8px; text-align: center; }
+    tr:nth-child(even) td { background: #f5f8fc; }
+    td { padding: 6px; border: 1px solid #ddd; vertical-align: middle; }
+    td.nom { font-weight: bold; color: #1F4E79; }
+    input[type="text"], input[type="number"] {
+      width: 100%; padding: 5px 8px;
+      border: 1px solid #ccc; border-radius: 4px;
+      font-size: 0.88em; text-align: center;
+    }
+    .legende { font-size: 0.78em; color: #888; margin-bottom: 16px; }
+    .btn { display: inline-block; padding: 12px 30px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; margin-top: 20px; }
+    .btn:hover { background: #163d60; }
+    .btn-retour { background: #888; margin-right: 10px; text-decoration: none; padding: 12px 20px; border-radius: 8px; color: white; font-size: 1em; }
+    .btn-retour:hover { background: #666; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <div>
+      <h1>Saisie Planning — {{ mois_annee }}</h1>
+      <p class="sous-titre">Copie les heures depuis monplanningpharma.fr (format : 157h00min ou 157.5)</p>
+    </div>
+  </div>
+
+  <form method="POST" action="/admin/planning">
+    <table>
+      <thead>
+        <tr>
+          <th>Collaborateur</th>
+          <th>Trame</th>
+          <th>Total</th>
+          <th>Absences</th>
+          <th>Jours travaillés</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employes %}
+        {% set p = planning.get(emp.prenom, {}) %}
+        <tr>
+          <td class="nom">{{ emp.prenom }} {{ emp.nom }}</td>
+          <td><input type="text" name="trame_{{ emp.prenom }}" value="{{ p.get('trame', '') }}" placeholder="ex: 157h00min"></td>
+          <td><input type="text" name="total_{{ emp.prenom }}" value="{{ p.get('total', '') }}" placeholder="ex: 159h30min"></td>
+          <td><input type="text" name="absences_{{ emp.prenom }}" value="{{ p.get('absences', '') }}" placeholder="ex: Congés payés : 9h"></td>
+          <td><input type="number" name="jours_{{ emp.prenom }}" value="{{ p.get('jours', '') }}" placeholder="15" min="0" max="31"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin-top: 20px;">
+      <a href="/admin" class="btn-retour">Retour</a>
+      <button type="submit" class="btn">Enregistrer le planning</button>
+    </div>
+  </form>
+</div>
+</body>
+</html>

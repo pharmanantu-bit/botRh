@@ -111,6 +111,31 @@ def envoyer():
     )
 
 
+def planning_file():
+    mois = datetime.now().month
+    annee = datetime.now().year
+    return f"planning_{mois}_{annee}.json"
+
+def charger_planning():
+    f = planning_file()
+    if os.path.exists(f):
+        with open(f, encoding="utf-8") as fp:
+            return json.load(fp)
+    return {}
+
+def sauvegarder_planning(data):
+    with open(planning_file(), "w", encoding="utf-8") as fp:
+        json.dump(data, fp, ensure_ascii=False, indent=2)
+
+def hm_to_float(s):
+    s = s.strip().replace("min", "").replace(" ", "")
+    if "h" in s:
+        parts = s.split("h")
+        h = float(parts[0] or 0)
+        m = float(parts[1] or 0) if len(parts) > 1 else 0
+        return round(h + m / 60, 2)
+    return 0.0
+
 def charger_employes():
     employes = []
     if os.path.exists(EMPLOYEES_FILE):
@@ -135,6 +160,7 @@ def admin():
 
     reponses = charger_reponses()
     employes = charger_employes()
+    planning = charger_planning()
     mois = datetime.now().month
     annee = datetime.now().year
 
@@ -142,6 +168,25 @@ def admin():
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
         reponse = reponses.get(token)
+        plan = planning.get(emp["prenom"], {})
+        plan_total = plan.get("total", None)
+
+        if reponse:
+            solde = round(reponse["heures_plus"] - reponse["heures_moins"], 2)
+            if plan_total is not None:
+                ecart = round(solde - plan_total, 2)
+                if abs(ecart) <= 0.5:
+                    statut_comp = "OK"
+                else:
+                    statut_comp = "A VERIFIER"
+            else:
+                ecart = None
+                statut_comp = None
+        else:
+            solde = None
+            ecart = None
+            statut_comp = None
+
         resultats.append({
             "prenom": emp["prenom"],
             "nom": emp["nom"],
@@ -149,14 +194,54 @@ def admin():
             "repondu": reponse is not None,
             "heures_plus": reponse["heures_plus"] if reponse else "-",
             "heures_moins": reponse["heures_moins"] if reponse else "-",
+            "solde": solde if solde is not None else "-",
             "commentaire": reponse.get("commentaire", "") if reponse else "",
             "date": reponse["date"] if reponse else "-",
+            "plan_trame": plan.get("trame", "-"),
+            "plan_total": plan_total if plan_total is not None else "-",
+            "plan_absences": plan.get("absences", ""),
+            "plan_jours": plan.get("jours", "-"),
+            "ecart": ecart if ecart is not None else "-",
+            "statut_comp": statut_comp,
             "lien": f"/releve?token={token}&prenom={emp['prenom']}",
         })
 
     repondus = sum(1 for r in resultats if r["repondu"])
+    a_planifier = charger_planning() != {}
     return render_template("admin.html", resultats=resultats, repondus=repondus,
-                           total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}")
+                           total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}",
+                           a_planifier=a_planifier)
+
+
+@app.route("/admin/planning", methods=["GET", "POST"])
+def admin_planning():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    employes = charger_employes()
+    planning = charger_planning()
+    mois = datetime.now().month
+    annee = datetime.now().year
+
+    if request.method == "POST":
+        nouveau = {}
+        for emp in employes:
+            p = emp["prenom"]
+            trame = request.form.get(f"trame_{p}", "").strip()
+            total = request.form.get(f"total_{p}", "").strip()
+            absences = request.form.get(f"absences_{p}", "").strip()
+            jours = request.form.get(f"jours_{p}", "").strip()
+            nouveau[p] = {
+                "trame": hm_to_float(trame) if trame else 0,
+                "total": hm_to_float(total) if total else 0,
+                "absences": absences,
+                "jours": int(jours) if jours.isdigit() else 0,
+            }
+        sauvegarder_planning(nouveau)
+        return redirect(url_for("admin"))
+
+    return render_template("admin_planning.html", employes=employes, planning=planning,
+                           mois_annee=f"{MOIS_FR[mois]} {annee}")
 
 
 @app.route("/admin/logout")
