@@ -79,6 +79,18 @@
     </div>
   </div>
 
+  <!-- Graphiques -->
+  <div style="display:flex; gap:24px; margin-bottom:32px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:300px; background:#f9fbfd; border-radius:10px; padding:16px; border:1px solid #dde3ed;">
+      <h3 style="color:#1F4E79; font-size:0.95em; margin-bottom:12px;">H+ / H− par mois (équipe)</h3>
+      <canvas id="chartMois" height="180"></canvas>
+    </div>
+    <div style="flex:1; min-width:300px; background:#f9fbfd; border-radius:10px; padding:16px; border:1px solid #dde3ed;">
+      <h3 style="color:#1F4E79; font-size:0.95em; margin-bottom:12px;">Solde annuel par employé</h3>
+      <canvas id="chartEmployes" height="180"></canvas>
+    </div>
+  </div>
+
   <!-- Tableau détaillé -->
   <div class="tableau-wrap">
     <table>
@@ -134,5 +146,63 @@
     </table>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Graphique 1 : H+ / H- par mois (équipe)
+  const moisLabels = [{% for m in mois_disponibles %}"{{ mois_noms[m] }}"{% if not loop.last %},{% endif %}{% endfor %}];
+
+  const totalPlusMois = [
+    {% for m in mois_disponibles %}
+    {{ employes | map(attribute='prenom') | list | map('extract', donnees) | list | map(attribute=m|string) | reject('none') | sum(attribute='plus') | round(1) }}{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  {% set plus_par_mois = [] %}
+  {% set moins_par_mois = [] %}
+  {% for m in mois_disponibles %}
+    {% set total_p = namespace(v=0) %}
+    {% set total_m = namespace(v=0) %}
+    {% for emp in employes %}
+      {% set d = donnees[emp.prenom].get(m) %}
+      {% if d %}
+        {% set total_p.v = total_p.v + d.plus %}
+        {% set total_m.v = total_m.v + d.moins %}
+      {% endif %}
+    {% endfor %}
+    {% set _ = plus_par_mois.append(total_p.v | round(1)) %}
+    {% set _ = moins_par_mois.append(total_m.v | round(1)) %}
+  {% endfor %}
+
+  new Chart(document.getElementById('chartMois'), {
+    type: 'bar',
+    data: {
+      labels: moisLabels,
+      datasets: [
+        { label: 'H+', data: {{ plus_par_mois | tojson }}, backgroundColor: 'rgba(39,98,33,0.7)', borderRadius: 4 },
+        { label: 'H−', data: {{ moins_par_mois | tojson }}, backgroundColor: 'rgba(156,0,6,0.7)', borderRadius: 4 }
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Graphique 2 : Solde annuel par employé
+  const empLabels = [{% for emp in employes %}"{{ emp.prenom }}"{% if not loop.last %},{% endif %}{% endfor %}];
+  const empSoldes = [{% for emp in employes %}{{ cumuls[emp.prenom].solde }}{% if not loop.last %},{% endif %}{% endfor %}];
+  const empColors = empSoldes.map(v => v >= 0 ? 'rgba(39,98,33,0.7)' : 'rgba(156,0,6,0.7)');
+
+  new Chart(document.getElementById('chartEmployes'), {
+    type: 'bar',
+    data: {
+      labels: empLabels,
+      datasets: [{ label: 'Solde (h)', data: empSoldes, backgroundColor: empColors, borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true } }
+    }
+  });
+</script>
 </body>
 </html>
