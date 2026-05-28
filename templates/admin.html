@@ -21,7 +21,10 @@
     table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
     th { background: #1F4E79; color: white; padding: 10px 6px; text-align: center; white-space: nowrap; }
     .th-planning { background: #5c7a3e; }
-    tr:nth-child(even) td { background: #f5f8fc; }
+    tr.recu td { background: #eafaf1 !important; }
+    tr.attente td { background: #fffbe6 !important; }
+    tr.recu td.nom { border-left: 4px solid #27ae60; }
+    tr.attente td.nom { border-left: 4px solid #f39c12; }
     td { padding: 7px 6px; border: 1px solid #ddd; vertical-align: middle; text-align: center; }
     td.nom { text-align: left; font-weight: bold; }
     .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
@@ -69,7 +72,7 @@
     </thead>
     <tbody>
       {% for r in resultats %}
-      <tr>
+      <tr class="{% if r.repondu %}recu{% else %}attente{% endif %}">
         <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
         <td>
           {% if r.repondu %}
