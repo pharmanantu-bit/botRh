@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tableau de bord — {{ annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1300px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .btn-retour:hover { color: #333; }
+
+    /* Stats globales */
+    .stats-globales { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+    .stat-card { flex: 1; min-width: 150px; background: #f5f8fc; border-radius: 10px; padding: 16px; text-align: center; border: 1px solid #dde3ed; }
+    .stat-card .valeur { font-size: 1.8em; font-weight: bold; }
+    .stat-card .label { font-size: 0.8em; color: #555; margin-top: 4px; }
+    .plus { color: #276221; }
+    .moins { color: #9C0006; }
+    .neutre { color: #1F4E79; }
+
+    /* Tableau */
+    .tableau-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82em; min-width: 700px; }
+    th { background: #1F4E79; color: white; padding: 8px 6px; text-align: center; white-space: nowrap; position: sticky; top: 0; }
+    th.th-cumul { background: #5c7a3e; }
+    td { padding: 6px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+    td.nom { text-align: left; font-weight: bold; color: #1F4E79; white-space: nowrap; position: sticky; left: 0; background: white; }
+    tr:nth-child(even) td { background: #f5f8fc; }
+    tr:nth-child(even) td.nom { background: #f5f8fc; }
+
+    /* Cellules heures */
+    .cell-plus { color: #276221; font-weight: bold; }
+    .cell-moins { color: #9C0006; font-weight: bold; }
+    .cell-neutre { color: #555; }
+    .cell-vide { color: #ccc; font-size: 0.8em; }
+    .cell-cumul { background: #eef4e8 !important; font-weight: bold; }
+    .cell-cumul-neg { background: #fff0f0 !important; font-weight: bold; }
+
+    .mini { font-size: 0.75em; color: #888; display: block; }
+    .badge-solde { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold; }
+    .badge-pos { background: #C6EFCE; color: #276221; }
+    .badge-neg { background: #FFCCCC; color: #9C0006; }
+    .badge-zero { background: #e8f0fe; color: #1F4E79; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>Tableau de bord — {{ annee }}</h1>
+    <a href="/admin" class="btn-retour">Retour admin</a>
+  </div>
+
+  <!-- Stats globales -->
+  {% set total_plus_global = cumuls.values() | sum(attribute='plus') %}
+  {% set total_moins_global = cumuls.values() | sum(attribute='moins') %}
+  {% set solde_global = total_plus_global - total_moins_global %}
+  <div class="stats-globales">
+    <div class="stat-card">
+      <div class="valeur neutre">{{ mois_disponibles | length }}</div>
+      <div class="label">Mois enregistrés</div>
+    </div>
+    <div class="stat-card">
+      <div class="valeur plus">+{{ "%.1f"|format(total_plus_global) }}h</div>
+      <div class="label">Total H+ équipe (cumul)</div>
+    </div>
+    <div class="stat-card">
+      <div class="valeur moins">-{{ "%.1f"|format(total_moins_global) }}h</div>
+      <div class="label">Total H− équipe (cumul)</div>
+    </div>
+    <div class="stat-card">
+      <div class="valeur {% if solde_global >= 0 %}plus{% else %}moins{% endif %}">
+        {% if solde_global >= 0 %}+{% endif %}{{ "%.1f"|format(solde_global) }}h
+      </div>
+      <div class="label">Solde global équipe</div>
+    </div>
+  </div>
+
+  <!-- Tableau détaillé -->
+  <div class="tableau-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left; min-width:130px;">Collaborateur</th>
+          {% for m in mois_disponibles %}
+          <th>{{ mois_noms[m] }}</th>
+          {% endfor %}
+          <th class="th-cumul">Total H+</th>
+          <th class="th-cumul">Total H−</th>
+          <th class="th-cumul">Solde annuel</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employes %}
+        {% set p = emp.prenom %}
+        {% set c = cumuls[p] %}
+        <tr>
+          <td class="nom">{{ emp.prenom }} {{ emp.nom }}</td>
+
+          {% for m in mois_disponibles %}
+          {% set d = donnees[p].get(m) %}
+          <td>
+            {% if d %}
+              <span class="cell-plus">+{{ "%.1f"|format(d.plus) }}</span>
+              <span class="mini cell-moins">-{{ "%.1f"|format(d.moins) }}</span>
+              {% if d.solde > 0 %}
+                <span class="badge-solde badge-pos">+{{ "%.1f"|format(d.solde) }}</span>
+              {% elif d.solde < 0 %}
+                <span class="badge-solde badge-neg">{{ "%.1f"|format(d.solde) }}</span>
+              {% else %}
+                <span class="badge-solde badge-zero">0</span>
+              {% endif %}
+            {% else %}
+              <span class="cell-vide">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+
+          <td class="cell-cumul"><span class="plus">+{{ "%.1f"|format(c.plus) }}h</span></td>
+          <td class="cell-cumul"><span class="moins">-{{ "%.1f"|format(c.moins) }}h</span></td>
+          <td class="{% if c.solde >= 0 %}cell-cumul{% else %}cell-cumul-neg{% endif %}">
+            {% if c.solde >= 0 %}
+              <span class="badge-solde badge-pos">+{{ "%.1f"|format(c.solde) }}h</span>
+            {% else %}
+              <span class="badge-solde badge-neg">{{ "%.1f"|format(c.solde) }}h</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

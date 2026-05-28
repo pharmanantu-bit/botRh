@@ -236,6 +236,61 @@ def admin():
                            a_planifier=a_planifier)
 
 
+@app.route("/admin/dashboard")
+def admin_dashboard():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    employes = charger_employes()
+    annee = datetime.now().year
+    mois_actuel = datetime.now().month
+
+    # Charger toutes les réponses de l'année
+    donnees = {}  # {prenom: {mois: {h+, h-}}}
+    mois_disponibles = []
+
+    for m in range(1, mois_actuel + 1):
+        f = reponses_file(m, annee)
+        if os.path.exists(f):
+            with open(f, encoding="utf-8") as fp:
+                reponses = json.load(fp)
+            mois_disponibles.append(m)
+            for emp in employes:
+                token = generer_token(emp["prenom"], emp["email"])
+                r = reponses.get(token)
+                if emp["prenom"] not in donnees:
+                    donnees[emp["prenom"]] = {}
+                if r:
+                    donnees[emp["prenom"]][m] = {
+                        "plus": r["heures_plus"],
+                        "moins": r["heures_moins"],
+                        "solde": round(r["heures_plus"] - r["heures_moins"], 2),
+                    }
+                else:
+                    donnees[emp["prenom"]][m] = None
+
+    # Calcul cumul annuel par employé
+    cumuls = {}
+    for emp in employes:
+        p = emp["prenom"]
+        total_plus = sum(donnees[p][m]["plus"] for m in mois_disponibles if donnees.get(p, {}).get(m))
+        total_moins = sum(donnees[p][m]["moins"] for m in mois_disponibles if donnees.get(p, {}).get(m))
+        cumuls[p] = {
+            "plus": round(total_plus, 2),
+            "moins": round(total_moins, 2),
+            "solde": round(total_plus - total_moins, 2),
+        }
+
+    return render_template("admin_dashboard.html",
+        employes=employes,
+        donnees=donnees,
+        cumuls=cumuls,
+        mois_disponibles=mois_disponibles,
+        mois_noms={m: MOIS_FR[m][:3] for m in range(1, 13)},
+        annee=annee,
+    )
+
+
 @app.route("/admin/historique")
 def admin_historique():
     if not session.get("admin"):
