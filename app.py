@@ -236,6 +236,55 @@ def admin():
                            a_planifier=a_planifier)
 
 
+def sauvegarder_employes(employes):
+    with open(EMPLOYEES_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["nom", "prenom", "email"])
+        writer.writeheader()
+        writer.writerows(employes)
+
+
+@app.route("/admin/employes", methods=["GET", "POST"])
+def admin_employes():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    employes = charger_employes()
+    message = None
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "ajouter":
+            prenom = request.form.get("prenom", "").strip()
+            nom = request.form.get("nom", "").strip()
+            email = request.form.get("email", "").strip()
+            if prenom and nom and email:
+                employes.append({"prenom": prenom, "nom": nom, "email": email})
+                sauvegarder_employes(employes)
+                message = f"{prenom} {nom} ajouté."
+
+        elif action == "supprimer":
+            email = request.form.get("email", "")
+            employes = [e for e in employes if e["email"] != email]
+            sauvegarder_employes(employes)
+            message = "Employé supprimé."
+
+        elif action == "modifier":
+            email_orig = request.form.get("email_orig", "")
+            for e in employes:
+                if e["email"] == email_orig:
+                    e["prenom"] = request.form.get("prenom", e["prenom"]).strip()
+                    e["nom"] = request.form.get("nom", e["nom"]).strip()
+                    e["email"] = request.form.get("email", e["email"]).strip()
+                    break
+            sauvegarder_employes(employes)
+            message = "Employé modifié."
+
+        employes = charger_employes()
+
+    return render_template("admin_employes.html", employes=employes, message=message)
+
+
 @app.route("/admin/dashboard")
 def admin_dashboard():
     if not session.get("admin"):
