@@ -5,6 +5,7 @@ import io
 import hashlib
 from datetime import datetime
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
+from werkzeug.utils import secure_filename
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -15,6 +16,8 @@ SECRET = "pharmacie-nanterre-2026"
 ADMIN_PASSWORD = "pharma92"
 REPONSES_FILE = "reponses_web.json"
 EMPLOYEES_FILE = "employees.csv"
+UPLOAD_FOLDER = "static/planning_img"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 MOIS_FR = {
     1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -223,7 +226,18 @@ def admin_planning():
     mois = datetime.now().month
     annee = datetime.now().year
 
+    img_name = f"planning_{mois}_{annee}.png"
+    img_path = os.path.join(UPLOAD_FOLDER, img_name)
+    img_url = f"/static/planning_img/{img_name}" if os.path.exists(img_path) else None
+
     if request.method == "POST":
+        # Sauvegarde image si uploadée
+        if "image" in request.files:
+            img = request.files["image"]
+            if img and img.filename:
+                img.save(img_path)
+                img_url = f"/static/planning_img/{img_name}"
+
         nouveau = {}
         for emp in employes:
             p = emp["prenom"]
@@ -241,7 +255,7 @@ def admin_planning():
         return redirect(url_for("admin"))
 
     return render_template("admin_planning.html", employes=employes, planning=planning,
-                           mois_annee=f"{MOIS_FR[mois]} {annee}")
+                           mois_annee=f"{MOIS_FR[mois]} {annee}", img_url=img_url)
 
 
 @app.route("/admin/logout")
