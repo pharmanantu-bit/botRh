@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Connexion</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 40px; max-width: 360px; width: 100%; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 6px; text-align: center; }
+    p { color: #555; font-size: 0.9em; text-align: center; margin-bottom: 24px; }
+    label { font-size: 0.85em; color: #555; display: block; margin-bottom: 6px; }
+    input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1em; margin-bottom: 16px; }
+    .erreur { background: #FFCCCC; color: #9C0006; padding: 8px; border-radius: 6px; font-size: 0.85em; text-align: center; margin-bottom: 16px; }
+    .btn { width: 100%; padding: 12px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <h1>Espace Admin</h1>
+  <p>Relevés d'heures — Pharmacie Nanterre</p>
+  {% if erreur %}
+  <div class="erreur">Mot de passe incorrect.</div>
+  {% endif %}
+  <form method="POST" action="/admin">
+    <label>Mot de passe</label>
+    <input type="password" name="password" autofocus placeholder="••••••••">
+    <button type="submit" class="btn">Connexion</button>
+  </form>
+</div>
+</body>
+</html>

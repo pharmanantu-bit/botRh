@@ -1,13 +1,17 @@
 import json
 import os
+import csv
 import hashlib
 from datetime import datetime
-from flask import Flask, request, render_template, abort
+from flask import Flask, request, render_template, abort, redirect, url_for, session
 
 app = Flask(__name__)
+app.secret_key = "botRh-admin-2026"
 
 SECRET = "pharmacie-nanterre-2026"
+ADMIN_PASSWORD = "pharma92"
 REPONSES_FILE = "reponses_web.json"
+EMPLOYEES_FILE = "employees.csv"
 
 MOIS_FR = {
     1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -98,6 +102,60 @@ def envoyer():
         heures_plus=heures_plus, heures_moins=heures_moins,
         mois_annee=f"{MOIS_FR[mois]} {annee}"
     )
+
+
+def charger_employes():
+    employes = []
+    if os.path.exists(EMPLOYEES_FILE):
+        with open(EMPLOYEES_FILE, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                employes.append({"prenom": row["prenom"], "nom": row["nom"], "email": row["email"]})
+    return employes
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    if request.method == "POST":
+        mdp = request.form.get("password", "")
+        if mdp == ADMIN_PASSWORD:
+            session["admin"] = True
+        else:
+            return render_template("admin_login.html", erreur=True)
+
+    if not session.get("admin"):
+        return render_template("admin_login.html", erreur=False)
+
+    reponses = charger_reponses()
+    employes = charger_employes()
+    mois = datetime.now().month
+    annee = datetime.now().year
+
+    resultats = []
+    for emp in employes:
+        token = generer_token(emp["prenom"], emp["email"])
+        reponse = reponses.get(token)
+        resultats.append({
+            "prenom": emp["prenom"],
+            "nom": emp["nom"],
+            "email": emp["email"],
+            "repondu": reponse is not None,
+            "heures_plus": reponse["heures_plus"] if reponse else "-",
+            "heures_moins": reponse["heures_moins"] if reponse else "-",
+            "commentaire": reponse.get("commentaire", "") if reponse else "",
+            "date": reponse["date"] if reponse else "-",
+            "lien": f"/releve?token={token}&prenom={emp['prenom']}",
+        })
+
+    repondus = sum(1 for r in resultats if r["repondu"])
+    return render_template("admin.html", resultats=resultats, repondus=repondus,
+                           total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}")
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin", None)
+    return redirect(url_for("admin"))
 
 
 if __name__ == "__main__":
