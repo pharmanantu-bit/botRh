@@ -14,7 +14,9 @@ load_dotenv()
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 EMPLOYEES_FILE = "employees.csv"
-REPONSES_FILE = "reponses_web.json"
+def reponses_file():
+    now = datetime.now()
+    return f"reponses_{now.month}_{now.year}.json"
 LOGS_FOLDER = "logs"
 SECRET = "pharmacie-nanterre-2026"
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
@@ -58,9 +60,10 @@ def load_employees():
 
 
 def charger_reponses():
-    if os.path.exists(REPONSES_FILE):
-        with open(REPONSES_FILE, encoding="utf-8") as f:
-            return json.load(f)
+    f = reponses_file()
+    if os.path.exists(f):
+        with open(f, encoding="utf-8") as fp:
+            return json.load(fp)
     return {}
 
 

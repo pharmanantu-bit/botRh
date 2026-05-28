@@ -14,8 +14,14 @@ app.secret_key = "botRh-admin-2026"
 
 SECRET = "pharmacie-nanterre-2026"
 ADMIN_PASSWORD = "pharma92"
-REPONSES_FILE = "reponses_web.json"
 EMPLOYEES_FILE = "employees.csv"
+
+def reponses_file(mois=None, annee=None):
+    if mois is None:
+        mois = datetime.now().month
+    if annee is None:
+        annee = datetime.now().year
+    return f"reponses_{mois}_{annee}.json"
 UPLOAD_FOLDER = "static/planning_img"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -31,18 +37,20 @@ def generer_token(prenom, email):
     return hashlib.md5(chaine.encode()).hexdigest()[:10]
 
 
-def charger_reponses():
-    if os.path.exists(REPONSES_FILE):
-        with open(REPONSES_FILE, encoding="utf-8") as f:
-            return json.load(f)
+def charger_reponses(mois=None, annee=None):
+    f = reponses_file(mois, annee)
+    if os.path.exists(f):
+        with open(f, encoding="utf-8") as fp:
+            return json.load(fp)
     return {}
 
 
 def sauvegarder_reponse(token, data):
+    f = reponses_file()
     reponses = charger_reponses()
     reponses[token] = data
-    with open(REPONSES_FILE, "w", encoding="utf-8") as f:
-        json.dump(reponses, f, ensure_ascii=False, indent=2)
+    with open(f, "w", encoding="utf-8") as fp:
+        json.dump(reponses, fp, ensure_ascii=False, indent=2)
 
 
 @app.route("/releve")
@@ -214,6 +222,120 @@ def admin():
     return render_template("admin.html", resultats=resultats, repondus=repondus,
                            total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}",
                            a_planifier=a_planifier)
+
+
+@app.route("/admin/historique")
+def admin_historique():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    employes = charger_employes()
+    nb_total = len(employes)
+    historique = []
+
+    for fichier in sorted(os.listdir("."), reverse=True):
+        if fichier.startswith("reponses_") and fichier.endswith(".json"):
+            parts = fichier.replace("reponses_", "").replace(".json", "").split("_")
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                m, a = int(parts[0]), int(parts[1])
+                with open(fichier, encoding="utf-8") as f:
+                    data = json.load(f)
+                historique.append({
+                    "mois": m,
+                    "annee": a,
+                    "label": f"{MOIS_FR[m]} {a}",
+                    "repondus": len(data),
+                    "total": nb_total,
+                    "fichier": f"{m}_{a}",
+                })
+
+    return render_template("admin_historique.html", historique=historique)
+
+
+@app.route("/admin/historique/<int:mois>/<int:annee>")
+def admin_historique_mois(mois, annee):
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    reponses = charger_reponses(mois, annee)
+    employes = charger_employes()
+    mois_annee = f"{MOIS_FR[mois]} {annee}"
+
+    resultats = []
+    for emp in employes:
+        token = generer_token(emp["prenom"], emp["email"])
+        reponse = reponses.get(token)
+        resultats.append({
+            "prenom": emp["prenom"],
+            "nom": emp["nom"],
+            "repondu": reponse is not None,
+            "heures_plus": reponse["heures_plus"] if reponse else "-",
+            "heures_moins": reponse["heures_moins"] if reponse else "-",
+            "commentaire": reponse.get("commentaire", "") if reponse else "",
+            "signature": reponse.get("signature", "") if reponse else "",
+            "date": reponse["date"] if reponse else "-",
+        })
+
+    repondus = sum(1 for r in resultats if r["repondu"])
+    return render_template("admin_historique_mois.html", resultats=resultats,
+                           repondus=repondus, total=len(resultats),
+                           mois_annee=mois_annee, mois=mois, annee=annee)
+
+
+@app.route("/admin/historique/export/<int:mois>/<int:annee>")
+def admin_historique_export(mois, annee):
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
+    reponses = charger_reponses(mois, annee)
+    employes = charger_employes()
+    mois_annee = f"{MOIS_FR[mois]} {annee}"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Relevés {mois_annee}"
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells("A1:I1")
+    ws["A1"] = f"Relevés d'heures — {mois_annee}"
+    ws["A1"].font = Font(bold=True, size=13, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="1F4E79")
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    headers = ["Prénom", "Nom", "H+", "H−", "Signature", "Date signature", "Commentaire", "Date envoi", "Statut"]
+    ws.append(headers)
+    for cell in ws[2]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="2E75B6")
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = border
+
+    for emp in employes:
+        token = generer_token(emp["prenom"], emp["email"])
+        r = reponses.get(token)
+        if r:
+            row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"],
+                   r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r["date"], "Reçu"]
+            fill = PatternFill("solid", fgColor="C6EFCE")
+        else:
+            row = [emp["prenom"], emp["nom"], "-", "-", "", "", "", "-", "En attente"]
+            fill = PatternFill("solid", fgColor="FFEB9C")
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center")
+        ws[ws.max_row][8].fill = fill
+
+    for i, w in enumerate([14, 16, 8, 8, 20, 14, 30, 16, 12], 1):
+        ws.column_dimensions[chr(64+i)].width = w
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"Releves_{MOIS_FR[mois]}_{annee}.xlsx"
+    return send_file(output, as_attachment=True, download_name=filename,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/admin/planning", methods=["GET", "POST"])

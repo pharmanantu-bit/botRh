@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relevés — {{ mois_annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 960px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    .compteur { background: #e8f0fe; color: #1F4E79; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9em; }
+    .btn-dl { background: #5c7a3e; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
+    .btn-dl:hover { background: #445c2e; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .btn-retour:hover { color: #333; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+    th { background: #1F4E79; color: white; padding: 10px 8px; text-align: center; }
+    tr:nth-child(even) td { background: #f5f8fc; }
+    td { padding: 8px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+    td.nom { text-align: left; font-weight: bold; }
+    .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    .badge-attente { background: #FFEB9C; color: #9C6500; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>Relevés — {{ mois_annee }}</h1>
+    <div class="actions">
+      <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
+      <a href="/admin/historique/export/{{ mois }}/{{ annee }}" class="btn-dl">Télécharger Excel</a>
+      <a href="/admin/historique" class="btn-retour">Retour historique</a>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Collaborateur</th>
+        <th>Statut</th>
+        <th>H+</th>
+        <th>H−</th>
+        <th>Signature</th>
+        <th>Commentaire</th>
+        <th>Date envoi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in resultats %}
+      <tr>
+        <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
+        <td>
+          {% if r.repondu %}
+          <span class="badge-ok">Reçu</span>
+          {% else %}
+          <span class="badge-attente">En attente</span>
+          {% endif %}
+        </td>
+        <td>{{ r.heures_plus }}</td>
+        <td>{{ r.heures_moins }}</td>
+        <td>{{ r.signature }}</td>
+        <td>{{ r.commentaire }}</td>
+        <td>{{ r.date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

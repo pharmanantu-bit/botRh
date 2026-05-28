@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historique des relevés</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 700px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .btn-retour:hover { color: #333; }
+    .mois-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; background: #f9fbfd; }
+    .mois-label { font-weight: bold; color: #1F4E79; font-size: 1em; }
+    .mois-stats { color: #555; font-size: 0.88em; }
+    .actions { display: flex; gap: 10px; }
+    .btn-voir { background: #2E75B6; color: white; padding: 6px 14px; border-radius: 6px; font-size: 0.82em; text-decoration: none; }
+    .btn-voir:hover { background: #1F4E79; }
+    .btn-dl { background: #5c7a3e; color: white; padding: 6px 14px; border-radius: 6px; font-size: 0.82em; text-decoration: none; }
+    .btn-dl:hover { background: #445c2e; }
+    .vide { color: #888; text-align: center; padding: 30px; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>Historique des relevés</h1>
+    <a href="/admin" class="btn-retour">Retour admin</a>
+  </div>
+
+  {% if historique %}
+    {% for h in historique %}
+    <div class="mois-item">
+      <div>
+        <div class="mois-label">{{ h.label }}</div>
+        <div class="mois-stats">{{ h.repondus }} / {{ h.total }} réponses reçues</div>
+      </div>
+      <div class="actions">
+        <a href="/admin/historique/{{ h.mois }}/{{ h.annee }}" class="btn-voir">Voir</a>
+        <a href="/admin/historique/export/{{ h.mois }}/{{ h.annee }}" class="btn-dl">Excel</a>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="vide">Aucun relevé archivé pour l'instant.</p>
+  {% endif %}
+</div>
+</body>
+</html>
