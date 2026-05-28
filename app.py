@@ -242,8 +242,19 @@ def admin_dashboard():
         return redirect(url_for("admin"))
 
     employes = charger_employes()
-    annee = datetime.now().year
-    mois_actuel = datetime.now().month
+    annee_courante = datetime.now().year
+    annee = int(request.args.get("annee", annee_courante))
+    mois_actuel = datetime.now().month if annee == annee_courante else 12
+
+    # Trouver toutes les années disponibles
+    annees_dispo = set()
+    for fichier in os.listdir("."):
+        if fichier.startswith("reponses_") and fichier.endswith(".json"):
+            parts = fichier.replace("reponses_","").replace(".json","").split("_")
+            if len(parts) == 2 and parts[1].isdigit():
+                annees_dispo.add(int(parts[1]))
+    annees_dispo.add(annee_courante)
+    annees_dispo = sorted(annees_dispo, reverse=True)
 
     # Charger toutes les réponses de l'année
     donnees = {}  # {prenom: {mois: {h+, h-}}}
@@ -288,6 +299,7 @@ def admin_dashboard():
         mois_disponibles=mois_disponibles,
         mois_noms={m: MOIS_FR[m][:3] for m in range(1, 13)},
         annee=annee,
+        annees_dispo=annees_dispo,
     )
 
 

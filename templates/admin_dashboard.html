@@ -51,7 +51,18 @@
 <div class="carte">
   <div class="entete">
     <h1>Tableau de bord — {{ annee }}</h1>
-    <a href="/admin" class="btn-retour">Retour admin</a>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <div style="display:flex; gap:6px;">
+        {% for a in annees_dispo %}
+        <a href="/admin/dashboard?annee={{ a }}"
+           style="padding:6px 14px; border-radius:6px; font-size:0.88em; font-weight:bold; text-decoration:none;
+                  {% if a == annee %}background:#1F4E79; color:white;{% else %}background:#e8f0fe; color:#1F4E79;{% endif %}">
+          {{ a }}
+        </a>
+        {% endfor %}
+      </div>
+      <a href="/admin" class="btn-retour">Retour admin</a>
+    </div>
   </div>
 
   <!-- Stats globales -->
