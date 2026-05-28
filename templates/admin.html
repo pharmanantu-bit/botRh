@@ -51,6 +51,9 @@
     </div>
   </div>
 
+  <input type="text" id="recherche" placeholder="Rechercher un employé..." oninput="filtrer()"
+    style="width:100%; padding:10px 14px; border:1px solid #ccc; border-radius:8px; font-size:0.95em; margin-bottom:14px;">
+
   <table>
     <thead>
       <tr>
@@ -108,5 +111,14 @@
     </tbody>
   </table>
 </div>
+<script>
+function filtrer() {
+  const q = document.getElementById('recherche').value.toLowerCase();
+  document.querySelectorAll('tbody tr').forEach(tr => {
+    const nom = tr.querySelector('td.nom');
+    tr.style.display = nom && nom.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
 </body>
 </html>
