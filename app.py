@@ -84,8 +84,10 @@ def envoyer():
     heures_plus = request.form.get("heures_plus", "0")
     heures_moins = request.form.get("heures_moins", "0")
     commentaire = request.form.get("commentaire", "")
+    date_signature = request.form.get("date_signature", "")
+    signature = request.form.get("signature", "")
 
-    if not token or not prenom:
+    if not token or not prenom or not date_signature or not signature:
         abort(400)
 
     mois = datetime.now().month
@@ -96,6 +98,8 @@ def envoyer():
         "heures_plus": float(heures_plus or 0),
         "heures_moins": float(heures_moins or 0),
         "commentaire": commentaire,
+        "date_signature": date_signature,
+        "signature": signature,
         "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "mois": mois,
         "annee": annee,
@@ -185,7 +189,7 @@ def admin_export():
     ws["A1"].fill = PatternFill("solid", fgColor="1F4E79")
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    headers = ["Prénom", "Nom", "H+", "H−", "Commentaire", "Date envoi", "Statut"]
+    headers = ["Prénom", "Nom", "H+", "H−", "Signature", "Date signature", "Commentaire", "Date envoi", "Statut"]
     ws.append(headers)
     for cell in ws[2]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -199,18 +203,18 @@ def admin_export():
         if r:
             statut = "Reçu"
             fill = PatternFill("solid", fgColor="C6EFCE")
-            row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"], r.get("commentaire", ""), r["date"], statut]
+            row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"], r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r["date"], statut]
         else:
             statut = "En attente"
             fill = PatternFill("solid", fgColor="FFEB9C")
-            row = [emp["prenom"], emp["nom"], "-", "-", "", "-", statut]
+            row = [emp["prenom"], emp["nom"], "-", "-", "", "", "", "-", statut]
         ws.append(row)
         for cell in ws[ws.max_row]:
             cell.border = border
             cell.alignment = Alignment(horizontal="center")
         ws[ws.max_row][6].fill = fill
 
-    for i, w in enumerate([14, 16, 8, 8, 30, 16, 12], 1):
+    for i, w in enumerate([14, 16, 8, 8, 20, 14, 30, 16, 12], 1):
         ws.column_dimensions[chr(64+i)].width = w
 
     output = io.BytesIO()
