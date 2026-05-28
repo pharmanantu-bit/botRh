@@ -2,12 +2,20 @@ import smtplib
 import os
 import csv
 import logging
+import hashlib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime
 from config import GMAIL_USER, GMAIL_APP_PASSWORD, EMPLOYEES_FILE, DOCUMENTS_FOLDER, LOGS_FOLDER
+
+BASE_URL = "https://pharmacie92000.pythonanywhere.com"
+SECRET = "pharmacie-nanterre-2026"
+
+def generer_token(prenom, email):
+    chaine = f"{prenom}{email}{SECRET}"
+    return hashlib.md5(chaine.encode()).hexdigest()[:10]
 
 
 def setup_logging():
@@ -63,9 +71,15 @@ def build_email(employee, documents, mois_annee):
     msg["To"] = employee["email"]
     msg["Subject"] = f"Feuille d'heures — {mois_annee}"
 
+    token = generer_token(employee['prenom'], employee['email'])
+    lien = f"{BASE_URL}/releve?token={token}&prenom={employee['prenom']}"
+
     body = f"""Bonjour {employee['prenom']},
 
 Vous trouverez ci-joint la feuille d'heures du mois de {mois_annee}. Merci de bien vouloir la compléter et nous la retourner au plus tard le 25 de ce mois.
+
+Vous pouvez également remplir votre relevé en ligne directement via ce lien :
+{lien}
 
 Belle journée,
 La direction
