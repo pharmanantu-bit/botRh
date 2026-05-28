@@ -295,6 +295,37 @@ def admin_employes():
     return render_template("admin_employes.html", employes=employes, message=message)
 
 
+@app.route("/mon-espace")
+def mon_espace():
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    if not token or not prenom:
+        abort(404)
+
+    historique = []
+    for fichier in sorted(os.listdir("."), reverse=True):
+        if fichier.startswith("reponses_") and fichier.endswith(".json"):
+            parts = fichier.replace("reponses_","").replace(".json","").split("_")
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                m, a = int(parts[0]), int(parts[1])
+                with open(fichier, encoding="utf-8") as fp:
+                    reponses = json.load(fp)
+                r = reponses.get(token)
+                if r:
+                    solde = round(r["heures_plus"] - r["heures_moins"], 2)
+                    historique.append({
+                        "mois_annee": f"{MOIS_FR[m]} {a}",
+                        "heures_plus": r["heures_plus"],
+                        "heures_moins": r["heures_moins"],
+                        "solde": solde,
+                        "commentaire": r.get("commentaire", ""),
+                        "date": r["date"],
+                        "lien": f"/releve?token={token}&prenom={prenom}",
+                    })
+
+    return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique)
+
+
 @app.route("/admin/absences")
 def admin_absences():
     if not session.get("admin"):

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mon espace — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 680px; margin: 0 auto; }
+    .entete { text-align: center; margin-bottom: 28px; }
+    .entete h1 { color: #1F4E79; font-size: 1.4em; }
+    .entete p { color: #555; margin-top: 6px; font-size: 0.95em; }
+    .btn-releve { display: inline-block; margin-top: 16px; padding: 10px 24px; background: #1F4E79; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.95em; }
+    .btn-releve:hover { background: #163d60; }
+
+    .mois-item { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; background: #f9fbfd; }
+    .mois-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .mois-label { font-weight: bold; color: #1F4E79; font-size: 1em; }
+    .mois-date { color: #888; font-size: 0.8em; }
+    .stats { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 80px; text-align: center; background: white; border-radius: 8px; padding: 10px; border: 1px solid #eee; }
+    .stat .val { font-size: 1.3em; font-weight: bold; }
+    .stat .lbl { font-size: 0.75em; color: #888; margin-top: 2px; }
+    .plus { color: #276221; }
+    .moins { color: #9C0006; }
+    .neutre { color: #1F4E79; }
+    .commentaire { margin-top: 10px; font-size: 0.85em; color: #555; background: #fff3cd; border-radius: 6px; padding: 8px 12px; }
+    .vide { text-align: center; color: #888; padding: 30px; font-size: 0.95em; }
+    .badge-pos { background: #C6EFCE; color: #276221; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .badge-neg { background: #FFCCCC; color: #9C0006; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .badge-zero { background: #e8f0fe; color: #1F4E79; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="entete">
+    <h1>Bonjour {{ prenom }} !</h1>
+    <p>Voici l'historique de vos relevés d'heures.</p>
+    <a href="/releve?token={{ token }}&prenom={{ prenom }}" class="btn-releve">Remplir le relevé du mois en cours</a>
+  </div>
+
+  {% if historique %}
+    {% for h in historique %}
+    <div class="mois-item">
+      <div class="mois-header">
+        <span class="mois-label">{{ h.mois_annee }}</span>
+        <span class="mois-date">Envoyé le {{ h.date }}</span>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="val plus">+{{ h.heures_plus }}h</div>
+          <div class="lbl">Heures en plus</div>
+        </div>
+        <div class="stat">
+          <div class="val moins">-{{ h.heures_moins }}h</div>
+          <div class="lbl">Heures en moins</div>
+        </div>
+        <div class="stat">
+          <div class="val {% if h.solde > 0 %}plus{% elif h.solde < 0 %}moins{% else %}neutre{% endif %}">
+            {% if h.solde > 0 %}+{% endif %}{{ h.solde }}h
+          </div>
+          <div class="lbl">Solde</div>
+        </div>
+        <div class="stat" style="display:flex; align-items:center; justify-content:center;">
+          {% if h.solde > 0 %}<span class="badge-pos">Positif</span>
+          {% elif h.solde < 0 %}<span class="badge-neg">Négatif</span>
+          {% else %}<span class="badge-zero">Équilibré</span>{% endif %}
+        </div>
+      </div>
+      {% if h.commentaire %}
+      <div class="commentaire">{{ h.commentaire }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="vide">Aucun relevé soumis pour le moment.</div>
+  {% endif %}
+</div>
+</body>
+</html>

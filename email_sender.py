@@ -74,12 +74,17 @@ def build_email(employee, documents, mois_annee):
     token = generer_token(employee['prenom'], employee['email'])
     lien = f"{BASE_URL}/releve?token={token}&prenom={employee['prenom']}"
 
+    lien_espace = f"{BASE_URL}/mon-espace?token={token}&prenom={employee['prenom']}"
+
     body = f"""Bonjour {employee['prenom']},
 
 Vous trouverez ci-joint la feuille d'heures du mois de {mois_annee}. Merci de bien vouloir la compléter et nous la retourner au plus tard le 25 de ce mois.
 
-Vous pouvez également remplir votre relevé en ligne directement via ce lien :
+Remplir votre relevé en ligne :
 {lien}
+
+Consulter votre historique de relevés :
+{lien_espace}
 
 Belle journée,
 La direction
