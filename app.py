@@ -23,6 +23,15 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "botRh-admin-2026")
 
+# Journalisation des erreurs dans logs/erreurs.log (Flask y écrit aussi
+# automatiquement les exceptions non gérées) — consultable via /admin/erreurs.
+import logging
+os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
+_err_handler = logging.FileHandler(os.path.join(BASE_DIR, "logs", "erreurs.log"), encoding="utf-8")
+_err_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
+app.logger.addHandler(_err_handler)
+app.logger.setLevel(logging.INFO)
+
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
 API_CLE = os.getenv("API_CLE", "botRh-trigger-2026")
@@ -176,7 +185,7 @@ def envoyer():
             "annee": annee,
         })
     except Exception:
-        pass
+        app.logger.exception("Échec du déclenchement de la notification (notifier_releve)")
 
     return render_template("merci.html", prenom=prenom,
         heures_plus=heures_plus, heures_moins=heures_moins,
@@ -688,6 +697,23 @@ def admin_planning():
 def admin_logout():
     session.pop("admin", None)
     return redirect(url_for("admin"))
+
+
+@app.route("/admin/erreurs")
+def admin_erreurs():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    import html as _html
+    chemin = os.path.join(BASE_DIR, "logs", "erreurs.log")
+    lignes = []
+    if os.path.exists(chemin):
+        with open(chemin, encoding="utf-8") as f:
+            lignes = f.readlines()[-200:]
+    contenu = _html.escape("".join(reversed(lignes))) or "Aucune erreur enregistrée. 🎉"
+    return (f"<h2 style='font-family:Arial;color:#1F4E79'>Journal des erreurs (récentes en haut)</h2>"
+            f"<p style='font-family:Arial'><a href='/admin'>← Retour admin</a></p>"
+            f"<pre style='font-family:monospace;font-size:13px;background:#f5f5f5;"
+            f"padding:16px;border-radius:8px;white-space:pre-wrap'>{contenu}</pre>")
 
 
 def construire_recap_xlsx(mois, annee):

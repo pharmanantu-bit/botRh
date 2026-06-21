@@ -1,0 +1,23 @@
+name: Surveillance site botRh
+
+# Vérifie chaque jour que le site répond. Envoie un mail à l'admin uniquement
+# s'il est hors-ligne (ex. expiration mensuelle PythonAnywhere oubliée).
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # tous les jours à 07:00 UTC (≈ 9h Paris)
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Vérifier le site
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python check_site.py

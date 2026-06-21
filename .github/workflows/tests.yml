@@ -1,0 +1,22 @@
+name: Tests botRh
+
+# Test de fumée à chaque push : vérifie que toutes les pages se chargent sans
+# planter. Attrape les bugs avant qu'ils n'atteignent le site en production.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Installer les dépendances
+        run: pip install flask openpyxl python-dotenv
+      - name: Test de fumée
+        run: python test_smoke.py
