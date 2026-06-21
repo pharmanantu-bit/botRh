@@ -64,7 +64,7 @@ def get_documents():
     return []
 
 
-def build_email(employee, documents, mois_annee):
+def build_email(employee, documents, mois_annee, intro=None):
     msg = MIMEMultipart()
     msg["From"] = GMAIL_USER
     msg["To"] = employee["email"]
@@ -75,9 +75,10 @@ def build_email(employee, documents, mois_annee):
 
     lien_espace = f"{BASE_URL}/mon-espace?token={token}&prenom={employee['prenom']}"
 
+    bloc_intro = f"{intro}\n\n" if intro else ""
     body = f"""Bonjour {employee['prenom']},
 
-Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
+{bloc_intro}Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
 
 Remplir votre relevé en ligne :
 {lien}
@@ -102,10 +103,11 @@ La direction
     return msg
 
 
-def send_emails(only_to=None):
+def send_emails(only_to=None, intro=None):
     """Envoie les relevés à tous les employés.
     only_to : si fourni (adresse e-mail), envoie un seul mail de test à cette
-    adresse au lieu de toute la liste (utilisé pour valider le pipeline)."""
+    adresse au lieu de toute la liste (utilisé pour valider le pipeline).
+    intro : texte optionnel inséré en haut du mail (ex: annonce du nouveau système)."""
     setup_logging()
     MOIS_FR = {
         1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -129,7 +131,7 @@ def send_emails(only_to=None):
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         for emp in employees:
             try:
-                msg = build_email(emp, documents, mois_annee)
+                msg = build_email(emp, documents, mois_annee, intro=intro)
                 server.sendmail(GMAIL_USER, emp["email"], msg.as_string())
                 logging.info(f"Mail envoyé à {emp['prenom']} {emp['nom']} <{emp['email']}>")
             except Exception as e:

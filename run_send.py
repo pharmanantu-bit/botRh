@@ -11,6 +11,7 @@ Modes :
 - relances  : force l'envoi des relances
 """
 import sys
+import os
 import json
 import urllib.request
 from datetime import datetime
@@ -19,21 +20,31 @@ BASE_URL = "https://pharmacie92000.pythonanywhere.com"
 CLE = "botRh-trigger-2026"
 ADMIN_EMAIL = "pharmanantu@gmail.com"
 
+# Texte d'annonce inséré en haut du mail, activé seulement si INTRO=oui
+# (utilisé pour le 1er envoi qui présente le nouveau système en ligne).
+INTRO_JUIN = (
+    "🆕 Nouveauté : votre feuille d'heures se remplit désormais directement EN LIGNE. "
+    "Plus besoin de document à imprimer ou à renvoyer — cliquez simplement sur le lien "
+    "ci-dessous et remplissez-la en ligne, exactement comme le relevé que vous remplissiez "
+    "auparavant. C'est rapide et tout est enregistré automatiquement."
+)
+intro = INTRO_JUIN if os.environ.get("INTRO") == "oui" else None
+
 mode = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "auto"
 jour = datetime.now().day
 if mode == "auto":
     mode = "releves" if jour == 20 else ("relances" if jour == 22 else "rien")
 
-print(f"run_send.py — mode={mode} (jour du mois={jour})")
+print(f"run_send.py — mode={mode} (jour du mois={jour}) intro={'oui' if intro else 'non'}")
 
 if mode == "test":
     from email_sender import send_emails
-    send_emails(only_to=ADMIN_EMAIL)
+    send_emails(only_to=ADMIN_EMAIL, intro=intro)
     print(f"Mail de test envoyé à {ADMIN_EMAIL}.")
 
 elif mode == "releves":
     from email_sender import send_emails
-    send_emails()
+    send_emails(intro=intro)
     print("Relevés envoyés.")
 
 elif mode == "relances":

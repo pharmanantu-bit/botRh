@@ -17,6 +17,12 @@ on:
         default: "test"
         type: choice
         options: [test, auto, releves, relances]
+      intro:
+        description: "Ajouter l'annonce du nouveau système en haut du mail ?"
+        required: false
+        default: "non"
+        type: choice
+        options: [non, oui]
 
 jobs:
   envoi:
@@ -32,4 +38,5 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          INTRO: ${{ github.event.inputs.intro }}
         run: python run_send.py "${{ github.event.inputs.mode }}"
