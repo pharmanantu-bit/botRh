@@ -53,7 +53,7 @@ MOIS_FR = {
 }
 
 
-from tokens import generer_token, resoudre_employe
+from tokens import generer_token, resoudre_employe, reponse_de
 
 
 def charger_reponses(mois=None, annee=None):
@@ -103,7 +103,7 @@ def formulaire():
     reponses = charger_reponses()
     emp = resoudre_employe(token, charger_employes())
     token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
-    deja_rempli = token_canon in reponses
+    deja_rempli = (reponse_de(reponses, emp["prenom"], emp["email"]) is not None) if emp else (token_canon in reponses)
     modifiable = datetime.now().day <= 25
 
     return render_template("form.html",
@@ -241,7 +241,7 @@ def admin():
     resultats = []
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
-        reponse = reponses.get(token)
+        reponse = reponse_de(reponses, emp["prenom"], emp["email"])
         plan = planning.get(emp["prenom"], {})
         plan_total = plan.get("total", None)
 
@@ -354,7 +354,7 @@ def mon_espace():
                 m, a = int(parts[0]), int(parts[1])
                 with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as fp:
                     reponses = json.load(fp)
-                r = reponses.get(token_canon)
+                r = reponse_de(reponses, emp["prenom"], emp["email"]) if emp else reponses.get(token)
                 if r:
                     solde = round(r["heures_plus"] - r["heures_moins"], 2)
                     historique.append({
@@ -403,7 +403,7 @@ def admin_absences():
             mois_disponibles.append(m)
             for emp in employes:
                 token = generer_token(emp["prenom"], emp["email"])
-                r = reponses.get(token)
+                r = reponse_de(reponses, emp["prenom"], emp["email"])
                 stats[emp["prenom"]][m] = round(r["heures_moins"], 2) if r else None
 
     # Calcul cumul H- et classement
@@ -470,7 +470,7 @@ def admin_dashboard():
             mois_disponibles.append(m)
             for emp in employes:
                 token = generer_token(emp["prenom"], emp["email"])
-                r = reponses.get(token)
+                r = reponse_de(reponses, emp["prenom"], emp["email"])
                 if emp["prenom"] not in donnees:
                     donnees[emp["prenom"]] = {}
                 if r:
@@ -568,7 +568,7 @@ def admin_historique_mois(mois, annee):
     resultats = []
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
-        reponse = reponses.get(token)
+        reponse = reponse_de(reponses, emp["prenom"], emp["email"])
         resultats.append({
             "prenom": emp["prenom"],
             "nom": emp["nom"],
@@ -617,7 +617,7 @@ def admin_historique_export(mois, annee):
 
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
-        r = reponses.get(token)
+        r = reponse_de(reponses, emp["prenom"], emp["email"])
         if r:
             row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"],
                    r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r["date"], "Reçu"]
@@ -724,7 +724,7 @@ def admin_export():
 
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
-        r = reponses.get(token)
+        r = reponse_de(reponses, emp["prenom"], emp["email"])
         if r:
             statut = "Reçu"
             fill = PatternFill("solid", fgColor="C6EFCE")

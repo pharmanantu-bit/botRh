@@ -41,7 +41,7 @@ def setup_logging():
     )
 
 
-from tokens import generer_token
+from tokens import generer_token, reponse_de
 
 
 def load_employees():
@@ -75,8 +75,7 @@ def send_relances():
     # Filtrer uniquement ceux qui n'ont pas encore répondu
     a_relancer = []
     for emp in employees:
-        token = generer_token(emp["prenom"], emp["email"])
-        if token not in reponses:
+        if reponse_de(reponses, emp["prenom"], emp["email"]) is None:
             a_relancer.append(emp)
 
     logging.info(f"Relances ciblées — {len(a_relancer)}/{len(employees)} employé(s) n'ont pas répondu")

@@ -33,6 +33,17 @@ def tokens_valides(prenom, email):
     return [generer_token(prenom, email), generer_token_legacy(prenom, email)]
 
 
+def reponse_de(reponses, prenom, email):
+    """Retourne la réponse de l'employé, qu'elle soit indexée par le nouveau
+    jeton (HMAC) ou l'ancien (MD5). Indispensable pour lire les réponses
+    enregistrées avant la bascule des jetons signés."""
+    for t in tokens_valides(prenom, email):
+        r = reponses.get(t)
+        if r is not None:
+            return r
+    return None
+
+
 def resoudre_employe(token, employes):
     """Retourne l'employé dont un jeton valide correspond au jeton fourni, sinon
     None. Sert à la fois à valider le jeton (anti-falsification) et à identifier
