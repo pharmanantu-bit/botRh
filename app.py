@@ -775,5 +775,52 @@ def trigger():
         return f"Rien à faire (jour {jour})", 200
 
 
+@app.route("/healthcheck")
+def healthcheck():
+    """Diagnostic de l'état du serveur (config .env, employés, documents).
+    Ne renvoie aucune valeur secrète, seulement des booléens/compteurs.
+    Avec &smtp=1 : teste l'authentification Gmail sans envoyer d'e-mail."""
+    import json as _json
+    from dotenv import load_dotenv
+    load_dotenv()
+    cle = request.args.get("cle", "")
+    if cle != "botRh-trigger-2026":
+        abort(403)
+
+    gmail_user = os.getenv("GMAIL_USER")
+    gmail_pwd = os.getenv("GMAIL_APP_PASSWORD")
+    info = {
+        "gmail_user_set": bool(gmail_user),
+        "gmail_pwd_set": bool(gmail_pwd) and not str(gmail_pwd).startswith("x"),
+        "smtp_login_ok": None,
+    }
+
+    try:
+        from email_sender import load_employees
+        info["employees_count"] = len(load_employees())
+    except Exception as e:
+        info["employees_error"] = str(e)
+
+    docs_dir = "documents"
+    info["documents_count"] = (
+        len([f for f in os.listdir(docs_dir) if f.endswith(".docx")])
+        if os.path.isdir(docs_dir) else 0
+    )
+
+    if request.args.get("smtp") == "1" and info["gmail_user_set"] and info["gmail_pwd_set"]:
+        import smtplib
+        try:
+            s = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
+            s.login(gmail_user, gmail_pwd)
+            s.quit()
+            info["smtp_login_ok"] = True
+        except Exception as e:
+            info["smtp_login_ok"] = False
+            info["smtp_error"] = str(e)
+
+    return app.response_class(_json.dumps(info, ensure_ascii=False, indent=2),
+                              mimetype="application/json")
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
