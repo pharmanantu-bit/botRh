@@ -885,6 +885,32 @@ def healthcheck():
             info["github_reachable"] = False
             info["github_error"] = str(e)
 
+    if request.args.get("dispatch") == "1":
+        import urllib.request, urllib.error
+        gh_token = os.getenv("GITHUB_TOKEN")
+        try:
+            corps = json.dumps({
+                "event_type": "nouveau_releve",
+                "client_payload": {"prenom": "DIAG", "heures_plus": 0, "heures_moins": 0,
+                                   "commentaire": "diagnostic dispatch", "date_signature": "",
+                                   "signature": "", "date": "", "mois": datetime.now().month,
+                                   "annee": datetime.now().year},
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.github.com/repos/pharmanantu-bit/botRh/dispatches",
+                data=corps, method="POST")
+            req.add_header("Authorization", f"Bearer {gh_token}")
+            req.add_header("Accept", "application/vnd.github+json")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("User-Agent", "botRh")
+            with urllib.request.urlopen(req, timeout=15) as r:
+                info["dispatch_status"] = r.status
+        except urllib.error.HTTPError as e:
+            info["dispatch_status"] = e.code
+            info["dispatch_error"] = e.read().decode("utf-8", "ignore")[:300]
+        except Exception as e:
+            info["dispatch_error"] = str(e)
+
     if request.args.get("smtp") == "1" and info["gmail_user_set"] and info["gmail_pwd_set"]:
         import smtplib
         try:
