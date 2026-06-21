@@ -49,10 +49,20 @@ INTRO_JUIN = (
 )
 intro = INTRO_JUIN if os.environ.get("INTRO") == "oui" else None
 
+MOIS_FR = {1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin",
+           7: "Juillet", 8: "Août", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"}
+
 mode = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "auto"
 jour = datetime.now().day
 if mode == "auto":
-    mode = "releves" if jour == 20 else ("relances" if jour == 22 else "rien")
+    if jour == 20:
+        mode = "releves"
+    elif jour == 22:
+        mode = "relances"
+    elif jour == 26:
+        mode = "recap"
+    else:
+        mode = "rien"
 
 # Exception ponctuelle : pas de relance le 22 juin 2026 — les relevés ont été
 # envoyés manuellement le 21, une relance le lendemain serait prématurée.
@@ -90,6 +100,47 @@ elif mode == "relances":
         print(f"Avertissement : réponses non récupérées ({e}). Tout le monde sera relancé.")
     relance_sender.send_relances()
     print("Relances envoyées.")
+
+elif mode == "recap":
+    # Récap paie : récupère le classeur Excel du mois auprès du serveur et
+    # l'envoie à l'admin (le serveur ne pouvant pas envoyer d'e-mail).
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    now = datetime.now()
+    mois_annee = f"{MOIS_FR[now.month]} {now.year}"
+    try:
+        with urllib.request.urlopen(
+                f"{BASE_URL}/export_reponses?cle={CLE}&mois={now.month}&annee={now.year}", timeout=30) as r:
+            nb = len(json.loads(r.read().decode("utf-8")))
+    except Exception:
+        nb = "?"
+    with urllib.request.urlopen(
+            f"{BASE_URL}/export_recap?cle={CLE}&mois={now.month}&annee={now.year}", timeout=60) as r:
+        xlsx = r.read()
+
+    gmail_user = os.environ["GMAIL_USER"]
+    gmail_pwd = os.environ["GMAIL_APP_PASSWORD"]
+    msg = MIMEMultipart()
+    msg["From"] = gmail_user
+    msg["To"] = ADMIN_EMAIL
+    msg["Subject"] = f"botRh — Récap des relevés {mois_annee}"
+    msg.attach(MIMEText(
+        f"Bonjour,\n\nVoici le récapitulatif des relevés d'heures de {mois_annee} "
+        f"({nb} reçus). Le fichier Excel est en pièce jointe, prêt pour la paie.\n\nbotRh",
+        "plain", "utf-8"))
+    part = MIMEBase("application", "octet-stream")
+    part.set_payload(xlsx)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition",
+                    f'attachment; filename="Recap_{MOIS_FR[now.month]}_{now.year}.xlsx"')
+    msg.attach(part)
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(gmail_user, gmail_pwd)
+        server.sendmail(gmail_user, ADMIN_EMAIL, msg.as_string())
+    print(f"Récap paie envoyé à l'admin ({nb} reçus).")
 
 else:
     print("Rien à faire aujourd'hui.")

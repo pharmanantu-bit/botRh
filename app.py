@@ -690,15 +690,10 @@ def admin_logout():
     return redirect(url_for("admin"))
 
 
-@app.route("/admin/export")
-def admin_export():
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-
-    reponses = charger_reponses()
+def construire_recap_xlsx(mois, annee):
+    """Construit le classeur Excel récapitulatif des relevés du mois donné."""
+    reponses = charger_reponses(mois, annee)
     employes = charger_employes()
-    mois = datetime.now().month
-    annee = datetime.now().year
     mois_annee = f"{MOIS_FR[mois]} {annee}"
 
     wb = Workbook()
@@ -745,9 +740,35 @@ def admin_export():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    filename = f"Releves_{MOIS_FR[mois]}_{annee}.xlsx"
-    return send_file(output, as_attachment=True, download_name=filename,
-                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return output
+
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@app.route("/admin/export")
+def admin_export():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    mois = datetime.now().month
+    annee = datetime.now().year
+    output = construire_recap_xlsx(mois, annee)
+    return send_file(output, as_attachment=True,
+                     download_name=f"Releves_{MOIS_FR[mois]}_{annee}.xlsx", mimetype=XLSX_MIME)
+
+
+@app.route("/export_recap")
+def export_recap():
+    """Récap Excel des relevés du mois (pour l'envoi paie automatique par le
+    runner GitHub). Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
+    output = construire_recap_xlsx(mois, annee)
+    return send_file(output, as_attachment=True,
+                     download_name=f"Releves_{MOIS_FR[mois]}_{annee}.xlsx", mimetype=XLSX_MIME)
 
 
 def envoyer_confirmation(sujet, message):

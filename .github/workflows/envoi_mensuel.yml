@@ -9,6 +9,7 @@ on:
     # Heures en UTC. 06:00 UTC = 08:00 Paris (été) / 07:00 (hiver).
     - cron: '0 6 20 * *'   # le 20 : relevés
     - cron: '0 6 22 * *'   # le 22 : relances
+    - cron: '0 7 26 * *'   # le 26 : récap paie (après la date limite du 25)
   workflow_dispatch:
     inputs:
       mode:
@@ -16,7 +17,7 @@ on:
         required: false
         default: "test"
         type: choice
-        options: [test, auto, releves, relances]
+        options: [test, auto, releves, relances, recap]
       intro:
         description: "Ajouter l'annonce du nouveau système en haut du mail ?"
         required: false
