@@ -62,7 +62,7 @@ MOIS_FR = {
 }
 
 
-from tokens import generer_token, resoudre_employe, reponse_de
+from tokens import generer_token, resoudre_employe, reponse_de, tokens_valides
 
 
 def charger_reponses(mois=None, annee=None):
@@ -78,6 +78,11 @@ def sauvegarder_reponse(token, data):
     reponses = charger_reponses()
     reponses[token] = data
     with open(f, "w", encoding="utf-8") as fp:
+        json.dump(reponses, fp, ensure_ascii=False, indent=2)
+
+
+def ecrire_reponses(reponses, mois=None, annee=None):
+    with open(reponses_file(mois, annee), "w", encoding="utf-8") as fp:
         json.dump(reponses, fp, ensure_ascii=False, indent=2)
 
 
@@ -275,6 +280,7 @@ def admin():
             "nom": emp["nom"],
             "email": emp["email"],
             "repondu": reponse is not None,
+            "valide": reponse.get("valide", False) if reponse else False,
             "heures_plus": reponse["heures_plus"] if reponse else "-",
             "heures_moins": reponse["heures_moins"] if reponse else "-",
             "solde": solde if solde is not None else "-",
@@ -714,6 +720,55 @@ def admin_erreurs():
             f"<p style='font-family:Arial'><a href='/admin'>← Retour admin</a></p>"
             f"<pre style='font-family:monospace;font-size:13px;background:#f5f5f5;"
             f"padding:16px;border-radius:8px;white-space:pre-wrap'>{contenu}</pre>")
+
+
+@app.route("/admin/valider", methods=["POST"])
+def admin_valider():
+    """N — l'admin valide (ou annule) un relevé reçu, avant la paie."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    valide = request.form.get("valide") == "1"
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if emp:
+        reponses = charger_reponses()
+        for t in tokens_valides(emp["prenom"], emp["email"]):
+            if t in reponses:
+                reponses[t]["valide"] = valide
+                reponses[t]["date_validation"] = (
+                    datetime.now().strftime("%d/%m/%Y %H:%M") if valide else "")
+                ecrire_reponses(reponses)
+                break
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/employe")
+def admin_employe():
+    """I — fiche annuelle d'un employé : 12 mois (H+/H−/solde) + tendance."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.args.get("email", "")
+    annee = int(request.args.get("annee", datetime.now().year))
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    mois_data = []
+    for m in range(1, 13):
+        r = reponse_de(charger_reponses(m, annee), emp["prenom"], emp["email"])
+        if r:
+            mois_data.append({"mois": MOIS_FR[m][:3], "plus": r["heures_plus"],
+                              "moins": r["heures_moins"],
+                              "solde": round(r["heures_plus"] - r["heures_moins"], 2),
+                              "rempli": True, "valide": r.get("valide", False),
+                              "commentaire": r.get("commentaire", "")})
+        else:
+            mois_data.append({"mois": MOIS_FR[m][:3], "plus": None, "moins": None,
+                              "solde": None, "rempli": False, "valide": False, "commentaire": ""})
+    cp = sum(d["plus"] for d in mois_data if d["rempli"])
+    cm = sum(d["moins"] for d in mois_data if d["rempli"])
+    return render_template("admin_employe.html", emp=emp, annee=annee, mois_data=mois_data,
+                           cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
+                           cumul_solde=round(cp - cm, 2))
 
 
 def construire_recap_xlsx(mois, annee):

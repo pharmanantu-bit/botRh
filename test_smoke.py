@@ -7,6 +7,7 @@ Usage : python test_smoke.py   (code de sortie non nul si une page échoue)
 import os
 import sys
 import json
+import urllib.parse
 from datetime import datetime
 
 import app as A
@@ -48,6 +49,8 @@ routes_admin = [
     f"/admin/historique/{mois}/{annee}", "/admin/employes", "/admin/planning",
     "/admin/export", "/admin/erreurs",
 ]
+if employes:
+    routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")
 
 echecs = []
 

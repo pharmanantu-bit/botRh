@@ -82,12 +82,13 @@
         <th class="th-planning">Écart</th>
         <th class="th-planning">Comparaison</th>
         <th>Lien</th>
+        <th>Validation</th>
       </tr>
     </thead>
     <tbody>
       {% for r in resultats %}
       <tr class="{% if r.repondu %}recu{% else %}attente{% endif %}">
-        <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
+        <td class="nom"><a href="/admin/employe?email={{ r.email|urlencode }}" style="color:#1F4E79; text-decoration:none;" title="Voir la fiche annuelle">{{ r.prenom }} {{ r.nom }}</a></td>
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>
@@ -117,6 +118,24 @@
           {% else %}-{% endif %}
         </td>
         <td><a href="{{ r.lien }}" class="lien" target="_blank">Voir</a></td>
+        <td>
+          {% if r.repondu %}
+            {% if r.valide %}
+              <span class="badge-ok">✓ Validé</span><br>
+              <form method="POST" action="/admin/valider" style="display:inline">
+                <input type="hidden" name="email" value="{{ r.email }}">
+                <input type="hidden" name="valide" value="0">
+                <button type="submit" class="lien" style="border:none;background:none;cursor:pointer;padding:0;">annuler</button>
+              </form>
+            {% else %}
+              <form method="POST" action="/admin/valider" style="display:inline">
+                <input type="hidden" name="email" value="{{ r.email }}">
+                <input type="hidden" name="valide" value="1">
+                <button type="submit" style="border:none;cursor:pointer;background:#27ae60;color:white;padding:5px 12px;border-radius:6px;font-size:0.8em;font-weight:bold;">Valider</button>
+              </form>
+            {% endif %}
+          {% else %}-{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
