@@ -715,7 +715,7 @@ def envoyer_confirmation(sujet, message):
     import smtplib
     from email.mime.text import MIMEText
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
     gmail_user = os.getenv("GMAIL_USER")
     gmail_pwd = os.getenv("GMAIL_APP_PASSWORD")
     msg = MIMEText(message, "plain", "utf-8")
@@ -787,7 +787,7 @@ def healthcheck():
     Avec &smtp=1 : teste l'authentification Gmail sans envoyer d'e-mail."""
     import json as _json
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
     cle = request.args.get("cle", "")
     if cle != "botRh-trigger-2026":
         abort(403)

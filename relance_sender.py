@@ -9,9 +9,8 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 EMPLOYEES_FILE = os.path.join(BASE_DIR, "employees.csv")
