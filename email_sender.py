@@ -36,14 +36,13 @@ def load_employees():
     with open(EMPLOYEES_FILE, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            email = row.get("E-mail 1 - Value", "").strip()
+            email = row.get("email", "").strip()
             if not email:
                 continue
             employees.append({
-                "nom": row.get("Last Name", "").strip(),
-                "prenom": row.get("First Name", "").strip(),
+                "nom": row.get("nom", "").strip(),
+                "prenom": row.get("prenom", "").strip(),
                 "email": email,
-                "poste": row.get("Organization Title", "").strip(),
             })
     return employees
 
@@ -115,9 +114,10 @@ def send_emails():
     employees = load_employees()
     documents = get_documents()
 
+    # La pièce jointe Word est optionnelle : l'employé remplit son relevé en
+    # ligne via le lien. Si aucun document n'est trouvé, on envoie quand même.
     if not documents:
-        logging.warning("Aucun document trouvé dans le dossier 'documents/'. Envoi annulé.")
-        return
+        logging.warning("Aucun document trouvé dans 'documents/' — envoi du lien en ligne sans pièce jointe.")
 
     logging.info(f"Début envoi — {len(employees)} employé(s), {len(documents)} document(s)")
 

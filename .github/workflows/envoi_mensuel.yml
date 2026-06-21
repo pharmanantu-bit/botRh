@@ -1,0 +1,20 @@
+name: Envoi mensuel botRh
+
+# Déclencheur automatique des envois, puisque le compte PythonAnywhere
+# gratuit ne permet pas de tâche planifiée. GitHub Actions sert d'horloge.
+# La route /trigger vérifie elle-même le jour (20 = relevés, 22 = relances).
+
+on:
+  schedule:
+    # Heures en UTC. 06:00 UTC = 08:00 Paris (été) / 07:00 (hiver).
+    - cron: '0 6 20 * *'   # le 20 de chaque mois : relevés
+    - cron: '0 6 22 * *'   # le 22 de chaque mois : relances
+  workflow_dispatch:        # permet un déclenchement manuel pour tester
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler /trigger sur PythonAnywhere
+        run: |
+          curl -f "https://pharmacie92000.pythonanywhere.com/trigger?cle=botRh-trigger-2026"

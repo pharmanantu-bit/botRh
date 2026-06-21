@@ -6,7 +6,7 @@ load_dotenv()
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
-EMPLOYEES_FILE = "contacts (3).csv"
+EMPLOYEES_FILE = "employees.csv"
 DOCUMENTS_FOLDER = "documents"
 LOGS_FOLDER = "logs"
 
