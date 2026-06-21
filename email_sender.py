@@ -102,7 +102,10 @@ La direction
     return msg
 
 
-def send_emails():
+def send_emails(only_to=None):
+    """Envoie les relevés à tous les employés.
+    only_to : si fourni (adresse e-mail), envoie un seul mail de test à cette
+    adresse au lieu de toute la liste (utilisé pour valider le pipeline)."""
     setup_logging()
     MOIS_FR = {
         1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -111,7 +114,11 @@ def send_emails():
     }
     mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
 
-    employees = load_employees()
+    if only_to:
+        employees = [{"nom": "Test", "prenom": "Test", "email": only_to}]
+        logging.info(f"MODE TEST — envoi unique à {only_to}")
+    else:
+        employees = load_employees()
     documents = get_documents()
 
     # La pièce jointe Word est optionnelle : l'employé remplit son relevé en

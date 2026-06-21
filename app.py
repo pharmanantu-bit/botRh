@@ -780,6 +780,24 @@ def trigger():
         return f"Rien à faire (jour {jour})", 200
 
 
+@app.route("/export_reponses")
+def export_reponses():
+    """Renvoie les réponses (qui a rempli son relevé) du mois demandé, pour que
+    les relances envoyées depuis GitHub Actions sachent qui relancer. Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != "botRh-trigger-2026":
+        abort(403)
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
+    f = reponses_file(mois, annee)
+    data = {}
+    if os.path.exists(f):
+        with open(f, encoding="utf-8") as fp:
+            data = json.load(fp)
+    return app.response_class(json.dumps(data, ensure_ascii=False),
+                              mimetype="application/json")
+
+
 @app.route("/healthcheck")
 def healthcheck():
     """Diagnostic de l'état du serveur (config .env, employés, documents).
