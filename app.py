@@ -53,9 +53,7 @@ MOIS_FR = {
 }
 
 
-def generer_token(prenom, email):
-    chaine = f"{prenom}{email}{SECRET}"
-    return hashlib.md5(chaine.encode()).hexdigest()[:10]
+from tokens import generer_token, resoudre_employe
 
 
 def charger_reponses(mois=None, annee=None):
@@ -103,7 +101,9 @@ def formulaire():
     weekend_mois = {j for j in jours_mois if dt_date(annee, mois, j).weekday() >= 5}
 
     reponses = charger_reponses()
-    deja_rempli = token in reponses
+    emp = resoudre_employe(token, charger_employes())
+    token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
+    deja_rempli = token_canon in reponses
 
     return render_template("form.html",
         prenom=prenom,
@@ -133,6 +133,14 @@ def envoyer():
 
     if not token or not prenom or not date_signature or not signature:
         abort(400)
+
+    # Valider le jeton et identifier l'employé (bloque les soumissions forgées),
+    # puis stocker sous le jeton canonique (nouveau) pour des recherches fiables.
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(403)
+    prenom = emp["prenom"]
+    token = generer_token(prenom, emp["email"])
 
     mois = datetime.now().month
     annee = datetime.now().year
@@ -329,6 +337,9 @@ def mon_espace():
     if not token or not prenom:
         abort(404)
 
+    emp = resoudre_employe(token, charger_employes())
+    token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
+
     historique = []
     for fichier in sorted(os.listdir(BASE_DIR), reverse=True):
         if fichier.startswith("reponses_") and fichier.endswith(".json"):
@@ -337,7 +348,7 @@ def mon_espace():
                 m, a = int(parts[0]), int(parts[1])
                 with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as fp:
                     reponses = json.load(fp)
-                r = reponses.get(token)
+                r = reponses.get(token_canon)
                 if r:
                     solde = round(r["heures_plus"] - r["heures_moins"], 2)
                     historique.append({

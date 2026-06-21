@@ -41,9 +41,7 @@ def setup_logging():
     )
 
 
-def generer_token(prenom, email):
-    chaine = f"{prenom}{email}{SECRET}"
-    return hashlib.md5(chaine.encode()).hexdigest()[:10]
+from tokens import generer_token
 
 
 def load_employees():
