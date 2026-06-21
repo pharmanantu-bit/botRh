@@ -214,12 +214,6 @@
   // Graphique 1 : H+ / H- par mois (équipe)
   const moisLabels = [{% for m in mois_disponibles %}"{{ mois_noms[m] }}"{% if not loop.last %},{% endif %}{% endfor %}];
 
-  const totalPlusMois = [
-    {% for m in mois_disponibles %}
-    {{ employes | map(attribute='prenom') | list | map('extract', donnees) | list | map(attribute=m|string) | reject('none') | sum(attribute='plus') | round(1) }}{% if not loop.last %},{% endif %}
-    {% endfor %}
-  ];
-
   {% set plus_par_mois = [] %}
   {% set moins_par_mois = [] %}
   {% for m in mois_disponibles %}

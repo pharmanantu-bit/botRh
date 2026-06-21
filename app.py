@@ -478,7 +478,7 @@ def admin_dashboard():
             "total": round(total_moins, 2),
             "mois_max": MOIS_FR[mois_max] if mois_max else "-",
             "val_max": val_max,
-            "mois_data": [donnees[p].get(m, {}).get("moins", 0) or 0 for m in mois_disponibles],
+            "mois_data": [(donnees[p].get(m) or {}).get("moins", 0) or 0 for m in mois_disponibles],
         })
     classement_abs.sort(key=lambda x: x["total"], reverse=True)
 
