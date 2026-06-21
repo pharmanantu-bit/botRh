@@ -863,7 +863,8 @@ def healthcheck():
     import time as _time
     info["env_diag"] = {}
     for label, chemin in [("projet", os.path.join(BASE_DIR, ".env")),
-                          ("parent", os.path.join(os.path.dirname(BASE_DIR), ".env"))]:
+                          ("parent", os.path.join(os.path.dirname(BASE_DIR), ".env")),
+                          ("ancien_bot", os.path.join(os.path.dirname(BASE_DIR), "bot", ".env"))]:
         d = {"chemin": chemin, "existe": os.path.exists(chemin)}
         if d["existe"]:
             try:
