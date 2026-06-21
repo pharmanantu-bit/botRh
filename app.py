@@ -104,6 +104,7 @@ def formulaire():
     emp = resoudre_employe(token, charger_employes())
     token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
     deja_rempli = token_canon in reponses
+    modifiable = datetime.now().day <= 25
 
     return render_template("form.html",
         prenom=prenom,
@@ -117,7 +118,8 @@ def formulaire():
         noms_jours_mois=noms_jours_mois,
         weekend_prec=weekend_prec,
         weekend_mois=weekend_mois,
-        deja_rempli=deja_rempli
+        deja_rempli=deja_rempli,
+        modifiable=modifiable
     )
 
 
@@ -139,6 +141,9 @@ def envoyer():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
+    if datetime.now().day > 25:
+        return ("La période de saisie de ce mois est clôturée (date limite : le 25). "
+                "Vos heures effectuées seront comptabilisées le mois suivant."), 403
     prenom = emp["prenom"]
     token = generer_token(prenom, emp["email"])
 
@@ -160,6 +165,7 @@ def envoyer():
     try:
         notifier_releve({
             "prenom": prenom,
+            "email": emp["email"],
             "heures_plus": heures_plus,
             "heures_moins": heures_moins,
             "commentaire": commentaire,

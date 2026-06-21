@@ -68,6 +68,7 @@ def charger_reponses():
 def send_relances():
     setup_logging()
     mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
+    jours_restants = max(0, 25 - datetime.now().day)
     employees = load_employees()
     reponses = charger_reponses()
 
@@ -94,18 +95,28 @@ def send_relances():
                 msg = MIMEMultipart()
                 msg["From"] = GMAIL_USER
                 msg["To"] = emp["email"]
-                msg["Subject"] = f"Rappel — Feuille d'heures {mois_annee} à retourner"
+                if jours_restants <= 0:
+                    urgence = "C'est le dernier jour : la saisie est clôturée le 25."
+                    sujet_delai = "dernier jour"
+                elif jours_restants == 1:
+                    urgence = "⏰ Plus qu'un jour : à remplir avant le 25 (clôture demain)."
+                    sujet_delai = "plus qu'1 jour"
+                else:
+                    urgence = f"⏰ Il vous reste {jours_restants} jours : à remplir avant le 25."
+                    sujet_delai = f"plus que {jours_restants} jours"
+
+                msg["Subject"] = f"Rappel ({sujet_delai}) — Feuille d'heures {mois_annee}"
 
                 body = f"""Bonjour {emp['prenom']},
 
 Sauf erreur de notre part, nous n'avons pas encore reçu votre feuille d'heures du mois de {mois_annee}.
 
-Vous pouvez la remplir directement en ligne via ce lien :
+{urgence}
+
+Remplissez-la en quelques minutes en ligne via ce lien :
 {lien}
 
-Merci de bien vouloir le faire dès que possible.
-
-Belle journée,
+Merci d'avance,
 La direction
 """
                 msg.attach(MIMEText(body, "plain", "utf-8"))

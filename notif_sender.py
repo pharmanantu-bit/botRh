@@ -34,6 +34,7 @@ MOIS_FR = {
 
 p = json.loads(os.environ.get("PAYLOAD") or "{}") or {}
 prenom = str(p.get("prenom", "")).strip() or "Employé"
+email_emp = str(p.get("email", "")).strip()
 hp = float(p.get("heures_plus", 0) or 0)
 hm = float(p.get("heures_moins", 0) or 0)
 solde = round(hp - hm, 2)
@@ -96,15 +97,25 @@ def generer_pdf():
     return buf.getvalue()
 
 
+def envoyer(server, destinataire, sujet, corps, pdf):
+    msg = MIMEMultipart()
+    msg["From"] = GMAIL_USER
+    msg["To"] = destinataire
+    msg["Subject"] = sujet
+    msg.attach(MIMEText(corps, "plain", "utf-8"))
+    part = MIMEBase("application", "pdf")
+    part.set_payload(pdf)
+    encoders.encode_base64(part)
+    nom_fichier = f"Releve_{prenom}_{MOIS_FR.get(mois, '')}_{annee}.pdf".replace(" ", "_")
+    part.add_header("Content-Disposition", f'attachment; filename="{nom_fichier}"')
+    msg.attach(part)
+    server.sendmail(GMAIL_USER, destinataire, msg.as_string())
+
+
 def main():
     pdf = generer_pdf()
 
-    msg = MIMEMultipart()
-    msg["From"] = GMAIL_USER
-    msg["To"] = ADMIN_EMAIL
-    msg["Subject"] = f"botRh — {prenom} a soumis son relevé {mois_annee}"
-
-    corps = (
+    corps_admin = (
         f"{prenom} vient de soumettre son relevé d'heures.\n\n"
         f"H+ : {hp:g} h\n"
         f"H− : {hm:g} h\n"
@@ -114,20 +125,30 @@ def main():
         f"Le relevé complet est en pièce jointe (PDF).\n"
         f"Voir l'admin : https://pharmacie92000.pythonanywhere.com/admin"
     )
-    msg.attach(MIMEText(corps, "plain", "utf-8"))
-
-    part = MIMEBase("application", "pdf")
-    part.set_payload(pdf)
-    encoders.encode_base64(part)
-    nom_fichier = f"Releve_{prenom}_{MOIS_FR.get(mois, '')}_{annee}.pdf".replace(" ", "_")
-    part.add_header("Content-Disposition", f'attachment; filename="{nom_fichier}"')
-    msg.attach(part)
+    corps_employe = (
+        f"Bonjour {prenom},\n\n"
+        f"Nous avons bien reçu votre relevé d'heures de {mois_annee}. Merci !\n\n"
+        f"Récapitulatif :\n"
+        f"  • Heures en plus (H+) : {hp:g} h\n"
+        f"  • Heures en moins (H−) : {hm:g} h\n"
+        f"  • Solde du mois : {signe}{solde:g} h\n"
+        f"  • Commentaire : {commentaire}\n\n"
+        f"Une copie de votre relevé est en pièce jointe (PDF).\n"
+        f"En cas d'erreur, vous pouvez le modifier jusqu'au 25 via votre lien.\n\n"
+        f"Belle journée,\nLa direction"
+    )
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, ADMIN_EMAIL, msg.as_string())
-
-    print(f"Notification + PDF envoyés à {ADMIN_EMAIL} pour {prenom} ({mois_annee}).")
+        # 1) Notification à l'admin
+        envoyer(server, ADMIN_EMAIL,
+                f"botRh — {prenom} a soumis son relevé {mois_annee}", corps_admin, pdf)
+        print(f"Notification + PDF envoyés à l'admin pour {prenom} ({mois_annee}).")
+        # 2) Accusé de réception à l'employé (si email connu et ≠ admin)
+        if email_emp and email_emp.lower() != ADMIN_EMAIL.lower():
+            envoyer(server, email_emp,
+                    f"Relevé d'heures {mois_annee} bien reçu ✓", corps_employe, pdf)
+            print(f"Accusé de réception envoyé à {email_emp}.")
 
 
 if __name__ == "__main__":
