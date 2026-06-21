@@ -1,0 +1,23 @@
+name: Sauvegarde botRh
+
+# Sauvegarde quotidienne des données : récupère tout depuis le serveur,
+# compresse et envoie à l'admin par mail (copie sûre hors serveur).
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # tous les jours à 05:00 UTC (≈ 7h Paris)
+  workflow_dispatch:
+
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Sauvegarder les données
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python backup_data.py

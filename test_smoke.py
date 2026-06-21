@@ -42,6 +42,7 @@ routes_publiques = [
     (f"/export_reponses?cle={cle}&mois={mois}&annee={annee}", 200),
     (f"/export_employes?cle={cle}", 200),
     (f"/export_recap?cle={cle}&mois={mois}&annee={annee}", 200),
+    (f"/export_backup?cle={cle}", 200),
     ("/export_reponses?cle=mauvaise", 403),
 ]
 routes_admin = [

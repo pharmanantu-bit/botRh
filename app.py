@@ -804,7 +804,7 @@ def construire_recap_xlsx(mois, annee):
         if r:
             statut = "Reçu"
             fill = PatternFill("solid", fgColor="C6EFCE")
-            row = [emp["prenom"], emp["nom"], r["heures_plus"], r["heures_moins"], r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r["date"], statut]
+            row = [emp["prenom"], emp["nom"], r.get("heures_plus", "-"), r.get("heures_moins", "-"), r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r.get("date", "-"), statut]
         else:
             statut = "En attente"
             fill = PatternFill("solid", fgColor="FFEB9C")
@@ -971,6 +971,31 @@ def export_employes():
     if cle != API_CLE:
         abort(403)
     return app.response_class(json.dumps(charger_employes(), ensure_ascii=False),
+                              mimetype="application/json")
+
+
+@app.route("/export_backup")
+def export_backup():
+    """Regroupe toutes les données (employés, réponses, planning) en un seul JSON
+    pour la sauvegarde automatique quotidienne. Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    data = {
+        "genere_le": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "employes": charger_employes(),
+        "reponses": {},
+        "planning": {},
+    }
+    for fichier in os.listdir(BASE_DIR):
+        if fichier.endswith(".json") and (fichier.startswith("reponses_") or fichier.startswith("planning_")):
+            try:
+                with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as f:
+                    cible = "reponses" if fichier.startswith("reponses_") else "planning"
+                    data[cible][fichier] = json.load(f)
+            except Exception:
+                app.logger.exception(f"Sauvegarde : lecture de {fichier} impossible")
+    return app.response_class(json.dumps(data, ensure_ascii=False, indent=2),
                               mimetype="application/json")
 
 
