@@ -858,6 +858,17 @@ def healthcheck():
         if os.path.isdir(docs_dir) else 0
     )
 
+    info["github_token_set"] = bool(os.getenv("GITHUB_TOKEN"))
+    if request.args.get("github") == "1":
+        import urllib.request
+        try:
+            req = urllib.request.Request("https://api.github.com/", headers={"User-Agent": "botRh"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                info["github_reachable"] = (r.status == 200)
+        except Exception as e:
+            info["github_reachable"] = False
+            info["github_error"] = str(e)
+
     if request.args.get("smtp") == "1" and info["gmail_user_set"] and info["gmail_pwd_set"]:
         import smtplib
         try:
