@@ -17,8 +17,27 @@ import urllib.request
 from datetime import datetime
 
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
-CLE = "botRh-trigger-2026"
+CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
 ADMIN_EMAIL = "pharmanantu@gmail.com"
+
+
+def sync_employes():
+    """Récupère la liste des employés gérée sur le serveur (page admin) et
+    l'écrit dans le fichier local, pour que l'envoi utilise toujours la liste
+    à jour. Le serveur est la source unique de vérité."""
+    import csv
+    import config
+    url = f"{BASE_URL}/export_employes?cle={CLE}"
+    with urllib.request.urlopen(url, timeout=30) as r:
+        employes = json.loads(r.read().decode("utf-8"))
+    with open(config.EMPLOYEES_FILE, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["nom", "prenom", "email"])
+        w.writeheader()
+        for e in employes:
+            w.writerow({"nom": e.get("nom", ""), "prenom": e.get("prenom", ""),
+                        "email": e.get("email", "")})
+    print(f"Liste employés synchronisée depuis le serveur : {len(employes)} employé(s).")
+    return len(employes)
 
 # Texte d'annonce inséré en haut du mail, activé seulement si INTRO=oui
 # (utilisé pour le 1er envoi qui présente le nouveau système en ligne).
@@ -49,11 +68,13 @@ if mode == "test":
     print(f"Mail de test envoyé à {ADMIN_EMAIL}.")
 
 elif mode == "releves":
+    sync_employes()
     from email_sender import send_emails
     send_emails(intro=intro)
     print("Relevés envoyés.")
 
 elif mode == "relances":
+    sync_employes()
     # Récupérer auprès du serveur la liste de ceux qui ont déjà répondu,
     # puis l'écrire localement pour que relance_sender ne relance que les autres.
     import relance_sender

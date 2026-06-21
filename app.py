@@ -9,17 +9,33 @@ from werkzeug.utils import secure_filename
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-app = Flask(__name__)
-app.secret_key = "botRh-admin-2026"
-
 # Dossier du projet — sert d'ancrage pour tous les chemins de fichiers, car
 # sous le serveur WSGI (PythonAnywhere) le répertoire courant n'est pas celui
 # du projet : sans ça, employees.csv, documents/, reponses_*.json sont introuvables.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-SECRET = "pharmacie-nanterre-2026"
-ADMIN_PASSWORD = "pharma92"
+# Configuration sensible chargée depuis le .env (avec valeurs par défaut pour
+# ne rien casser). Pour durcir la sécurité, définir ces clés dans le .env du
+# serveur — en priorité ADMIN_PASSWORD avec un mot de passe fort.
+from dotenv import load_dotenv
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "botRh-admin-2026")
+
+SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
+API_CLE = os.getenv("API_CLE", "botRh-trigger-2026")
+# employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
+# = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
+# lui qui fait foi (évite tout conflit de déploiement avec git).
 EMPLOYEES_FILE = os.path.join(BASE_DIR, "employees.csv")
+EMPLOYEES_LIVE = os.path.join(BASE_DIR, "employees_live.csv")
+
+def employees_path(pour_ecriture=False):
+    if pour_ecriture:
+        return EMPLOYEES_LIVE
+    return EMPLOYEES_LIVE if os.path.exists(EMPLOYEES_LIVE) else EMPLOYEES_FILE
 
 def reponses_file(mois=None, annee=None):
     if mois is None:
@@ -181,8 +197,9 @@ def hm_to_float(s):
 
 def charger_employes():
     employes = []
-    if os.path.exists(EMPLOYEES_FILE):
-        with open(EMPLOYEES_FILE, newline="", encoding="utf-8") as f:
+    chemin = employees_path()
+    if os.path.exists(chemin):
+        with open(chemin, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 employes.append({"prenom": row["prenom"], "nom": row["nom"], "email": row["email"]})
@@ -257,7 +274,7 @@ def admin():
 
 
 def sauvegarder_employes(employes):
-    with open(EMPLOYEES_FILE, "w", newline="", encoding="utf-8") as f:
+    with open(employees_path(pour_ecriture=True), "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["nom", "prenom", "email"])
         writer.writeheader()
         writer.writerows(employes)
@@ -775,7 +792,7 @@ def deploy():
 @app.route("/trigger")
 def trigger():
     cle = request.args.get("cle", "")
-    if cle != "botRh-trigger-2026":
+    if cle != API_CLE:
         abort(403)
 
     jour = datetime.now().day
@@ -813,7 +830,7 @@ def export_reponses():
     """Renvoie les réponses (qui a rempli son relevé) du mois demandé, pour que
     les relances envoyées depuis GitHub Actions sachent qui relancer. Clé requise."""
     cle = request.args.get("cle", "")
-    if cle != "botRh-trigger-2026":
+    if cle != API_CLE:
         abort(403)
     mois = int(request.args.get("mois", datetime.now().month))
     annee = int(request.args.get("annee", datetime.now().year))
@@ -826,6 +843,18 @@ def export_reponses():
                               mimetype="application/json")
 
 
+@app.route("/export_employes")
+def export_employes():
+    """Renvoie la liste des employés gérée via l'admin, pour que les envois
+    (GitHub Actions) utilisent toujours la liste à jour. Le serveur est la
+    source unique de vérité. Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    return app.response_class(json.dumps(charger_employes(), ensure_ascii=False),
+                              mimetype="application/json")
+
+
 @app.route("/healthcheck")
 def healthcheck():
     """Diagnostic de l'état du serveur (config .env, employés, documents).
@@ -835,7 +864,7 @@ def healthcheck():
     from dotenv import load_dotenv
     load_dotenv(os.path.join(BASE_DIR, ".env"))
     cle = request.args.get("cle", "")
-    if cle != "botRh-trigger-2026":
+    if cle != API_CLE:
         abort(403)
 
     gmail_user = os.getenv("GMAIL_USER")

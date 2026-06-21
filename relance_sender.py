@@ -18,7 +18,7 @@ def reponses_file():
     now = datetime.now()
     return os.path.join(BASE_DIR, f"reponses_{now.month}_{now.year}.json")
 LOGS_FOLDER = os.path.join(BASE_DIR, "logs")
-SECRET = "pharmacie-nanterre-2026"
+SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
 
 MOIS_FR = {

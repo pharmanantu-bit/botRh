@@ -11,7 +11,7 @@ from datetime import datetime
 from config import GMAIL_USER, GMAIL_APP_PASSWORD, EMPLOYEES_FILE, DOCUMENTS_FOLDER, LOGS_FOLDER
 
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
-SECRET = "pharmacie-nanterre-2026"
+SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 
 def generer_token(prenom, email):
     chaine = f"{prenom}{email}{SECRET}"
