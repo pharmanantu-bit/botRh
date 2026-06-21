@@ -859,6 +859,12 @@ def healthcheck():
     )
 
     info["github_token_set"] = bool(os.getenv("GITHUB_TOKEN"))
+    try:
+        with open(os.path.join(BASE_DIR, ".env"), encoding="utf-8") as _fp:
+            info["env_keys"] = [l.split("=", 1)[0].strip() for l in _fp
+                                if "=" in l and not l.strip().startswith("#")]
+    except Exception as e:
+        info["env_keys_error"] = str(e)
     if request.args.get("github") == "1":
         import urllib.request
         try:
