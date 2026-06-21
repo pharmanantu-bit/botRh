@@ -859,6 +859,7 @@ def healthcheck():
     )
 
     info["github_token_set"] = bool(os.getenv("GITHUB_TOKEN"))
+    info["env_path"] = os.path.join(BASE_DIR, ".env")
     try:
         with open(os.path.join(BASE_DIR, ".env"), encoding="utf-8") as _fp:
             info["env_keys"] = [l.split("=", 1)[0].strip() for l in _fp
