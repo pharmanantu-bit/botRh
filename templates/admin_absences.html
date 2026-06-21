@@ -66,7 +66,7 @@
       </tr>
     </thead>
     <tbody>
-      {% set max_total = classement[0].total if classement else 1 %}
+      {% set max_total = classement[0].total if classement and classement[0].total > 0 else 1 %}
       {% for r in classement %}
       <tr>
         <td>
