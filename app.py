@@ -860,12 +860,20 @@ def healthcheck():
 
     info["github_token_set"] = bool(os.getenv("GITHUB_TOKEN"))
     info["env_path"] = os.path.join(BASE_DIR, ".env")
-    try:
-        with open(os.path.join(BASE_DIR, ".env"), encoding="utf-8") as _fp:
-            info["env_keys"] = [l.split("=", 1)[0].strip() for l in _fp
-                                if "=" in l and not l.strip().startswith("#")]
-    except Exception as e:
-        info["env_keys_error"] = str(e)
+    import time as _time
+    info["env_diag"] = {}
+    for label, chemin in [("projet", os.path.join(BASE_DIR, ".env")),
+                          ("parent", os.path.join(os.path.dirname(BASE_DIR), ".env"))]:
+        d = {"chemin": chemin, "existe": os.path.exists(chemin)}
+        if d["existe"]:
+            try:
+                with open(chemin, encoding="utf-8") as _fp:
+                    d["cles"] = [l.split("=", 1)[0].strip() for l in _fp
+                                 if "=" in l and not l.strip().startswith("#")]
+                d["modifie"] = _time.strftime("%d/%m %H:%M", _time.localtime(os.path.getmtime(chemin)))
+            except Exception as e:
+                d["erreur"] = str(e)
+        info["env_diag"][label] = d
     if request.args.get("github") == "1":
         import urllib.request
         try:
