@@ -12,17 +12,22 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 app = Flask(__name__)
 app.secret_key = "botRh-admin-2026"
 
+# Dossier du projet — sert d'ancrage pour tous les chemins de fichiers, car
+# sous le serveur WSGI (PythonAnywhere) le répertoire courant n'est pas celui
+# du projet : sans ça, employees.csv, documents/, reponses_*.json sont introuvables.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 SECRET = "pharmacie-nanterre-2026"
 ADMIN_PASSWORD = "pharma92"
-EMPLOYEES_FILE = "employees.csv"
+EMPLOYEES_FILE = os.path.join(BASE_DIR, "employees.csv")
 
 def reponses_file(mois=None, annee=None):
     if mois is None:
         mois = datetime.now().month
     if annee is None:
         annee = datetime.now().year
-    return f"reponses_{mois}_{annee}.json"
-UPLOAD_FOLDER = "static/planning_img"
+    return os.path.join(BASE_DIR, f"reponses_{mois}_{annee}.json")
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "planning_img")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 MOIS_FR = {
@@ -147,7 +152,7 @@ def envoyer():
 def planning_file():
     mois = datetime.now().month
     annee = datetime.now().year
-    return f"planning_{mois}_{annee}.json"
+    return os.path.join(BASE_DIR, f"planning_{mois}_{annee}.json")
 
 def charger_planning():
     f = planning_file()
@@ -303,12 +308,12 @@ def mon_espace():
         abort(404)
 
     historique = []
-    for fichier in sorted(os.listdir("."), reverse=True):
+    for fichier in sorted(os.listdir(BASE_DIR), reverse=True):
         if fichier.startswith("reponses_") and fichier.endswith(".json"):
             parts = fichier.replace("reponses_","").replace(".json","").split("_")
             if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                 m, a = int(parts[0]), int(parts[1])
-                with open(fichier, encoding="utf-8") as fp:
+                with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as fp:
                     reponses = json.load(fp)
                 r = reponses.get(token)
                 if r:
@@ -337,7 +342,7 @@ def admin_absences():
     mois_actuel = datetime.now().month if annee == annee_courante else 12
 
     annees_dispo = set()
-    for fichier in os.listdir("."):
+    for fichier in os.listdir(BASE_DIR):
         if fichier.startswith("reponses_") and fichier.endswith(".json"):
             parts = fichier.replace("reponses_","").replace(".json","").split("_")
             if len(parts) == 2 and parts[1].isdigit():
@@ -406,7 +411,7 @@ def admin_dashboard():
 
     # Trouver toutes les années disponibles
     annees_dispo = set()
-    for fichier in os.listdir("."):
+    for fichier in os.listdir(BASE_DIR):
         if fichier.startswith("reponses_") and fichier.endswith(".json"):
             parts = fichier.replace("reponses_","").replace(".json","").split("_")
             if len(parts) == 2 and parts[1].isdigit():
@@ -493,12 +498,12 @@ def admin_historique():
     nb_total = len(employes)
     historique = []
 
-    for fichier in sorted(os.listdir("."), reverse=True):
+    for fichier in sorted(os.listdir(BASE_DIR), reverse=True):
         if fichier.startswith("reponses_") and fichier.endswith(".json"):
             parts = fichier.replace("reponses_", "").replace(".json", "").split("_")
             if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                 m, a = int(parts[0]), int(parts[1])
-                with open(fichier, encoding="utf-8") as f:
+                with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as f:
                     data = json.load(f)
                 historique.append({
                     "mois": m,
@@ -801,7 +806,7 @@ def healthcheck():
     except Exception as e:
         info["employees_error"] = str(e)
 
-    docs_dir = "documents"
+    docs_dir = os.path.join(BASE_DIR, "documents")
     info["documents_count"] = (
         len([f for f in os.listdir(docs_dir) if f.endswith(".docx")])
         if os.path.isdir(docs_dir) else 0

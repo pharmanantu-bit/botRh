@@ -11,13 +11,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-EMPLOYEES_FILE = "employees.csv"
+EMPLOYEES_FILE = os.path.join(BASE_DIR, "employees.csv")
 def reponses_file():
     now = datetime.now()
-    return f"reponses_{now.month}_{now.year}.json"
-LOGS_FOLDER = "logs"
+    return os.path.join(BASE_DIR, f"reponses_{now.month}_{now.year}.json")
+LOGS_FOLDER = os.path.join(BASE_DIR, "logs")
 SECRET = "pharmacie-nanterre-2026"
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
 
