@@ -77,7 +77,7 @@ def build_email(employee, documents, mois_annee):
 
     body = f"""Bonjour {employee['prenom']},
 
-Vous trouverez ci-joint la feuille d'heures du mois de {mois_annee}. Merci de bien vouloir la compléter et nous la retourner au plus tard le 25 de ce mois.
+Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
 
 Remplir votre relevé en ligne :
 {lien}
@@ -119,14 +119,11 @@ def send_emails(only_to=None):
         logging.info(f"MODE TEST — envoi unique à {only_to}")
     else:
         employees = load_employees()
-    documents = get_documents()
 
-    # La pièce jointe Word est optionnelle : l'employé remplit son relevé en
-    # ligne via le lien. Si aucun document n'est trouvé, on envoie quand même.
-    if not documents:
-        logging.warning("Aucun document trouvé dans 'documents/' — envoi du lien en ligne sans pièce jointe.")
+    # Aucune pièce jointe : l'employé remplit son relevé en ligne via le lien.
+    documents = []
 
-    logging.info(f"Début envoi — {len(employees)} employé(s), {len(documents)} document(s)")
+    logging.info(f"Début envoi — {len(employees)} employé(s), sans pièce jointe")
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
