@@ -35,6 +35,12 @@ jour = datetime.now().day
 if mode == "auto":
     mode = "releves" if jour == 20 else ("relances" if jour == 22 else "rien")
 
+# Exception ponctuelle : pas de relance le 22 juin 2026 — les relevés ont été
+# envoyés manuellement le 21, une relance le lendemain serait prématurée.
+if mode == "relances" and datetime.now().strftime("%Y-%m-%d") == "2026-06-22":
+    print("Relance du 22/06/2026 sautée (envoi manuel la veille).")
+    mode = "rien"
+
 print(f"run_send.py — mode={mode} (jour du mois={jour}) intro={'oui' if intro else 'non'}")
 
 if mode == "test":
