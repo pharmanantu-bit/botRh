@@ -134,12 +134,17 @@ def envoyer():
     })
 
     try:
-        solde = round(float(heures_plus or 0) - float(heures_moins or 0), 2)
-        signe = "+" if solde >= 0 else ""
-        envoyer_confirmation(
-            f"botRh — {prenom} a soumis son relevé {MOIS_FR[mois]} {annee}",
-            f"{prenom} vient de soumettre son relevé d'heures.\n\nH+ : {heures_plus}h\nH− : {heures_moins}h\nSolde : {signe}{solde}h\nCommentaire : {commentaire or 'aucun'}\n\nVoir l'admin : https://pharmacie92000.pythonanywhere.com/admin"
-        )
+        notifier_releve({
+            "prenom": prenom,
+            "heures_plus": heures_plus,
+            "heures_moins": heures_moins,
+            "commentaire": commentaire,
+            "date_signature": date_signature,
+            "signature": signature,
+            "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "mois": mois,
+            "annee": annee,
+        })
     except Exception:
         pass
 
@@ -725,6 +730,29 @@ def envoyer_confirmation(sujet, message):
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(gmail_user, gmail_pwd)
         server.sendmail(gmail_user, "pharmanantu@gmail.com", msg.as_string())
+
+
+def notifier_releve(donnees):
+    """Déclenche le workflow GitHub Actions 'nouveau_releve' qui génère le PDF
+    du relevé et l'envoie à l'admin. Le serveur gratuit ne pouvant pas faire de
+    SMTP, l'envoi est délégué au runner GitHub. Nécessite GITHUB_TOKEN dans le .env."""
+    import urllib.request
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
+    gh_token = os.getenv("GITHUB_TOKEN")
+    if not gh_token:
+        return
+    url = "https://api.github.com/repos/pharmanantu-bit/botRh/dispatches"
+    body = json.dumps({
+        "event_type": "nouveau_releve",
+        "client_payload": donnees,
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {gh_token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "botRh")
+    urllib.request.urlopen(req, timeout=15)
 
 
 @app.route("/deploy")

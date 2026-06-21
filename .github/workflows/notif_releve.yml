@@ -1,0 +1,27 @@
+name: Notification relevé botRh
+
+# Déclenché par le serveur (repository_dispatch) quand un employé soumet son
+# relevé en ligne. Génère un PDF du relevé et l'envoie à l'admin par mail,
+# car le serveur PythonAnywhere gratuit ne peut pas envoyer d'e-mail.
+
+on:
+  repository_dispatch:
+    types: [nouveau_releve]
+  workflow_dispatch:   # test manuel (utilise des valeurs par défaut)
+
+jobs:
+  notif:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Installer les dépendances
+        run: pip install reportlab
+      - name: Générer le PDF et notifier l'admin
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: python notif_sender.py
