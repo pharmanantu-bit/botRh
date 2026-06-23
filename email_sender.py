@@ -74,7 +74,7 @@ def build_email(employee, documents, mois_annee, intro=None):
     bloc_intro = f"{intro}\n\n" if intro else ""
     body = f"""Bonjour {employee['prenom']},
 
-{bloc_intro}Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
+{bloc_intro}Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 28 de ce mois.
 
 Remplir votre relevé en ligne :
 {lien}

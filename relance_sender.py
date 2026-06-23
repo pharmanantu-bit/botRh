@@ -68,7 +68,8 @@ def charger_reponses():
 def send_relances():
     setup_logging()
     mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
-    jours_restants = max(0, 25 - datetime.now().day)
+    jour_cloture = int(os.getenv("JOUR_CLOTURE", "28"))
+    jours_restants = max(0, jour_cloture - datetime.now().day)
     employees = load_employees()
     reponses = charger_reponses()
 
@@ -95,13 +96,13 @@ def send_relances():
                 msg["From"] = GMAIL_USER
                 msg["To"] = emp["email"]
                 if jours_restants <= 0:
-                    urgence = "C'est le dernier jour : la saisie est clôturée le 25."
+                    urgence = f"C'est le dernier jour : la saisie est clôturée le {jour_cloture}."
                     sujet_delai = "dernier jour"
                 elif jours_restants == 1:
-                    urgence = "⏰ Plus qu'un jour : à remplir avant le 25 (clôture demain)."
+                    urgence = f"⏰ Plus qu'un jour : à remplir avant le {jour_cloture} (clôture demain)."
                     sujet_delai = "plus qu'1 jour"
                 else:
-                    urgence = f"⏰ Il vous reste {jours_restants} jours : à remplir avant le 25."
+                    urgence = f"⏰ Il vous reste {jours_restants} jours : à remplir avant le {jour_cloture}."
                     sujet_delai = f"plus que {jours_restants} jours"
 
                 msg["Subject"] = f"Rappel ({sujet_delai}) — Feuille d'heures {mois_annee}"

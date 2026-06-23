@@ -35,6 +35,9 @@ app.logger.setLevel(logging.INFO)
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
 API_CLE = os.getenv("API_CLE", "botRh-trigger-2026")
+# Jour de clôture de la saisie des relevés : au-delà, le formulaire est fermé
+# et les heures comptent pour le mois suivant. Source unique de vérité.
+JOUR_CLOTURE = int(os.getenv("JOUR_CLOTURE", "28"))
 # employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
 # = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
 # lui qui fait foi (évite tout conflit de déploiement avec git).
@@ -118,7 +121,7 @@ def formulaire():
     emp = resoudre_employe(token, charger_employes())
     token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
     deja_rempli = (reponse_de(reponses, emp["prenom"], emp["email"]) is not None) if emp else (token_canon in reponses)
-    modifiable = datetime.now().day <= 25
+    modifiable = datetime.now().day <= JOUR_CLOTURE
 
     return render_template("form.html",
         prenom=prenom,
@@ -133,7 +136,8 @@ def formulaire():
         weekend_prec=weekend_prec,
         weekend_mois=weekend_mois,
         deja_rempli=deja_rempli,
-        modifiable=modifiable
+        modifiable=modifiable,
+        jour_cloture=JOUR_CLOTURE
     )
 
 
@@ -188,8 +192,8 @@ def envoyer():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
-    if datetime.now().day > 25:
-        return ("La période de saisie de ce mois est clôturée (date limite : le 25). "
+    if datetime.now().day > JOUR_CLOTURE:
+        return (f"La période de saisie de ce mois est clôturée (date limite : le {JOUR_CLOTURE}). "
                 "Vos heures effectuées seront comptabilisées le mois suivant."), 403
     prenom = emp["prenom"]
     token = generer_token(prenom, emp["email"])

@@ -134,7 +134,7 @@ def main():
         f"  • Solde du mois : {signe}{solde:g} h\n"
         f"  • Commentaire : {commentaire}\n\n"
         f"Une copie de votre relevé est en pièce jointe (PDF).\n"
-        f"En cas d'erreur, vous pouvez le modifier jusqu'au 25 via votre lien.\n\n"
+        f"En cas d'erreur, vous pouvez le modifier jusqu'au 28 via votre lien.\n\n"
         f"Belle journée,\nLa direction"
     )
 
