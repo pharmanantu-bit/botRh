@@ -784,73 +784,6 @@ def admin_absences():
     return redirect(url_for("admin_dashboard"))
 
 
-def _admin_absences_legacy():
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-
-    employes = charger_employes()
-    annee_courante = datetime.now().year
-    annee = int(request.args.get("annee", annee_courante))
-    mois_actuel = datetime.now().month if annee == annee_courante else 12
-
-    annees_dispo = set()
-    for fichier in os.listdir(BASE_DIR):
-        if fichier.startswith("reponses_") and fichier.endswith(".json"):
-            parts = fichier.replace("reponses_","").replace(".json","").split("_")
-            if len(parts) == 2 and parts[1].isdigit():
-                annees_dispo.add(int(parts[1]))
-    annees_dispo.add(annee_courante)
-    annees_dispo = sorted(annees_dispo, reverse=True)
-
-    mois_disponibles = []
-    stats = {}  # {prenom: {mois: h_moins}}
-
-    for emp in employes:
-        stats[emp["prenom"]] = {}
-
-    for m in range(1, mois_actuel + 1):
-        f = reponses_file(m, annee)
-        if os.path.exists(f):
-            with open(f, encoding="utf-8") as fp:
-                reponses = json.load(fp)
-            mois_disponibles.append(m)
-            for emp in employes:
-                token = generer_token(emp["prenom"], emp["email"])
-                r = reponse_de(reponses, emp["prenom"], emp["email"])
-                stats[emp["prenom"]][m] = round(r["heures_moins"], 2) if r else None
-
-    # Calcul cumul H- et classement
-    classement = []
-    for emp in employes:
-        p = emp["prenom"]
-        total_moins = sum(stats[p][m] for m in mois_disponibles if stats[p].get(m) is not None)
-        mois_max = None
-        val_max = 0
-        for m in mois_disponibles:
-            v = stats[p].get(m)
-            if v and v > val_max:
-                val_max = v
-                mois_max = m
-        classement.append({
-            "prenom": p,
-            "nom": emp["nom"],
-            "total": round(total_moins, 2),
-            "mois_max": MOIS_FR[mois_max] if mois_max else "-",
-            "val_max": val_max,
-            "mois_data": [stats[p].get(m, 0) or 0 for m in mois_disponibles],
-        })
-
-    classement.sort(key=lambda x: x["total"], reverse=True)
-
-    return render_template("admin_absences.html",
-        classement=classement,
-        mois_disponibles=mois_disponibles,
-        mois_noms={m: MOIS_FR[m][:3] for m in range(1, 13)},
-        annee=annee,
-        annees_dispo=annees_dispo,
-    )
-
-
 @app.route("/admin/dashboard")
 def admin_dashboard():
     if not session.get("admin"):
@@ -1502,33 +1435,6 @@ def admin_synthese():
     if not session.get("admin"):
         return redirect(url_for("admin"))
     return redirect(url_for("admin_employes") + "#synthese")
-
-
-def _admin_synthese_legacy():
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-    profils = charger_profils()
-    lignes = []
-    for e in charger_employes():
-        profil = profils.get(e["email"], {})
-        if profil.get("statut") == "archive":
-            continue
-        al = alertes_completes(e["email"], profil)
-        manq = docs_manquants(e["email"])
-        if al or manq:
-            lignes.append({
-                "prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
-                "poste": profil.get("poste", ""),
-                "alertes": al, "manquants": manq,
-                "a_rouge": any(a["niveau"] == "rouge" for a in al),
-            })
-    lignes.sort(key=lambda l: (l["a_rouge"], len(l["alertes"]), len(l["manquants"])), reverse=True)
-    return render_template("admin_synthese.html",
-        lignes=lignes,
-        nb_concernes=len(lignes),
-        nb_alertes=sum(len(l["alertes"]) for l in lignes),
-        nb_rouge=sum(1 for l in lignes for a in l["alertes"] if a["niveau"] == "rouge"),
-        nb_manquants=sum(len(l["manquants"]) for l in lignes))
 
 
 def construire_recap_xlsx(mois, annee):
