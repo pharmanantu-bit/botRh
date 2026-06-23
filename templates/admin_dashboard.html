@@ -59,6 +59,40 @@
     .section-titre.replié .fleche { transform: rotate(-90deg); }
     .section-body { overflow: hidden; transition: max-height 0.3s ease; }
     .section-body.replié { max-height: 0 !important; }
+
+    /* Cellule cliquable + détail */
+    td.cell-clic { cursor: pointer; position: relative; transition: background 0.15s; }
+    td.cell-clic:hover { background: #fff7e0 !important; box-shadow: inset 0 0 0 2px #f1c40f; }
+    .loupe { display: block; font-size: 0.7em; opacity: 0; transition: opacity 0.15s; margin-top: 1px; }
+    td.cell-clic:hover .loupe { opacity: 0.7; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(31,78,121,0.45); align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.ouvert { display: flex; }
+    .modal-box {
+      background: white; border-radius: 12px; max-width: 460px; width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.25); overflow: hidden;
+    }
+    .modal-head {
+      background: #1F4E79; color: white; padding: 16px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-head h3 { font-size: 1.05em; margin: 0; }
+    .modal-head .periode { font-size: 0.8em; opacity: 0.85; font-weight: normal; }
+    .modal-close { background: none; border: none; color: white; font-size: 1.4em; cursor: pointer; line-height: 1; }
+    .modal-body { padding: 20px; }
+    .detail-stats { display: flex; gap: 10px; margin-bottom: 18px; }
+    .detail-stats .box { flex: 1; text-align: center; border-radius: 8px; padding: 12px 6px; border: 1px solid #dde3ed; background: #f5f8fc; }
+    .detail-stats .box .v { font-size: 1.4em; font-weight: bold; }
+    .detail-stats .box .l { font-size: 0.72em; color: #555; margin-top: 2px; }
+    .detail-ligne { display: flex; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 0.88em; }
+    .detail-ligne:last-child { border-bottom: none; }
+    .detail-ligne .k { width: 130px; color: #888; flex-shrink: 0; }
+    .detail-ligne .val { color: #222; font-weight: 500; word-break: break-word; }
+    .detail-ligne .val.vide { color: #bbb; font-style: italic; font-weight: normal; }
   </style>
 </head>
 <body>
@@ -176,8 +210,19 @@
 
           {% for m in mois_disponibles %}
           {% set d = donnees[p].get(m) %}
-          <td>
-            {% if d %}
+          {% if d %}
+          <td class="cell-clic"
+              onclick="voirDetail(this)"
+              data-emp="{{ emp.prenom }} {{ emp.nom }}"
+              data-mois="{{ mois_noms[m] }} {{ annee }}"
+              data-plus="{{ '%.1f'|format(d.plus) }}"
+              data-moins="{{ '%.1f'|format(d.moins) }}"
+              data-solde="{{ '%.1f'|format(d.solde) }}"
+              data-commentaire="{{ d.commentaire|e }}"
+              data-signature="{{ d.signature|e }}"
+              data-datesign="{{ d.date_signature|e }}"
+              data-envoi="{{ d.date|e }}"
+              title="Cliquer pour voir le détail rempli">
               <span class="cell-plus">+{{ "%.1f"|format(d.plus) }}</span>
               <span class="mini cell-moins">-{{ "%.1f"|format(d.moins) }}</span>
               {% if d.solde > 0 %}
@@ -187,10 +232,11 @@
               {% else %}
                 <span class="badge-solde badge-zero">0</span>
               {% endif %}
-            {% else %}
-              <span class="cell-vide">—</span>
-            {% endif %}
+              <span class="loupe">🔍</span>
           </td>
+          {% else %}
+          <td><span class="cell-vide">—</span></td>
+          {% endif %}
           {% endfor %}
 
           <td class="cell-cumul"><span class="plus">+{{ "%.1f"|format(c.plus) }}h</span></td>
@@ -209,6 +255,31 @@
   </div>
   </div>
 </div>
+
+<!-- Modal détail du relevé -->
+<div class="modal-overlay" id="modalDetail" onclick="if(event.target===this)fermerDetail()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h3 id="md-nom">—</h3>
+        <span class="periode" id="md-periode">—</span>
+      </div>
+      <button class="modal-close" onclick="fermerDetail()" title="Fermer">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-stats">
+        <div class="box"><div class="v plus" id="md-plus">+0</div><div class="l">Heures en plus</div></div>
+        <div class="box"><div class="v moins" id="md-moins">-0</div><div class="l">Heures en moins</div></div>
+        <div class="box"><div class="v" id="md-solde">0</div><div class="l">Solde</div></div>
+      </div>
+      <div class="detail-ligne"><span class="k">Commentaire</span><span class="val" id="md-commentaire">—</span></div>
+      <div class="detail-ligne"><span class="k">Signature</span><span class="val" id="md-signature">—</span></div>
+      <div class="detail-ligne"><span class="k">Date signature</span><span class="val" id="md-datesign">—</span></div>
+      <div class="detail-ligne"><span class="k">Envoyé le</span><span class="val" id="md-envoi">—</span></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   // Graphique 1 : H+ / H- par mois (équipe)
@@ -284,6 +355,35 @@
     const replié = body.classList.toggle('replié');
     titre.classList.toggle('replié', replié);
   }
+
+  // Détail du relevé rempli par le collaborateur
+  function voirDetail(td) {
+    const d = td.dataset;
+    document.getElementById('md-nom').textContent = d.emp;
+    document.getElementById('md-periode').textContent = d.mois;
+    document.getElementById('md-plus').textContent = '+' + d.plus + ' h';
+    document.getElementById('md-moins').textContent = '-' + d.moins + ' h';
+    const solde = document.getElementById('md-solde');
+    const s = parseFloat(d.solde);
+    solde.textContent = (s >= 0 ? '+' : '') + d.solde + ' h';
+    solde.className = 'v ' + (s >= 0 ? 'plus' : 'moins');
+
+    setVal('md-commentaire', d.commentaire);
+    setVal('md-signature', d.signature);
+    setVal('md-datesign', d.datesign);
+    setVal('md-envoi', d.envoi);
+
+    document.getElementById('modalDetail').classList.add('ouvert');
+  }
+  function setVal(id, v) {
+    const el = document.getElementById(id);
+    if (v && v.trim()) { el.textContent = v; el.classList.remove('vide'); }
+    else { el.textContent = '— (vide)'; el.classList.add('vide'); }
+  }
+  function fermerDetail() {
+    document.getElementById('modalDetail').classList.remove('ouvert');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerDetail(); });
 </script>
 </body>
 </html>

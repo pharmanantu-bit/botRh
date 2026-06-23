@@ -493,6 +493,10 @@ def admin_dashboard():
                         "plus": r["heures_plus"],
                         "moins": r["heures_moins"],
                         "solde": round(r["heures_plus"] - r["heures_moins"], 2),
+                        "commentaire": r.get("commentaire", ""),
+                        "signature": r.get("signature", ""),
+                        "date_signature": r.get("date_signature", ""),
+                        "date": r.get("date", ""),
                     }
                 else:
                     donnees[emp["prenom"]][m] = None
