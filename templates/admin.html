@@ -97,7 +97,7 @@
     <h1>Relevés — {{ mois_annee }}</h1>
     <div class="actions">
       <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
-      <a href="/admin/export" class="btn-export">Télécharger Excel</a>
+      <a href="/admin/export?mois={{ mois }}&annee={{ annee }}" class="btn-export">Télécharger Excel</a>
       <button onclick="window.print()" class="btn-export" style="background:#555; border:none; cursor:pointer;">Imprimer</button>
     </div>
   </div>

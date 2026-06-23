@@ -1562,8 +1562,8 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 def admin_export():
     if not session.get("admin"):
         return redirect(url_for("admin"))
-    mois = datetime.now().month
-    annee = datetime.now().year
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
     output = construire_recap_xlsx(mois, annee)
     return send_file(output, as_attachment=True,
                      download_name=f"Releves_{MOIS_FR[mois]}_{annee}.xlsx", mimetype=XLSX_MIME)
