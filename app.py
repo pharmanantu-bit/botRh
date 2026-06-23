@@ -379,6 +379,8 @@ CHAMPS_PROFIL = [
     ("type_contrat", "Type de contrat"),
     ("date_entree", "Date d'entrée"),
     ("date_fin", "Fin de contrat (si CDD)"),
+    ("fin_essai", "Fin de période d'essai"),
+    ("visite_medicale", "Prochaine visite médicale"),
     ("telephone", "Téléphone"),
     ("naissance", "Date de naissance"),
     ("adresse", "Adresse"),
@@ -386,6 +388,79 @@ CHAMPS_PROFIL = [
     ("urgence_tel", "Contact d'urgence (tél.)"),
     ("notes", "Notes RH (interne)"),
 ]
+
+# Documents obligatoires pour un dossier complet (checklist)
+DOCS_REQUIS = ["Contrat de travail", "RIB / coordonnées bancaires", "Pièce d'identité"]
+
+def parse_date_fr(s):
+    """Parse 'jj/mm/aaaa' (ou jj-mm-aaaa) -> date, sinon None."""
+    if not s:
+        return None
+    s = s.strip().replace("-", "/").replace(".", "/")
+    from datetime import datetime as _dt
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return _dt.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def alertes_employe(profil):
+    """Liste d'alertes/échéances d'un employé, calculées depuis son profil.
+    Chaque alerte : {niveau: 'rouge'|'orange'|'info', texte: ...}."""
+    if not profil:
+        return []
+    auj = datetime.now().date()
+    alertes = []
+
+    # Fin de CDD
+    fin = parse_date_fr(profil.get("date_fin"))
+    if fin and (profil.get("type_contrat") in ("CDD", "Intérim", "Apprentissage", "Stage") or profil.get("date_fin")):
+        j = (fin - auj).days
+        if j < 0:
+            alertes.append({"niveau": "rouge", "texte": f"Contrat terminé le {fin:%d/%m/%Y}"})
+        elif j <= 30:
+            alertes.append({"niveau": "orange", "texte": f"Fin de contrat dans {j} j ({fin:%d/%m/%Y})"})
+
+    # Fin de période d'essai
+    essai = parse_date_fr(profil.get("fin_essai"))
+    if essai:
+        j = (essai - auj).days
+        if 0 <= j <= 15:
+            alertes.append({"niveau": "orange", "texte": f"Fin de période d'essai dans {j} j ({essai:%d/%m/%Y})"})
+
+    # Visite médicale
+    vm = parse_date_fr(profil.get("visite_medicale"))
+    if vm:
+        j = (vm - auj).days
+        if j < 0:
+            alertes.append({"niveau": "rouge", "texte": f"Visite médicale dépassée ({vm:%d/%m/%Y})"})
+        elif j <= 30:
+            alertes.append({"niveau": "orange", "texte": f"Visite médicale dans {j} j ({vm:%d/%m/%Y})"})
+
+    # Anniversaire d'ancienneté
+    entree = parse_date_fr(profil.get("date_entree"))
+    if entree:
+        try:
+            prochain = entree.replace(year=auj.year)
+        except ValueError:
+            prochain = entree.replace(year=auj.year, day=28)
+        if prochain < auj:
+            try:
+                prochain = entree.replace(year=auj.year + 1)
+            except ValueError:
+                prochain = entree.replace(year=auj.year + 1, day=28)
+        j = (prochain - auj).days
+        annees = prochain.year - entree.year
+        if 0 <= j <= 30 and annees > 0:
+            alertes.append({"niveau": "info", "texte": f"{annees} an(s) d'ancienneté le {prochain:%d/%m/%Y}"})
+
+    return alertes
+
+def docs_manquants(email):
+    """Documents requis encore absents pour cet employé."""
+    types_presents = {d.get("type") for d in docs_de(email)}
+    return [t for t in DOCS_REQUIS if t not in types_presents]
 
 def charger_profils():
     if os.path.exists(PROFILS_FILE):
@@ -501,16 +576,24 @@ def admin_employes():
 
         employes = charger_employes()
 
-    # Enrichit chaque employé (poste + nb de documents) pour les cartes
+    # Enrichit chaque employé (poste, nb docs, alertes, documents manquants, statut)
     profils = charger_profils()
     idx_docs = charger_docs_index()
-    employes_info = [{
-        **e,
-        "poste": profils.get(e["email"], {}).get("poste", ""),
-        "nb_docs": len(idx_docs.get(e["email"], [])),
-    } for e in employes]
+    actifs, archives = [], []
+    for e in employes:
+        profil = profils.get(e["email"], {})
+        info = {
+            **e,
+            "poste": profil.get("poste", ""),
+            "nb_docs": len(idx_docs.get(e["email"], [])),
+            "alertes": alertes_employe(profil),
+            "manquants": docs_manquants(e["email"]),
+            "statut": profil.get("statut", "actif"),
+        }
+        (archives if info["statut"] == "archive" else actifs).append(info)
 
-    return render_template("admin_employes.html", employes=employes_info, message=message)
+    return render_template("admin_employes.html", employes=actifs, archives=archives,
+                           message=message)
 
 
 @app.route("/mon-espace")
@@ -975,7 +1058,11 @@ def admin_employe():
                            documents=docs_de(email),
                            docs_par_famille=grouper_docs_par_famille(docs_de(email)),
                            familles_docs=FAMILLES_DOCS,
-                           doc_err=request.args.get("doc_err"))
+                           doc_err=request.args.get("doc_err"),
+                           alertes=alertes_employe(profil_de(email)),
+                           manquants=docs_manquants(email),
+                           docs_requis=DOCS_REQUIS,
+                           statut=profil_de(email).get("statut", "actif"))
 
 
 @app.route("/admin/employe/document", methods=["POST"])
@@ -1058,9 +1145,61 @@ def admin_employe_profil():
     if not emp:
         abort(404)
     profils = charger_profils()
-    profils[email] = {cle: request.form.get(cle, "").strip() for cle, _ in CHAMPS_PROFIL}
+    profil = profils.get(email, {})  # conserve les clés hors formulaire (ex: statut)
+    for cle, _ in CHAMPS_PROFIL:
+        profil[cle] = request.form.get(cle, "").strip()
+    profils[email] = profil
     sauvegarder_profils(profils)
     return redirect(url_for("admin_employe", email=email, annee=request.form.get("annee", datetime.now().year)))
+
+
+@app.route("/admin/employe/statut", methods=["POST"])
+def admin_employe_statut():
+    """Archive ou réactive un employé (statut conservé dans son profil)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    statut = request.form.get("statut", "actif")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    profil = profils.get(email, {})
+    profil["statut"] = "archive" if statut == "archive" else "actif"
+    profils[email] = profil
+    sauvegarder_profils(profils)
+    return redirect(request.form.get("retour") or url_for("admin_employes"))
+
+
+@app.route("/admin/employe/export")
+def admin_employe_export():
+    """Exporte tout le dossier d'un employé (résumé + documents) en ZIP."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    import zipfile
+    email = request.args.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profil = profil_de(email)
+
+    # Résumé texte du dossier
+    lignes = [f"DOSSIER SALARIÉ — {emp['prenom']} {emp['nom']}", f"Email : {email}", ""]
+    for cle, libelle in CHAMPS_PROFIL:
+        lignes.append(f"{libelle} : {profil.get(cle, '') or '—'}")
+    resume = "\r\n".join(lignes)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("dossier.txt", resume)
+        for d in docs_de(email):
+            chemin = os.path.join(DOCS_DIR, d["fichier"])
+            if os.path.exists(chemin):
+                arc = f"{d.get('type', 'Document')}/{d.get('nom_original', d['fichier'])}"
+                zf.write(chemin, arcname=arc)
+    buf.seek(0)
+    nom = f"Dossier_{emp['prenom']}_{emp['nom']}.zip".replace(" ", "_")
+    return send_file(buf, as_attachment=True, download_name=nom, mimetype="application/zip")
 
 
 def construire_recap_xlsx(mois, annee):

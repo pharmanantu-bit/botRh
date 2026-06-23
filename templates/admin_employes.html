@@ -45,8 +45,18 @@
     .carte-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
     .btn-edit { background: #2E75B6; color: white; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
     .btn-edit:hover { background: #1F4E79; }
-    .btn-del { background: #fff; color: #c0392b; border: 1px solid #e3b3ad; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+    .btn-del { background: #fff; color: #c0392b; border: 1px solid #e3b3ad; padding: 5px 9px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
     .btn-del:hover { background: #c0392b; color: white; }
+    .btn-arch { background: #fff; color: #9C6500; border: 1px solid #e0c080; padding: 5px 9px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+    .btn-arch:hover { background: #9C6500; color: white; }
+    .carte-badges { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+    .cb { font-size: 0.72em; font-weight: bold; padding: 2px 8px; border-radius: 10px; cursor: help; }
+    .cb-alerte { background: #FFF3D6; color: #9C6500; }
+    .cb-manque { background: #FFD6D6; color: #9C0006; }
+    .archives-bloc { margin-top: 28px; border-top: 1px solid #e3e9f0; padding-top: 16px; }
+    .archives-bloc summary { cursor: pointer; font-weight: bold; color: #888; font-size: 0.95em; user-select: none; }
+    .carte-archive { opacity: 0.8; background: #fafbfc; }
+    .carte-archive:hover { opacity: 1; }
     .ouvrir-hint { position: absolute; top: 10px; right: 12px; color: #c3d2e6; font-size: 0.9em; }
     .vide { text-align: center; color: #888; padding: 30px; font-style: italic; }
 
@@ -65,7 +75,7 @@
 {% include '_admin_nav.html' %}
 <div class="carte">
   <div class="entete">
-    <h1>Gestion des employés ({{ employes|length }})</h1>
+    <h1>Gestion des employés ({{ employes|length }} actif{{ 's' if employes|length > 1 else '' }}{% if archives %} · {{ archives|length }} archivé{{ 's' if archives|length > 1 else '' }}{% endif %})</h1>
     <a href="/admin" class="btn-retour">Retour admin</a>
   </div>
 
@@ -103,20 +113,54 @@
       <div class="poste">{{ emp.poste or '—' }}</div>
       <div class="email">{{ emp.email }}</div>
       <div class="docs">📎 {{ emp.nb_docs }} document{{ 's' if emp.nb_docs != 1 else '' }}</div>
+      {% if emp.alertes or emp.manquants %}
+      <div class="carte-badges">
+        {% if emp.alertes %}<span class="cb cb-alerte" title="{{ emp.alertes|map(attribute='texte')|join(' · ') }}">⚠️ {{ emp.alertes|length }}</span>{% endif %}
+        {% if emp.manquants %}<span class="cb cb-manque" title="Manque : {{ emp.manquants|join(', ') }}">📋 {{ emp.manquants|length }} manquant{{ 's' if emp.manquants|length > 1 else '' }}</span>{% endif %}
+      </div>
+      {% endif %}
       <div class="carte-actions">
         <button class="btn-edit" onclick="event.stopPropagation(); ouvrirModal('{{ emp.prenom }}','{{ emp.nom }}','{{ emp.email }}')">Modifier</button>
+        <form method="POST" action="/admin/employe/statut" style="display:inline;" onclick="event.stopPropagation();"
+              onsubmit="return confirm('Archiver {{ emp.prenom }} {{ emp.nom }} ?')">
+          <input type="hidden" name="email" value="{{ emp.email }}">
+          <input type="hidden" name="statut" value="archive">
+          <button type="submit" class="btn-arch" title="Archiver">📦</button>
+        </form>
         <form method="POST" action="/admin/employes" style="display:inline;"
               onclick="event.stopPropagation();"
-              onsubmit="return confirm('Supprimer {{ emp.prenom }} {{ emp.nom }} ?')">
+              onsubmit="return confirm('Supprimer définitivement {{ emp.prenom }} {{ emp.nom }} ? (préférez Archiver)')">
           <input type="hidden" name="action" value="supprimer">
           <input type="hidden" name="email" value="{{ emp.email }}">
-          <button type="submit" class="btn-del">Supprimer</button>
+          <button type="submit" class="btn-del" title="Supprimer définitivement">🗑</button>
         </form>
       </div>
     </div>
     {% endfor %}
   </div>
   <div class="vide" id="aucun" style="display:none;">Aucun employé ne correspond.</div>
+
+  {% if archives %}
+  <details class="archives-bloc">
+    <summary>📦 Employés archivés ({{ archives|length }})</summary>
+    <div class="grille-emp" style="margin-top:14px;">
+      {% for emp in archives %}
+      <div class="carte-emp carte-archive" onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
+        <div class="avatar" style="background:#9aa7b5">{{ emp.prenom[0]|upper }}{{ emp.nom[0]|upper }}</div>
+        <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
+        <div class="poste">{{ emp.poste or '—' }}</div>
+        <div class="carte-actions">
+          <form method="POST" action="/admin/employe/statut" style="display:inline;" onclick="event.stopPropagation();">
+            <input type="hidden" name="email" value="{{ emp.email }}">
+            <input type="hidden" name="statut" value="actif">
+            <button type="submit" class="btn-edit" title="Réactiver">↩️ Réactiver</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
 </div>
 
 <!-- Modal modification -->

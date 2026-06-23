@@ -55,15 +55,63 @@
     .doc-famille-titre { font-size:0.85em; font-weight:bold; color:#1F4E79; background:#eaf1fb; padding:6px 12px; border-radius:6px 6px 0 0; }
     .doc-famille-titre span { color:#7a93b3; font-weight:normal; }
     .doc-famille .doc-table td:first-child { white-space:nowrap; }
+
+    .badge-archive { background:#888; color:white; font-size:0.5em; padding:3px 10px; border-radius:12px; vertical-align:middle; font-weight:bold; }
+    .fiche-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+    .fa-btn { border:none; cursor:pointer; padding:8px 16px; border-radius:8px; font-size:0.85em; font-weight:bold; text-decoration:none; display:inline-block; }
+    .fa-export { background:#1a7a6e; color:white; } .fa-export:hover { background:#145f56; }
+    .fa-archiver { background:#fff; color:#9C6500; border:1px solid #e0c080; } .fa-archiver:hover { background:#fff7e6; }
+    .fa-reactiver { background:#2E75B6; color:white; } .fa-reactiver:hover { background:#1F4E79; }
+    .alertes-bloc { display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
+    .alerte { padding:9px 14px; border-radius:8px; font-size:0.86em; font-weight:500; }
+    .alerte-rouge { background:#FFE5E5; color:#9C0006; border-left:4px solid #9C0006; }
+    .alerte-orange { background:#FFF3D6; color:#9C6500; border-left:4px solid #e67e22; }
+    .alerte-info { background:#eaf1fb; color:#1F4E79; border-left:4px solid #2E75B6; }
+    .checklist { background:#f9fbfd; border:1px solid #dde3ed; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.82em; }
+    .checklist strong { color:#1F4E79; margin-right:6px; }
+    .chk { display:inline-block; padding:3px 10px; border-radius:12px; font-weight:bold; margin:3px 4px 0 0; }
+    .chk-ok { background:#C6EFCE; color:#276221; }
+    .chk-ko { background:#FFD6D6; color:#9C0006; }
+    .sum-manque { color:#9C0006; font-size:0.82em; font-weight:normal; }
   </style>
 </head>
 <body>
 {% include '_admin_nav.html' %}
 <div class="carte">
   <div class="entete">
-    <h1>{{ emp.prenom }} {{ emp.nom }} — {{ annee }}</h1>
+    <h1>{{ emp.prenom }} {{ emp.nom }} — {{ annee }}
+      {% if statut == 'archive' %}<span class="badge-archive">Archivé</span>{% endif %}
+    </h1>
     <a href="/admin" class="retour">← Retour admin</a>
   </div>
+
+  <div class="fiche-actions">
+    <a href="/admin/employe/export?email={{ emp.email|urlencode }}" class="fa-btn fa-export">⬇️ Exporter le dossier (ZIP)</a>
+    {% if statut == 'archive' %}
+    <form method="POST" action="/admin/employe/statut" style="display:inline;">
+      <input type="hidden" name="email" value="{{ emp.email }}">
+      <input type="hidden" name="statut" value="actif">
+      <input type="hidden" name="retour" value="/admin/employe?email={{ emp.email|urlencode }}">
+      <button type="submit" class="fa-btn fa-reactiver">↩️ Réactiver</button>
+    </form>
+    {% else %}
+    <form method="POST" action="/admin/employe/statut" style="display:inline;"
+          onsubmit="return confirm('Archiver {{ emp.prenom }} {{ emp.nom }} ? Son dossier est conservé mais il passe en archivés.');">
+      <input type="hidden" name="email" value="{{ emp.email }}">
+      <input type="hidden" name="statut" value="archive">
+      <input type="hidden" name="retour" value="/admin/employe?email={{ emp.email|urlencode }}">
+      <button type="submit" class="fa-btn fa-archiver">📦 Archiver</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if alertes %}
+  <div class="alertes-bloc">
+    {% for a in alertes %}
+    <div class="alerte alerte-{{ a.niveau }}">⚠️ {{ a.texte }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <!-- Dossier salarié -->
   <details class="dossier" {% if not profil.poste %}open{% endif %}>
@@ -90,6 +138,12 @@
         <label>Fin de contrat (si CDD)
           <input type="text" name="date_fin" value="{{ profil.date_fin|default('') }}" placeholder="jj/mm/aaaa">
         </label>
+        <label>Fin de période d'essai
+          <input type="text" name="fin_essai" value="{{ profil.fin_essai|default('') }}" placeholder="jj/mm/aaaa">
+        </label>
+        <label>Prochaine visite médicale
+          <input type="text" name="visite_medicale" value="{{ profil.visite_medicale|default('') }}" placeholder="jj/mm/aaaa">
+        </label>
         <label>Téléphone
           <input type="text" name="telephone" value="{{ profil.telephone|default('') }}" placeholder="06 ..">
         </label>
@@ -115,8 +169,15 @@
 
   <!-- Documents (privés admin) -->
   <details class="dossier" open>
-    <summary>📎 Documents ({{ documents|length }})</summary>
+    <summary>📎 Documents ({{ documents|length }}){% if manquants %} <span class="sum-manque">— {{ manquants|length }} requis manquant(s)</span>{% endif %}</summary>
     <div class="profil-form">
+      <div class="checklist">
+        <strong>Documents requis :</strong>
+        {% for t in docs_requis %}
+          {% if t in manquants %}<span class="chk chk-ko">✗ {{ t }}</span>
+          {% else %}<span class="chk chk-ok">✓ {{ t }}</span>{% endif %}
+        {% endfor %}
+      </div>
       {% if doc_err == 'type' %}<div class="doc-msg err">Format non accepté (PDF, images, Word uniquement).</div>{% endif %}
       {% if doc_err == 'vide' %}<div class="doc-msg err">Aucun fichier sélectionné.</div>{% endif %}
 
