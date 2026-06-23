@@ -46,12 +46,15 @@ routes_publiques = [
     ("/export_reponses?cle=mauvaise", 403),
 ]
 routes_admin = [
-    "/admin", "/admin/dashboard", "/admin/absences", "/admin/historique",
-    f"/admin/historique/{mois}/{annee}", "/admin/employes", "/admin/planning",
-    "/admin/export", "/admin/erreurs",
+    "/admin", f"/admin?mois={mois}&annee={annee}", "/admin/dashboard",
+    "/admin/historique", f"/admin/historique/{mois}/{annee}",
+    "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")
+
+# Routes désormais fusionnées ailleurs : redirigent (302)
+routes_admin_redirect = ["/admin/absences", "/admin/synthese"]
 
 echecs = []
 
@@ -70,6 +73,13 @@ for url in routes_admin:
     print(f"{'OK ' if ok else 'KO '}[{code}] {url}")
     if not ok:
         echecs.append(f"{url} (attendu 200, reçu {code})")
+
+for url in routes_admin_redirect:
+    code = client.get(url).status_code
+    ok = code in (301, 302)
+    print(f"{'OK ' if ok else 'KO '}[{code}] {url} (redirection attendue)")
+    if not ok:
+        echecs.append(f"{url} (attendu 302, reçu {code})")
 
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)

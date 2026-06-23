@@ -245,13 +245,15 @@ def envoyer():
     )
 
 
-def planning_file():
-    mois = datetime.now().month
-    annee = datetime.now().year
+def planning_file(mois=None, annee=None):
+    if mois is None:
+        mois = datetime.now().month
+    if annee is None:
+        annee = datetime.now().year
     return os.path.join(BASE_DIR, f"planning_{mois}_{annee}.json")
 
-def charger_planning():
-    f = planning_file()
+def charger_planning(mois=None, annee=None):
+    f = planning_file(mois, annee)
     if os.path.exists(f):
         with open(f, encoding="utf-8") as fp:
             return json.load(fp)
@@ -293,11 +295,25 @@ def admin():
     if not session.get("admin"):
         return render_template("admin_login.html", erreur=False)
 
-    reponses = charger_reponses()
+    mois_courant, annee_courante = datetime.now().month, datetime.now().year
+    mois = int(request.args.get("mois", mois_courant))
+    annee = int(request.args.get("annee", annee_courante))
+    est_courant = (mois == mois_courant and annee == annee_courante)
+
+    reponses = charger_reponses(mois, annee)
     employes = charger_employes()
-    planning = charger_planning()
-    mois = datetime.now().month
-    annee = datetime.now().year
+    planning = charger_planning(mois, annee)
+
+    # Navigation mois précédent / suivant (sans dépasser le mois courant)
+    mois_prec = 12 if mois == 1 else mois - 1
+    annee_prec = annee - 1 if mois == 1 else annee
+    mois_suiv = 1 if mois == 12 else mois + 1
+    annee_suiv = annee + 1 if mois == 12 else annee
+    peut_suivant = not (annee > annee_courante or (annee == annee_courante and mois >= mois_courant))
+
+    # Image de planning du mois
+    img_nom = f"planning_{mois}_{annee}.png"
+    img_url = f"/static/planning_img/{img_nom}" if os.path.exists(os.path.join(UPLOAD_FOLDER, img_nom)) else None
 
     resultats = []
     for emp in employes:
@@ -357,10 +373,14 @@ def admin():
             }
 
     repondus = sum(1 for r in resultats if r["repondu"])
-    a_planifier = charger_planning() != {}
     return render_template("admin.html", resultats=resultats, repondus=repondus,
-                           total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}",
-                           a_planifier=a_planifier, releves_detail=releves_detail)
+                           total=len(resultats), mois=mois, annee=annee,
+                           mois_annee=f"{MOIS_FR[mois]} {annee}",
+                           est_courant=est_courant, planning=planning, img_url=img_url,
+                           a_planning=(planning != {}),
+                           nav_prec={"mois": mois_prec, "annee": annee_prec},
+                           nav_suiv=({"mois": mois_suiv, "annee": annee_suiv} if peut_suivant else None),
+                           releves_detail=releves_detail)
 
 
 def sauvegarder_employes(employes):
@@ -656,8 +676,17 @@ def admin_employes():
 
     postes = sorted({i["poste"] for i in actifs if i["poste"]})
     contrats = sorted({i["contrat"] for i in actifs if i["contrat"]})
+
+    # Synthèse RH (intégrée ici) : actifs ayant une alerte ou un document manquant
+    synthese = [i for i in actifs if i["alertes"] or i["manquants"]]
+    synthese.sort(key=lambda i: (any(a["niveau"] == "rouge" for a in i["alertes"]),
+                                 len(i["alertes"]), len(i["manquants"])), reverse=True)
+    nb_rouge = sum(1 for i in synthese for a in i["alertes"] if a["niveau"] == "rouge")
+    nb_manquants = sum(len(i["manquants"]) for i in synthese)
+
     return render_template("admin_employes.html", employes=actifs, archives=archives,
-                           message=message, postes=postes, contrats=contrats)
+                           message=message, postes=postes, contrats=contrats,
+                           synthese=synthese, nb_rouge=nb_rouge, nb_manquants=nb_manquants)
 
 
 @app.route("/mon-espace")
@@ -696,6 +725,13 @@ def mon_espace():
 
 @app.route("/admin/absences")
 def admin_absences():
+    # Fusionné dans le tableau de bord (section Absentéisme).
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    return redirect(url_for("admin_dashboard"))
+
+
+def _admin_absences_legacy():
     if not session.get("admin"):
         return redirect(url_for("admin"))
 
@@ -1393,7 +1429,13 @@ def admin_employe_checklist():
 
 @app.route("/admin/synthese")
 def admin_synthese():
-    """Synthèse RH : toutes les échéances et documents manquants de l'équipe."""
+    # Intégrée dans la page Équipe (/admin/employes).
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    return redirect(url_for("admin_employes") + "#synthese")
+
+
+def _admin_synthese_legacy():
     if not session.get("admin"):
         return redirect(url_for("admin"))
     profils = charger_profils()

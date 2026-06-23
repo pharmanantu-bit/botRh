@@ -64,7 +64,20 @@
     .jours-table .p { color:#276221; font-weight:bold; } .jours-table .m { color:#9C0006; font-weight:bold; }
     .jours-table tfoot td { background:#f5f8fc; font-weight:bold; }
     .jours-vide { font-size:0.85em; color:#888; font-style:italic; padding:6px 0; }
-    @media print { .btn-detail, .modal-overlay { display:none !important; } }
+    @media print { .btn-detail, .modal-overlay, .mois-nav { display:none !important; } }
+    .mois-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#f0f4f8; border:1px solid #dde3ed; border-radius:10px; padding:10px 16px; margin-bottom:18px; }
+    .mn-btn { background:#1F4E79; color:white; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:0.88em; font-weight:bold; }
+    .mn-btn:hover { background:#163d60; }
+    .mn-disabled { background:#ccc; cursor:not-allowed; }
+    .mn-courant { font-weight:bold; color:#1F4E79; font-size:1.05em; }
+    .planning-bloc { margin-top:30px; border-top:2px solid #dde3ed; padding-top:20px; }
+    .pb-tete { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+    .pb-tete h2 { color:#1F4E79; font-size:1.1em; }
+    .planning-img { width:100%; border-radius:8px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
+    .table-planning { width:100%; border-collapse:collapse; font-size:0.85em; }
+    .table-planning th { background:#5c7a3e; color:white; padding:8px; }
+    .table-planning td { padding:6px 8px; border:1px solid #ddd; text-align:center; }
+    .table-planning td.nom { text-align:left; font-weight:bold; color:#1F4E79; }
 
     @media print {
       body { background: white; padding: 0; }
@@ -84,14 +97,20 @@
     <h1>Relevés — {{ mois_annee }}</h1>
     <div class="actions">
       <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
-<a href="/admin/employes" class="btn-planning" style="background:#c0392b;">Employés</a>
-      <a href="/admin/dashboard" class="btn-planning" style="background:#1a7a6e;">Tableau de bord</a>
-      <a href="/admin/historique" class="btn-planning" style="background:#6b5ea8;">Historique</a>
-      <a href="/admin/planning" class="btn-planning">Saisir le planning</a>
       <a href="/admin/export" class="btn-export">Télécharger Excel</a>
       <button onclick="window.print()" class="btn-export" style="background:#555; border:none; cursor:pointer;">Imprimer</button>
-      <a href="/admin/logout" class="deconnexion">Déconnexion</a>
     </div>
+  </div>
+
+  <!-- Navigation mois -->
+  <div class="mois-nav">
+    <a class="mn-btn" href="/admin?mois={{ nav_prec.mois }}&annee={{ nav_prec.annee }}">‹ Mois précédent</a>
+    <span class="mn-courant">{{ mois_annee }}{% if not est_courant %} · lecture seule{% endif %}</span>
+    {% if nav_suiv %}
+    <a class="mn-btn" href="/admin?mois={{ nav_suiv.mois }}&annee={{ nav_suiv.annee }}">Mois suivant ›</a>
+    {% else %}
+    <span class="mn-btn mn-disabled">Mois suivant ›</span>
+    {% endif %}
   </div>
 
   <input type="text" id="recherche" placeholder="Rechercher un employé..." oninput="filtrer()"
@@ -162,19 +181,23 @@
         </td>
         <td>
           {% if r.repondu %}
-            {% if r.valide %}
+            {% if est_courant %}
+              {% if r.valide %}
               <span class="badge-ok">✓ Validé</span><br>
               <form method="POST" action="/admin/valider" style="display:inline">
                 <input type="hidden" name="email" value="{{ r.email }}">
                 <input type="hidden" name="valide" value="0">
                 <button type="submit" class="lien" style="border:none;background:none;cursor:pointer;padding:0;">annuler</button>
               </form>
-            {% else %}
+              {% else %}
               <form method="POST" action="/admin/valider" style="display:inline">
                 <input type="hidden" name="email" value="{{ r.email }}">
                 <input type="hidden" name="valide" value="1">
                 <button type="submit" style="border:none;cursor:pointer;background:#e67e22;color:white;padding:5px 12px;border-radius:6px;font-size:0.8em;font-weight:bold;">À valider</button>
               </form>
+              {% endif %}
+            {% else %}
+              {% if r.valide %}<span class="badge-ok">✓ Validé</span>{% else %}<span class="badge-attente">non validé</span>{% endif %}
             {% endif %}
           {% else %}-{% endif %}
         </td>
@@ -182,6 +205,36 @@
       {% endfor %}
     </tbody>
   </table>
+
+  <!-- Planning du mois -->
+  <div class="planning-bloc">
+    <div class="pb-tete">
+      <h2>🗓️ Planning — {{ mois_annee }}</h2>
+      {% if est_courant %}<a href="/admin/planning" class="btn-export" style="background:#5c7a3e;">✏️ Saisir / éditer le planning</a>{% endif %}
+    </div>
+    {% if img_url %}
+    <img src="{{ img_url }}" class="planning-img" alt="Planning {{ mois_annee }}">
+    {% endif %}
+    {% if a_planning %}
+    <table class="table-planning">
+      <thead><tr><th>Collaborateur</th><th>Trame</th><th>Total</th><th>Absences</th><th>Jours</th></tr></thead>
+      <tbody>
+        {% for r in resultats %}
+        {% set p = planning.get(r.prenom, {}) %}
+        <tr>
+          <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
+          <td>{{ p.get('trame', '—') }}</td>
+          <td>{{ p.get('total', '—') }}</td>
+          <td>{{ p.get('absences', '') or '—' }}</td>
+          <td>{{ p.get('jours', '—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#888; font-style:italic; font-size:0.9em;">Aucun planning enregistré pour ce mois.{% if est_courant %} Cliquez sur « Saisir le planning ».{% endif %}</p>
+    {% endif %}
+  </div>
 </div>
 
 <!-- Fenêtre de détail du relevé -->
