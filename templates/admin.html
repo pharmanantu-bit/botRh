@@ -112,7 +112,7 @@
         <th class="th-planning">Jours</th>
         <th class="th-planning">Écart</th>
         <th class="th-planning">Comparaison</th>
-        <th>Lien</th>
+        <th>Détail</th>
         <th>Validation</th>
       </tr>
     </thead>
@@ -149,16 +149,15 @@
           {% else %}-{% endif %}
         </td>
         <td>
-          <a href="{{ r.lien }}" class="lien" target="_blank">Voir</a>
           {% if r.repondu %}
-          <br><button type="button" class="btn-detail"
+          <button type="button" class="btn-detail"
               data-email="{{ r.email }}"
               data-nom="{{ r.prenom }} {{ r.nom }}"
               data-plus="{{ r.heures_plus }}"
               data-moins="{{ r.heures_moins }}"
               data-solde="{{ r.solde }}"
               onclick="voirDetail(this)">🔍 Détail</button>
-          {% endif %}
+          {% else %}-{% endif %}
         </td>
         <td>
           {% if r.repondu %}
