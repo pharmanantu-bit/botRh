@@ -35,8 +35,9 @@ app.logger.setLevel(logging.INFO)
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
 API_CLE = os.getenv("API_CLE", "botRh-trigger-2026")
-# Jour de clôture de la saisie des relevés : au-delà, le formulaire est fermé
-# et les heures comptent pour le mois suivant. Source unique de vérité.
+# Jour de clôture RÉELLE de la saisie (côté interne) : au-delà, le formulaire
+# est fermé. On communique le 25 aux employés (mails + formulaire) mais on
+# accepte en réalité jusqu'au 28, pour garder une marge. Surchargeable par env.
 JOUR_CLOTURE = int(os.getenv("JOUR_CLOTURE", "28"))
 # employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
 # = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
@@ -192,8 +193,10 @@ def envoyer():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
+    # Blocage réel au JOUR_CLOTURE (28, côté interne) mais on communique le 25
+    # aux employés : ce message ne s'affiche qu'au-delà du 28 (saisie vraiment close).
     if datetime.now().day > JOUR_CLOTURE:
-        return (f"La période de saisie de ce mois est clôturée (date limite : le {JOUR_CLOTURE}). "
+        return ("La période de saisie de ce mois est clôturée (date limite : le 25). "
                 "Vos heures effectuées seront comptabilisées le mois suivant."), 403
     prenom = emp["prenom"]
     token = generer_token(prenom, emp["email"])

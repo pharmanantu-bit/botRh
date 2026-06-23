@@ -106,10 +106,10 @@
   </div>
 
   {% if not modifiable %}
-  <div class="deja-rempli">🔒 La période de saisie de ce mois est clôturée (date limite : le {{ jour_cloture }}).{% if deja_rempli %} Votre relevé a bien été enregistré, merci.{% endif %}<br>Les heures effectuées après le {{ jour_cloture }} seront comptabilisées le mois suivant.</div>
+  <div class="deja-rempli">🔒 La période de saisie de ce mois est clôturée (date limite : le 25).{% if deja_rempli %} Votre relevé a bien été enregistré, merci.{% endif %}<br>Les heures effectuées après le 25 seront comptabilisées le mois suivant.</div>
   {% else %}
   {% if deja_rempli %}
-  <div class="deja-rempli">⚠️ Vous avez déjà soumis votre relevé. Vous pouvez le modifier jusqu'au {{ jour_cloture }}.</div>
+  <div class="deja-rempli">⚠️ Vous avez déjà soumis votre relevé. Vous pouvez le modifier jusqu'au 25.</div>
   {% endif %}
 
   <form method="POST" action="/envoyer">
@@ -171,7 +171,7 @@
     <textarea name="commentaire" placeholder="Commentaire (optionnel) : absences, congés, remarques..."></textarea>
 
     <button type="submit" class="btn">Envoyer mon relevé ✓</button>
-    <p class="legende">Les heures effectuées après le {{ jour_cloture }} du mois seront comptabilisées le mois suivant.</p>
+    <p class="legende">Les heures effectuées après le 25 du mois seront comptabilisées le mois suivant.</p>
   </form>
   {% endif %}
 </div>
