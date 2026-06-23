@@ -21,7 +21,9 @@
 <div class="carte">
   <h1>Espace Admin</h1>
   <p>Relevés d'heures — Pharmacie Nanterre</p>
-  {% if erreur %}
+  {% if bloque %}
+  <div class="erreur">Trop de tentatives échouées. Réessayez dans quelques minutes.</div>
+  {% elif erreur %}
   <div class="erreur">Mot de passe incorrect.</div>
   {% endif %}
   <form method="POST" action="/admin">

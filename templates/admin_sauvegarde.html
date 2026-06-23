@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sauvegarde & restauration</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 720px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+    .bloc h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 8px; }
+    .bloc p { color: #555; font-size: 0.88em; margin-bottom: 14px; }
+    .btn { display: inline-block; border: none; cursor: pointer; padding: 11px 20px; border-radius: 8px; font-size: 0.9em; font-weight: bold; text-decoration: none; }
+    .btn-dl { background: #1a7a6e; color: white; }
+    .btn-dl:hover { background: #145f56; }
+    .btn-restore { background: #c0392b; color: white; }
+    .btn-restore:hover { background: #962d22; }
+    input[type=file] { font-size: 0.88em; margin-bottom: 14px; display: block; }
+    .ok { background: #C6EFCE; color: #276221; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 18px; }
+    .err { background: #FFD6D6; color: #9C0006; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 18px; }
+    .avert { background: #FFF3D6; color: #9C6500; padding: 10px 14px; border-radius: 8px; font-size: 0.82em; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>💾 Sauvegarde &amp; restauration</h1>
+    <a href="/admin/dashboard" class="btn-retour" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
+  </div>
+
+  {% if resume %}
+  <div class="ok">✅ Restauration effectuée : {{ resume }}.</div>
+  {% endif %}
+  {% if err == 'vide' %}<div class="err">Aucun fichier sélectionné.</div>{% endif %}
+  {% if err == 'format' %}<div class="err">Fichier illisible (JSON attendu).</div>{% endif %}
+  {% if err == 'invalide' %}<div class="err">Ce fichier n'est pas une sauvegarde botRh valide.</div>{% endif %}
+  {% if err == 'echec' %}<div class="err">Échec de la restauration. Aucune donnée modifiée si possible — vérifiez le fichier.</div>{% endif %}
+
+  <div class="bloc">
+    <h2>⬇️ Télécharger une sauvegarde</h2>
+    <p>Récupère maintenant un fichier contenant toutes les données : employés, relevés, plannings, dossiers RH et index des documents.</p>
+    <a href="/admin/sauvegarde/telecharger" class="btn btn-dl">Télécharger la sauvegarde</a>
+  </div>
+
+  <div class="bloc">
+    <h2>♻️ Restaurer depuis une sauvegarde</h2>
+    <p>Recharge les données depuis un fichier de sauvegarde (.json). Les éléments présents dans le fichier <strong>écrasent</strong> les données actuelles correspondantes.</p>
+    <form method="POST" action="/admin/sauvegarde/restaurer" enctype="multipart/form-data"
+          onsubmit="return confirm('Restaurer ces données ? Les relevés, plannings et dossiers actuels correspondants seront remplacés par ceux du fichier.');">
+      <input type="file" name="fichier" accept="application/json,.json" required>
+      <button type="submit" class="btn btn-restore">Restaurer ces données</button>
+    </form>
+    <p class="avert" style="margin-top:14px;">⚠️ La restauration ne contient pas les <strong>fichiers</strong> des documents ni les photos (seulement leur fiche/index). Action réservée à un dépannage.</p>
+  </div>
+</div>
+</body>
+</html>

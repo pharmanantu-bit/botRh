@@ -4,7 +4,7 @@ import csv
 import io
 import uuid
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
@@ -25,6 +25,42 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "botRh-admin-2026")
 # Limite de taille des fichiers uploadés (documents RH) : 12 Mo.
 app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
+
+# Sécurité des sessions/cookies. SECURE (HTTPS uniquement) activé automatiquement
+# en production (serveur sous /home/...), désactivé en local (http://localhost).
+EST_PROD = BASE_DIR.replace("\\", "/").startswith("/home/")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=EST_PROD,
+)
+app.permanent_session_lifetime = timedelta(hours=8)
+
+# Anti-bruteforce login : blocage temporaire après plusieurs échecs (par IP).
+import time as _time
+_LOGIN_ECHECS = {}          # ip -> [nb, premier_ts]
+_LOGIN_MAX = 6              # échecs autorisés
+_LOGIN_FENETRE = 600        # fenêtre / durée de blocage (10 min)
+
+def login_bloque(ip):
+    rec = _LOGIN_ECHECS.get(ip)
+    if not rec:
+        return False
+    if _time.time() - rec[1] > _LOGIN_FENETRE:
+        _LOGIN_ECHECS.pop(ip, None)
+        return False
+    return rec[0] >= _LOGIN_MAX
+
+def login_echec(ip):
+    rec = _LOGIN_ECHECS.get(ip)
+    now = _time.time()
+    if not rec or now - rec[1] > _LOGIN_FENETRE:
+        _LOGIN_ECHECS[ip] = [1, now]
+    else:
+        rec[0] += 1
+
+def login_reset(ip):
+    _LOGIN_ECHECS.pop(ip, None)
 
 # Journalisation des erreurs dans logs/erreurs.log (Flask y écrit aussi
 # automatiquement les exceptions non gérées) — consultable via /admin/erreurs.
@@ -286,10 +322,16 @@ def charger_employes():
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     if request.method == "POST":
+        ip = request.remote_addr or "?"
+        if login_bloque(ip):
+            return render_template("admin_login.html", erreur=True, bloque=True), 429
         mdp = request.form.get("password", "")
         if mdp == ADMIN_PASSWORD:
+            login_reset(ip)
+            session.permanent = True
             session["admin"] = True
         else:
+            login_echec(ip)
             return render_template("admin_login.html", erreur=True)
 
     if not session.get("admin"):
@@ -1640,13 +1682,9 @@ def export_employes():
                               mimetype="application/json")
 
 
-@app.route("/export_backup")
-def export_backup():
-    """Regroupe toutes les données (employés, réponses, planning) en un seul JSON
-    pour la sauvegarde automatique quotidienne. Clé requise."""
-    cle = request.args.get("cle", "")
-    if cle != API_CLE:
-        abort(403)
+def construire_sauvegarde():
+    """Regroupe toutes les données (employés, réponses, planning, dossiers RH,
+    index des documents) en un seul dict — pour sauvegarde et restauration."""
     data = {
         "genere_le": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "employes": charger_employes(),
@@ -1663,8 +1701,87 @@ def export_backup():
                     data[cible][fichier] = json.load(f)
             except Exception:
                 app.logger.exception(f"Sauvegarde : lecture de {fichier} impossible")
-    return app.response_class(json.dumps(data, ensure_ascii=False, indent=2),
+    return data
+
+
+def restaurer_sauvegarde(data):
+    """Restaure les données depuis un dict de sauvegarde. N'efface rien d'autre :
+    écrase uniquement les éléments présents dans la sauvegarde. Renvoie un résumé."""
+    resume = {"employes": 0, "reponses": 0, "planning": 0, "profils": 0, "documents_index": 0}
+    if isinstance(data.get("employes"), list) and data["employes"]:
+        sauvegarder_employes(data["employes"])
+        resume["employes"] = len(data["employes"])
+    for fichier, contenu in (data.get("reponses") or {}).items():
+        if fichier.startswith("reponses_") and fichier.endswith(".json"):
+            with open(os.path.join(BASE_DIR, secure_filename(fichier)), "w", encoding="utf-8") as f:
+                json.dump(contenu, f, ensure_ascii=False, indent=2)
+            resume["reponses"] += 1
+    for fichier, contenu in (data.get("planning") or {}).items():
+        if fichier.startswith("planning_") and fichier.endswith(".json"):
+            with open(os.path.join(BASE_DIR, secure_filename(fichier)), "w", encoding="utf-8") as f:
+                json.dump(contenu, f, ensure_ascii=False, indent=2)
+            resume["planning"] += 1
+    if isinstance(data.get("profils_rh"), dict):
+        sauvegarder_profils(data["profils_rh"])
+        resume["profils"] = len(data["profils_rh"])
+    if isinstance(data.get("documents_index"), dict):
+        sauvegarder_docs_index(data["documents_index"])
+        resume["documents_index"] = len(data["documents_index"])
+    return resume
+
+
+@app.route("/export_backup")
+def export_backup():
+    """Sauvegarde JSON complète (quotidienne automatique). Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    return app.response_class(json.dumps(construire_sauvegarde(), ensure_ascii=False, indent=2),
                               mimetype="application/json")
+
+
+@app.route("/admin/sauvegarde")
+def admin_sauvegarde():
+    """Page de sauvegarde / restauration des données (admin)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    return render_template("admin_sauvegarde.html",
+                           resume=request.args.get("resume"),
+                           err=request.args.get("err"))
+
+
+@app.route("/admin/sauvegarde/telecharger")
+def admin_sauvegarde_telecharger():
+    """Télécharge une sauvegarde maintenant (depuis l'espace admin)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    contenu = json.dumps(construire_sauvegarde(), ensure_ascii=False, indent=2).encode("utf-8")
+    nom = f"botRh_sauvegarde_{datetime.now():%Y-%m-%d}.json"
+    return send_file(io.BytesIO(contenu), as_attachment=True, download_name=nom,
+                     mimetype="application/json")
+
+
+@app.route("/admin/sauvegarde/restaurer", methods=["POST"])
+def admin_sauvegarde_restaurer():
+    """Restaure les données depuis un fichier de sauvegarde JSON téléversé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    f = request.files.get("fichier")
+    if not f or not f.filename:
+        return redirect(url_for("admin_sauvegarde", err="vide"))
+    try:
+        data = json.loads(f.read().decode("utf-8"))
+    except Exception:
+        return redirect(url_for("admin_sauvegarde", err="format"))
+    if not isinstance(data, dict) or "employes" not in data:
+        return redirect(url_for("admin_sauvegarde", err="invalide"))
+    try:
+        r = restaurer_sauvegarde(data)
+    except Exception:
+        app.logger.exception("Échec restauration sauvegarde")
+        return redirect(url_for("admin_sauvegarde", err="echec"))
+    resume = f"{r['employes']} employés, {r['reponses']} mois de relevés, {r['planning']} plannings, {r['profils']} dossiers RH"
+    return redirect(url_for("admin_sauvegarde", resume=resume))
 
 
 @app.route("/healthcheck")
