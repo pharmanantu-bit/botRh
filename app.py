@@ -462,6 +462,60 @@ def docs_manquants(email):
     types_presents = {d.get("type") for d in docs_de(email)}
     return [t for t in DOCS_REQUIS if t not in types_presents]
 
+# Types d'événements du journal RH
+TYPES_EVENEMENT = ["Entretien", "Augmentation", "Avertissement",
+                   "Changement de poste", "Formation", "Congés", "Autre"]
+
+# Dossier des photos de profil (gitignoré, données perso)
+PHOTOS_DIR = os.path.join(BASE_DIR, "photos_rh")
+
+def alertes_documents(email):
+    """Alertes sur les documents qui expirent (champ 'expiration')."""
+    auj = datetime.now().date()
+    out = []
+    for d in docs_de(email):
+        exp = parse_date_fr(d.get("expiration"))
+        if not exp:
+            continue
+        j = (exp - auj).days
+        libelle = d.get("libelle") or d.get("type") or "Document"
+        if j < 0:
+            out.append({"niveau": "rouge", "texte": f"{libelle} expiré ({exp:%d/%m/%Y})"})
+        elif j <= 45:
+            out.append({"niveau": "orange", "texte": f"{libelle} expire dans {j} j ({exp:%d/%m/%Y})"})
+    return out
+
+def anniversaire_proche(profil):
+    """Alerte anniversaire (date de naissance) dans les 14 jours."""
+    naiss = parse_date_fr(profil.get("naissance")) if profil else None
+    if not naiss:
+        return []
+    auj = datetime.now().date()
+    try:
+        prochain = naiss.replace(year=auj.year)
+    except ValueError:
+        prochain = naiss.replace(year=auj.year, day=28)
+    if prochain < auj:
+        try:
+            prochain = naiss.replace(year=auj.year + 1)
+        except ValueError:
+            prochain = naiss.replace(year=auj.year + 1, day=28)
+    j = (prochain - auj).days
+    if 0 <= j <= 14:
+        age = prochain.year - naiss.year
+        quand = "aujourd'hui 🎂" if j == 0 else f"dans {j} j"
+        return [{"niveau": "info", "texte": f"Anniversaire {quand} ({age} ans, le {prochain:%d/%m})"}]
+    return []
+
+def alertes_completes(email, profil):
+    """Toutes les alertes d'un employé : échéances profil + documents + anniversaire."""
+    return alertes_employe(profil) + alertes_documents(email) + anniversaire_proche(profil)
+
+def journal_trie(journal):
+    """Trie les événements du journal du plus récent au plus ancien."""
+    from datetime import date as _d
+    return sorted(journal, key=lambda e: parse_date_fr(e.get("date")) or _d(1900, 1, 1), reverse=True)
+
 def charger_profils():
     if os.path.exists(PROFILS_FILE):
         with open(PROFILS_FILE, encoding="utf-8") as f:
@@ -586,9 +640,10 @@ def admin_employes():
             **e,
             "poste": profil.get("poste", ""),
             "nb_docs": len(idx_docs.get(e["email"], [])),
-            "alertes": alertes_employe(profil),
+            "alertes": alertes_completes(e["email"], profil),
             "manquants": docs_manquants(e["email"]),
             "statut": profil.get("statut", "actif"),
+            "photo": profil.get("photo"),
         }
         (archives if info["statut"] == "archive" else actifs).append(info)
 
@@ -1059,10 +1114,13 @@ def admin_employe():
                            docs_par_famille=grouper_docs_par_famille(docs_de(email)),
                            familles_docs=FAMILLES_DOCS,
                            doc_err=request.args.get("doc_err"),
-                           alertes=alertes_employe(profil_de(email)),
+                           alertes=alertes_completes(email, profil_de(email)),
                            manquants=docs_manquants(email),
                            docs_requis=DOCS_REQUIS,
-                           statut=profil_de(email).get("statut", "actif"))
+                           statut=profil_de(email).get("statut", "actif"),
+                           journal=journal_trie(profil_de(email).get("journal", [])),
+                           types_evenement=TYPES_EVENEMENT,
+                           a_photo=bool(profil_de(email).get("photo")))
 
 
 @app.route("/admin/employe/document", methods=["POST"])
@@ -1092,6 +1150,7 @@ def admin_employe_document():
         "nom_original": f.filename,
         "type": request.form.get("type", "Autre / divers"),
         "libelle": request.form.get("libelle", "").strip() or f.filename,
+        "expiration": request.form.get("expiration", "").strip(),
         "taille": humaniser_taille(os.path.getsize(chemin)),
         "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
     })
@@ -1200,6 +1259,102 @@ def admin_employe_export():
     buf.seek(0)
     nom = f"Dossier_{emp['prenom']}_{emp['nom']}.zip".replace(" ", "_")
     return send_file(buf, as_attachment=True, download_name=nom, mimetype="application/zip")
+
+
+@app.route("/admin/employe/journal", methods=["POST"])
+def admin_employe_journal_ajout():
+    """Ajoute un événement au journal RH d'un employé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    profil = profils.get(email, {})
+    journal = profil.get("journal", [])
+    journal.append({
+        "id": uuid.uuid4().hex[:8],
+        "date": request.form.get("date", "").strip() or datetime.now().strftime("%d/%m/%Y"),
+        "type": request.form.get("type", "Autre"),
+        "note": request.form.get("note", "").strip(),
+    })
+    profil["journal"] = journal
+    profils[email] = profil
+    sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/employe/journal/supprimer", methods=["POST"])
+def admin_employe_journal_suppr():
+    """Supprime un événement précis du journal RH."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    ev_id = request.form.get("id", "")
+    profils = charger_profils()
+    profil = profils.get(email, {})
+    profil["journal"] = [e for e in profil.get("journal", []) if e.get("id") != ev_id]
+    profils[email] = profil
+    sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/employe/photo", methods=["POST"])
+def admin_employe_photo_upload():
+    """Charge la photo de profil d'un employé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    f = request.files.get("photo")
+    if f and f.filename:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext in {".png", ".jpg", ".jpeg", ".webp"}:
+            os.makedirs(PHOTOS_DIR, exist_ok=True)
+            nom = f"{uuid.uuid4().hex[:12]}{ext}"
+            f.save(os.path.join(PHOTOS_DIR, nom))
+            profils = charger_profils()
+            profil = profils.get(email, {})
+            ancienne = profil.get("photo")
+            profil["photo"] = nom
+            profils[email] = profil
+            sauvegarder_profils(profils)
+            if ancienne:  # supprime l'ancienne photo
+                try:
+                    os.remove(os.path.join(PHOTOS_DIR, ancienne))
+                except OSError:
+                    pass
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/employe/photo")
+def admin_employe_photo_voir():
+    """Sert la photo de profil (admin uniquement)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.args.get("email", "")
+    nom = profil_de(email).get("photo")
+    if nom:
+        chemin = os.path.join(PHOTOS_DIR, nom)
+        if os.path.exists(chemin):
+            return send_file(chemin)
+    abort(404)
+
+
+@app.route("/admin/employe/attestation")
+def admin_employe_attestation():
+    """Page imprimable d'attestation de travail, pré-remplie depuis le dossier."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.args.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    return render_template("attestation.html", emp=emp, profil=profil_de(email),
+                           today=datetime.now().strftime("%d/%m/%Y"))
 
 
 def construire_recap_xlsx(mois, annee):

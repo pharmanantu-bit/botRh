@@ -38,6 +38,7 @@
       display: flex; align-items: center; justify-content: center;
       color: white; font-size: 1.4em; font-weight: bold; letter-spacing: 1px;
     }
+    .avatar-img { object-fit: cover; }
     .carte-emp .nom { font-weight: bold; color: #1F4E79; font-size: 1.02em; }
     .carte-emp .poste { color: #2E75B6; font-size: 0.85em; margin-top: 2px; min-height: 1em; }
     .carte-emp .email { color: #888; font-size: 0.78em; margin-top: 6px; word-break: break-all; }
@@ -106,9 +107,13 @@
     <div class="carte-emp" data-nom="{{ emp.prenom }} {{ emp.nom }}"
          onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
       <span class="ouvrir-hint">›</span>
+      {% if emp.photo %}
+      <img class="avatar avatar-img" src="/admin/employe/photo?email={{ emp.email|urlencode }}" alt="photo">
+      {% else %}
       <div class="avatar" style="background:{{ couleurs[loop.index0 % couleurs|length] }}">
         {{ emp.prenom[0]|upper }}{{ emp.nom[0]|upper }}
       </div>
+      {% endif %}
       <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
       <div class="poste">{{ emp.poste or '—' }}</div>
       <div class="email">{{ emp.email }}</div>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attestation de travail — {{ emp.prenom }} {{ emp.nom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Georgia', serif; background: #f0f4f8; padding: 20px; color: #222; }
+    .feuille { background: white; max-width: 800px; margin: 0 auto; padding: 60px 70px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); border-radius: 6px; }
+    .barre { display: flex; gap: 10px; max-width: 800px; margin: 0 auto 16px; }
+    .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9em; font-weight: bold; font-family: Arial, sans-serif; text-decoration: none; }
+    .btn-print { background: #1F4E79; color: white; }
+    .btn-retour { background: #888; color: white; }
+    .entete-pharma { border-bottom: 2px solid #1F4E79; padding-bottom: 16px; margin-bottom: 36px; }
+    .entete-pharma h1 { color: #1F4E79; font-size: 1.4em; font-family: Arial, sans-serif; }
+    .entete-pharma p { color: #555; font-size: 0.9em; margin-top: 4px; }
+    .titre { text-align: center; font-size: 1.5em; font-weight: bold; letter-spacing: 1px; margin: 30px 0 40px; text-decoration: underline; }
+    .corps { line-height: 2; font-size: 1.05em; text-align: justify; }
+    .corps strong { color: #1F4E79; }
+    .signature { margin-top: 60px; text-align: right; line-height: 1.8; }
+    .mention { margin-top: 50px; font-size: 0.82em; color: #777; font-style: italic; }
+    @media print {
+      body { background: white; padding: 0; }
+      .barre { display: none; }
+      .feuille { box-shadow: none; max-width: 100%; padding: 30px 40px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="barre">
+    <button class="btn btn-print" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+    <a class="btn btn-retour" href="/admin/employe?email={{ emp.email|urlencode }}">← Retour au dossier</a>
+  </div>
+
+  <div class="feuille">
+    <div class="entete-pharma">
+      <h1>Pharmacie Apothical</h1>
+      <p>Nanterre Université</p>
+    </div>
+
+    <div class="titre">ATTESTATION DE TRAVAIL</div>
+
+    <div class="corps">
+      <p>Je soussigné(e), responsable de la <strong>Pharmacie Apothical Nanterre Université</strong>,
+      atteste que <strong>{{ emp.prenom }} {{ emp.nom }}</strong>
+      {% if profil.poste %}occupe le poste de <strong>{{ profil.poste }}</strong>{% else %}fait partie de notre personnel{% endif %}
+      au sein de notre établissement{% if profil.type_contrat %} dans le cadre d'un contrat de type <strong>{{ profil.type_contrat }}</strong>{% endif %}{% if profil.date_entree %},
+      depuis le <strong>{{ profil.date_entree }}</strong>{% endif %}.</p>
+
+      <p>La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.</p>
+    </div>
+
+    <div class="signature">
+      Fait à Nanterre, le {{ today }}.<br><br><br>
+      Signature et cachet de l'employeur
+    </div>
+
+    <div class="mention">
+      Document généré automatiquement par botRh — à vérifier et signer avant remise.
+    </div>
+  </div>
+</body>
+</html>

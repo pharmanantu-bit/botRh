@@ -73,19 +73,63 @@
     .chk-ok { background:#C6EFCE; color:#276221; }
     .chk-ko { background:#FFD6D6; color:#9C0006; }
     .sum-manque { color:#9C0006; font-size:0.82em; font-weight:normal; }
+
+    /* En-tête identité (photo + contacts) */
+    .entete-id { display:flex; align-items:center; gap:16px; }
+    .photo-wrap { flex-shrink:0; }
+    .photo-emp { width:64px; height:64px; border-radius:50%; object-fit:cover; border:2px solid #dde3ed; }
+    .photo-init { width:64px; height:64px; border-radius:50%; background:#1F4E79; color:white; display:flex; align-items:center; justify-content:center; font-size:1.4em; font-weight:bold; }
+    .contacts { margin-top:4px; display:flex; gap:14px; flex-wrap:wrap; }
+    .contacts a { color:#2E75B6; text-decoration:none; font-size:0.82em; }
+    .contacts a:hover { text-decoration:underline; }
+    .fa-attest { background:#6b5ea8; color:white; } .fa-attest:hover { background:#564a8c; }
+    .photo-form { display:flex; gap:8px; align-items:center; padding:0 0 14px; font-size:0.82em; color:#555; flex-wrap:wrap; }
+    .btn-photo { background:#2E75B6; color:white; border:none; padding:6px 14px; border-radius:6px; font-size:0.85em; cursor:pointer; }
+    .btn-photo:hover { background:#1F4E79; }
+    .doc-exp { display:inline-block; margin-left:8px; background:#FFF3D6; color:#9C6500; font-size:0.74em; font-weight:bold; padding:1px 8px; border-radius:10px; white-space:nowrap; }
+
+    /* Journal RH */
+    .journal-form { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .journal-form input[type=text], .journal-form select { padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.88em; }
+    .journal-form .journal-note { flex:1; min-width:180px; }
+    .timeline { border-left:2px solid #dde3ed; margin-left:8px; }
+    .tl-item { position:relative; display:flex; align-items:center; gap:12px; padding:8px 0 8px 18px; }
+    .tl-item::before { content:''; position:absolute; left:-7px; top:14px; width:12px; height:12px; border-radius:50%; background:#2E75B6; border:2px solid white; }
+    .tl-date { font-size:0.8em; color:#888; width:90px; flex-shrink:0; }
+    .tl-contenu { flex:1; }
+    .tl-type { background:#eaf1fb; color:#1F4E79; font-size:0.8em; font-weight:bold; padding:2px 8px; border-radius:10px; margin-right:8px; }
+    .tl-note { font-size:0.88em; color:#333; }
+    .tl-suppr { background:none; border:none; cursor:pointer; opacity:0.5; font-size:0.9em; }
+    .tl-suppr:hover { opacity:1; }
   </style>
 </head>
 <body>
 {% include '_admin_nav.html' %}
 <div class="carte">
   <div class="entete">
-    <h1>{{ emp.prenom }} {{ emp.nom }} — {{ annee }}
-      {% if statut == 'archive' %}<span class="badge-archive">Archivé</span>{% endif %}
-    </h1>
+    <div class="entete-id">
+      <div class="photo-wrap">
+        {% if a_photo %}
+        <img src="/admin/employe/photo?email={{ emp.email|urlencode }}" class="photo-emp" alt="photo">
+        {% else %}
+        <div class="photo-init">{{ emp.prenom[0]|upper }}{{ emp.nom[0]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <h1>{{ emp.prenom }} {{ emp.nom }}
+          {% if statut == 'archive' %}<span class="badge-archive">Archivé</span>{% endif %}
+        </h1>
+        <div class="contacts">
+          <a href="mailto:{{ emp.email }}">✉️ {{ emp.email }}</a>
+          {% if profil.telephone %}<a href="tel:{{ profil.telephone|replace(' ','') }}">📞 {{ profil.telephone }}</a>{% endif %}
+        </div>
+      </div>
+    </div>
     <a href="/admin" class="retour">← Retour admin</a>
   </div>
 
   <div class="fiche-actions">
+    <a href="/admin/employe/attestation?email={{ emp.email|urlencode }}" target="_blank" class="fa-btn fa-attest">📄 Attestation de travail</a>
     <a href="/admin/employe/export?email={{ emp.email|urlencode }}" class="fa-btn fa-export">⬇️ Exporter le dossier (ZIP)</a>
     {% if statut == 'archive' %}
     <form method="POST" action="/admin/employe/statut" style="display:inline;">
@@ -116,6 +160,12 @@
   <!-- Dossier salarié -->
   <details class="dossier" {% if not profil.poste %}open{% endif %}>
     <summary>📁 Dossier salarié</summary>
+    <form method="POST" action="/admin/employe/photo" enctype="multipart/form-data" class="photo-form">
+      <input type="hidden" name="email" value="{{ emp.email }}">
+      <label>📷 Photo de profil :</label>
+      <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required>
+      <button type="submit" class="btn-photo">Charger</button>
+    </form>
     <form method="POST" action="/admin/employe/profil" class="profil-form">
       <input type="hidden" name="email" value="{{ emp.email }}">
       <input type="hidden" name="annee" value="{{ annee }}">
@@ -191,6 +241,7 @@
           {% endfor %}
         </select>
         <input type="text" name="libelle" placeholder="Libellé (ex: Paie mai 2026)">
+        <input type="text" name="expiration" placeholder="Expire le (jj/mm/aaaa, option.)">
         <input type="file" name="fichier" required>
         <button type="submit" class="btn-save" style="margin:0;">⬆️ Déposer</button>
       </form>
@@ -205,7 +256,9 @@
             {% for d in items %}
             <tr>
               <td><span class="doc-type">{{ d.type }}</span></td>
-              <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a></td>
+              <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a>
+                {% if d.expiration %}<span class="doc-exp">⏳ expire le {{ d.expiration }}</span>{% endif %}
+              </td>
               <td>{{ d.taille }}</td>
               <td>{{ d.date_ajout }}</td>
               <td>
@@ -224,6 +277,43 @@
       {% endfor %}
       {% else %}
       <p class="doc-vide">Aucun document pour le moment.</p>
+      {% endif %}
+    </div>
+  </details>
+
+  <!-- Journal RH -->
+  <details class="dossier" open>
+    <summary>📒 Journal RH ({{ journal|length }})</summary>
+    <div class="profil-form">
+      <form method="POST" action="/admin/employe/journal" class="journal-form">
+        <input type="hidden" name="email" value="{{ emp.email }}">
+        <input type="text" name="date" placeholder="jj/mm/aaaa">
+        <select name="type">
+          {% for t in types_evenement %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+        <input type="text" name="note" placeholder="Note / détail" class="journal-note">
+        <button type="submit" class="btn-save" style="margin:0;">➕ Ajouter</button>
+      </form>
+      {% if journal %}
+      <div class="timeline">
+        {% for ev in journal %}
+        <div class="tl-item">
+          <div class="tl-date">{{ ev.date }}</div>
+          <div class="tl-contenu">
+            <span class="tl-type">{{ ev.type }}</span>
+            {% if ev.note %}<span class="tl-note">{{ ev.note }}</span>{% endif %}
+          </div>
+          <form method="POST" action="/admin/employe/journal/supprimer" style="display:inline;"
+                onsubmit="return confirm('Supprimer cet événement ?');">
+            <input type="hidden" name="email" value="{{ emp.email }}">
+            <input type="hidden" name="id" value="{{ ev.id }}">
+            <button type="submit" class="tl-suppr" title="Supprimer">🗑</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="doc-vide">Aucun événement enregistré.</p>
       {% endif %}
     </div>
   </details>
