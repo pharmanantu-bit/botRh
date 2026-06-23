@@ -2,6 +2,7 @@ import json
 import os
 import csv
 import io
+import uuid
 import hashlib
 from datetime import datetime
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
@@ -22,6 +23,8 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "botRh-admin-2026")
+# Limite de taille des fichiers uploadés (documents RH) : 12 Mo.
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
 # Journalisation des erreurs dans logs/erreurs.log (Flask y écrit aussi
 # automatiquement les exceptions non gérées) — consultable via /admin/erreurs.
@@ -396,6 +399,33 @@ def sauvegarder_profils(profils):
 
 def profil_de(email):
     return charger_profils().get(email, {})
+
+
+# --- Documents RH (privés admin, stockés sur disque, gitignorés) ---
+DOCS_DIR = os.path.join(BASE_DIR, "documents_rh")
+DOCS_INDEX = os.path.join(DOCS_DIR, "index.json")
+EXT_DOCS_OK = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".doc"}
+TYPES_DOCS = ["Bulletin de paie", "Contrat / avenant", "Attestation", "Autre / divers"]
+
+def charger_docs_index():
+    if os.path.exists(DOCS_INDEX):
+        with open(DOCS_INDEX, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def sauvegarder_docs_index(idx):
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    with open(DOCS_INDEX, "w", encoding="utf-8") as f:
+        json.dump(idx, f, ensure_ascii=False, indent=2)
+
+def docs_de(email):
+    return charger_docs_index().get(email, [])
+
+def humaniser_taille(octets):
+    for unite in ("o", "Ko", "Mo"):
+        if octets < 1024 or unite == "Mo":
+            return f"{octets:.0f} {unite}" if unite == "o" else f"{octets:.1f} {unite}"
+        octets /= 1024
 
 
 @app.route("/admin/employes", methods=["GET", "POST"])
@@ -874,7 +904,79 @@ def admin_employe():
     return render_template("admin_employe.html", emp=emp, annee=annee, mois_data=mois_data,
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
                            cumul_solde=round(cp - cm, 2),
-                           profil=profil_de(email), champs_profil=CHAMPS_PROFIL)
+                           profil=profil_de(email), champs_profil=CHAMPS_PROFIL,
+                           documents=docs_de(email), types_docs=TYPES_DOCS,
+                           doc_err=request.args.get("doc_err"))
+
+
+@app.route("/admin/employe/document", methods=["POST"])
+def admin_employe_document():
+    """Dépose un document RH (privé admin) rattaché à un employé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    f = request.files.get("fichier")
+    if not f or not f.filename:
+        return redirect(url_for("admin_employe", email=email, doc_err="vide"))
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in EXT_DOCS_OK:
+        return redirect(url_for("admin_employe", email=email, doc_err="type"))
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    doc_id = uuid.uuid4().hex[:12]
+    stored = f"{doc_id}_{secure_filename(f.filename)}"
+    chemin = os.path.join(DOCS_DIR, stored)
+    f.save(chemin)
+    idx = charger_docs_index()
+    idx.setdefault(email, []).append({
+        "id": doc_id,
+        "fichier": stored,
+        "nom_original": f.filename,
+        "type": request.form.get("type", "Autre / divers"),
+        "libelle": request.form.get("libelle", "").strip() or f.filename,
+        "taille": humaniser_taille(os.path.getsize(chemin)),
+        "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+    })
+    sauvegarder_docs_index(idx)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/document/<doc_id>")
+def admin_document(doc_id):
+    """Télécharge un document RH (admin uniquement)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    for docs in charger_docs_index().values():
+        for d in docs:
+            if d["id"] == doc_id:
+                chemin = os.path.join(DOCS_DIR, d["fichier"])
+                if os.path.exists(chemin):
+                    return send_file(chemin, as_attachment=True, download_name=d["nom_original"])
+    abort(404)
+
+
+@app.route("/admin/employe/document/supprimer", methods=["POST"])
+def admin_employe_document_supprimer():
+    """Supprime un document RH précis (action admin explicite)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    doc_id = request.form.get("id", "")
+    idx = charger_docs_index()
+    docs = idx.get(email, [])
+    cible = next((d for d in docs if d["id"] == doc_id), None)
+    if cible:
+        chemin = os.path.join(DOCS_DIR, cible["fichier"])
+        try:
+            if os.path.exists(chemin):
+                os.remove(chemin)
+        except OSError:
+            app.logger.exception("Échec suppression fichier document RH")
+        idx[email] = [d for d in docs if d["id"] != doc_id]
+        sauvegarder_docs_index(idx)
+    return redirect(url_for("admin_employe", email=email))
 
 
 @app.route("/admin/employe/profil", methods=["POST"])
