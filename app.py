@@ -295,6 +295,16 @@ def admin():
     if not session.get("admin"):
         return render_template("admin_login.html", erreur=False)
 
+    # Page d'accueil = tableau de bord
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/mois")
+def admin_mois():
+    """Vue mensuelle : relevés + planning d'un mois, navigable mois par mois."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+
     mois_courant, annee_courante = datetime.now().month, datetime.now().year
     mois = int(request.args.get("mois", mois_courant))
     annee = int(request.args.get("annee", annee_courante))
@@ -1054,7 +1064,7 @@ def admin_planning():
                 "jours": int(jours) if jours.isdigit() else 0,
             }
         sauvegarder_planning(nouveau)
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_mois"))
 
     return render_template("admin_planning.html", employes=employes, planning=planning,
                            mois_annee=f"{MOIS_FR[mois]} {annee}", img_url=img_url)
@@ -1124,7 +1134,7 @@ def admin_valider():
                     datetime.now().strftime("%d/%m/%Y %H:%M") if valide else "")
                 ecrire_reponses(reponses)
                 break
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin_mois"))
 
 
 @app.route("/admin/employe")

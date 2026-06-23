@@ -104,10 +104,10 @@
 
   <!-- Navigation mois -->
   <div class="mois-nav">
-    <a class="mn-btn" href="/admin?mois={{ nav_prec.mois }}&annee={{ nav_prec.annee }}">‹ Mois précédent</a>
+    <a class="mn-btn" href="/admin/mois?mois={{ nav_prec.mois }}&annee={{ nav_prec.annee }}">‹ Mois précédent</a>
     <span class="mn-courant">{{ mois_annee }}{% if not est_courant %} · lecture seule{% endif %}</span>
     {% if nav_suiv %}
-    <a class="mn-btn" href="/admin?mois={{ nav_suiv.mois }}&annee={{ nav_suiv.annee }}">Mois suivant ›</a>
+    <a class="mn-btn" href="/admin/mois?mois={{ nav_suiv.mois }}&annee={{ nav_suiv.annee }}">Mois suivant ›</a>
     {% else %}
     <span class="mn-btn mn-disabled">Mois suivant ›</span>
     {% endif %}

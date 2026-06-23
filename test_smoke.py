@@ -46,15 +46,15 @@ routes_publiques = [
     ("/export_reponses?cle=mauvaise", 403),
 ]
 routes_admin = [
-    "/admin", f"/admin?mois={mois}&annee={annee}", "/admin/dashboard",
+    "/admin/dashboard", "/admin/mois", f"/admin/mois?mois={mois}&annee={annee}",
     "/admin/historique", f"/admin/historique/{mois}/{annee}",
     "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")
 
-# Routes désormais fusionnées ailleurs : redirigent (302)
-routes_admin_redirect = ["/admin/absences", "/admin/synthese"]
+# Routes qui redirigent (302) : /admin -> dashboard, absences/synthese fusionnées
+routes_admin_redirect = ["/admin", "/admin/absences", "/admin/synthese"]
 
 echecs = []
 
