@@ -33,7 +33,7 @@
     <div class="actions">
       <span class="compteur">{{ repondus }} / {{ total }} réponses</span>
       <a href="/admin/historique/export/{{ mois }}/{{ annee }}" class="btn-dl">Télécharger Excel</a>
-      <a href="/admin/historique" class="btn-retour">Retour historique</a>
+      <a href="/admin/historique" class="btn-retour" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
     </div>
   </div>
 

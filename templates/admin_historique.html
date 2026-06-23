@@ -28,7 +28,7 @@
 <div class="carte">
   <div class="entete">
     <h1>Historique des relevés</h1>
-    <a href="/admin" class="btn-retour">Retour admin</a>
+    <a href="/admin/mois" class="btn-retour" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
   </div>
 
   {% if historique %}

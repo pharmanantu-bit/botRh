@@ -90,7 +90,7 @@
     </table>
 
     <div style="margin-top: 20px;">
-      <a href="/admin" class="btn-retour">Retour</a>
+      <a href="/admin/mois" class="btn-retour" onclick="if(history.length>1){history.back();return false;}">Retour</a>
       <button type="submit" class="btn">Enregistrer le planning</button>
       <button type="submit" formaction="/admin/planning/reset" formnovalidate
               onclick="return confirm('Réinitialiser tout le remplissage du planning ? Les valeurs saisies seront effacées.');"
