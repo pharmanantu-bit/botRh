@@ -1,10 +1,9 @@
-<!-- Menu latéral coulissant (off-canvas) — inclus sur toutes les pages admin -->
-<button class="nav-burger" onclick="toggleNav()" aria-label="Ouvrir le menu">☰</button>
-<div class="nav-backdrop" id="navBackdrop" onclick="toggleNav()"></div>
+<!-- Barre latérale fixe repliable — incluse sur toutes les pages admin -->
+<button class="nav-burger" onclick="toggleNav()" aria-label="Afficher le menu">☰</button>
 <nav class="nav-drawer" id="navDrawer" aria-label="Navigation admin">
   <div class="nav-head">
     <span class="nav-logo">💊 botRh</span>
-    <button class="nav-close" onclick="toggleNav()" aria-label="Fermer">&times;</button>
+    <button class="nav-close" onclick="toggleNav()" aria-label="Replier le menu" title="Replier">«</button>
   </div>
   <a href="/admin/dashboard">📊 <span>Tableau de bord</span></a>
   <a href="/admin/mois">🏠 <span>Relevés du mois</span></a>
@@ -13,32 +12,33 @@
 </nav>
 
 <style>
-  /* Réserve une gouttière à gauche pour le bouton ☰ (sans chevaucher les titres) */
-  body { padding-left: 72px; }
-  @media print { body { padding-left: 20px; } }
+  /* Barre visible par défaut : le contenu est décalé à droite */
+  body { padding-left: 240px; transition: padding-left 0.22s ease; }
+  body.nav-collapse { padding-left: 56px; }
+  @media print { body { padding-left: 0 !important; } }
+  .no-trans, .no-trans * { transition: none !important; }
+
   .nav-burger {
-    position: fixed; top: 14px; left: 16px; z-index: 1100;
-    width: 42px; height: 42px; border: none; border-radius: 10px;
+    position: fixed; top: 14px; left: 10px; z-index: 1102; display: none;
+    width: 40px; height: 40px; border: none; border-radius: 10px;
     background: #1F4E79; color: white; font-size: 1.2em; cursor: pointer;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2); line-height: 1;
   }
   .nav-burger:hover { background: #163d60; }
-  .nav-backdrop {
-    position: fixed; inset: 0; background: rgba(31,78,121,0.4);
-    z-index: 1100; opacity: 0; visibility: hidden; transition: opacity 0.25s;
-  }
-  .nav-backdrop.ouvert { opacity: 1; visibility: visible; }
+  body.nav-collapse .nav-burger { display: block; }
+
   .nav-drawer {
     position: fixed; top: 0; left: 0; height: 100%; width: 240px; z-index: 1101;
     background: #1F4E79; color: white; padding: 14px 0;
-    transform: translateX(-100%); transition: transform 0.25s ease;
-    box-shadow: 4px 0 20px rgba(0,0,0,0.25); overflow-y: auto;
+    transform: none; transition: transform 0.22s ease;
+    box-shadow: 2px 0 14px rgba(0,0,0,0.18); overflow-y: auto;
     display: flex; flex-direction: column;
   }
-  .nav-drawer.ouvert { transform: none; }
+  body.nav-collapse .nav-drawer { transform: translateX(-100%); }
   .nav-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15); margin-bottom: 10px; }
   .nav-logo { font-size: 1.15em; font-weight: bold; letter-spacing: 0.5px; }
-  .nav-close { background: none; border: none; color: white; font-size: 1.6em; cursor: pointer; line-height: 1; }
+  .nav-close { background: rgba(255,255,255,0.12); border: none; color: white; font-size: 1.2em; cursor: pointer; line-height: 1; width: 28px; height: 28px; border-radius: 6px; }
+  .nav-close:hover { background: rgba(255,255,255,0.25); }
   .nav-drawer a {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 20px; color: #dce6f2; text-decoration: none;
@@ -48,31 +48,32 @@
   .nav-drawer a:hover { background: rgba(255,255,255,0.1); color: white; }
   .nav-drawer a.actif { background: #fff; color: #1F4E79; font-weight: bold; }
   .nav-drawer a.actif span { font-weight: bold; }
-  .nav-sep { height: 1px; background: rgba(255,255,255,0.15); margin: 10px 16px; }
   .nav-logout { color: #ffd5d5 !important; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.15); }
   .nav-logout:hover { background: rgba(255,255,255,0.12); }
-  @media print { .nav-burger, .nav-drawer, .nav-backdrop { display: none !important; } }
+  @media print { .nav-burger, .nav-drawer { display: none !important; } }
 </style>
 
 <script>
   function toggleNav() {
-    document.getElementById('navDrawer').classList.toggle('ouvert');
-    document.getElementById('navBackdrop').classList.toggle('ouvert');
+    var col = document.body.classList.toggle('nav-collapse');
+    try { localStorage.setItem('navCollapse', col ? '1' : '0'); } catch (e) {}
   }
-  // Surligne le lien de la page courante
   (function () {
+    // Restaure l'état (replié/ouvert) sans animation au chargement
+    try {
+      if (localStorage.getItem('navCollapse') === '1') {
+        document.body.classList.add('no-trans', 'nav-collapse');
+        requestAnimationFrame(function () { document.body.classList.remove('no-trans'); });
+      }
+    } catch (e) {}
+    // Surligne le lien de la page courante
     var path = window.location.pathname.replace(/\/+$/, '') || '/admin';
-    var liens = document.querySelectorAll('.nav-drawer a');
-    var meilleur = null;
-    liens.forEach(function (a) {
-      var href = a.getAttribute('href');
-      if (path === href) meilleur = a;
-      else if (href !== '/admin' && path.indexOf(href) === 0 && (!meilleur || href.length > meilleur.getAttribute('href').length)) meilleur = a;
+    var best = null;
+    document.querySelectorAll('.nav-drawer a').forEach(function (a) {
+      var h = a.getAttribute('href');
+      if (path === h) best = a;
+      else if (h !== '/admin' && path.indexOf(h) === 0 && (!best || h.length > best.getAttribute('href').length)) best = a;
     });
-    if (!meilleur && path.indexOf('/admin') === 0) meilleur = document.querySelector('.nav-drawer a[href="/admin"]');
-    if (meilleur) meilleur.classList.add('actif');
+    if (best) best.classList.add('actif');
   })();
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && document.getElementById('navDrawer').classList.contains('ouvert')) toggleNav();
-  });
 </script>
