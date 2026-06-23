@@ -230,6 +230,7 @@ def envoyer():
             "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
             "mois": mois,
             "annee": annee,
+            "jours": jours_detail,
         })
     except Exception:
         app.logger.exception("Échec du déclenchement de la notification (notifier_releve)")

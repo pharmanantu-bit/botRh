@@ -46,6 +46,7 @@ date_soumission = str(p.get("date", "")).strip()
 mois = int(p.get("mois", 0) or 0)
 annee = int(p.get("annee", 0) or 0)
 mois_annee = f"{MOIS_FR.get(mois, '')} {annee}".strip()
+jours = p.get("jours") or []  # détail jour par jour : [{label, plus, moins}, ...]
 
 
 def generer_pdf():
@@ -88,6 +89,45 @@ def generer_pdf():
         ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
     ]))
     elements.append(t)
+    elements.append(Spacer(1, 0.8*cm))
+
+    # Détail jour par jour (enregistré depuis juin 2026 ; absent des relevés antérieurs)
+    sous_titre = ParagraphStyle("soustitre", parent=styles["Heading2"],
+                                fontSize=12, textColor=colors.HexColor("#1F4E79"),
+                                spaceAfter=6)
+    elements.append(Paragraph("Détail jour par jour", sous_titre))
+    if jours:
+        data = [["Jour", "H +", "H −"]]
+        tot_p = tot_m = 0.0
+        for j in jours:
+            jp = float(j.get("plus", 0) or 0)
+            jm = float(j.get("moins", 0) or 0)
+            tot_p += jp
+            tot_m += jm
+            data.append([str(j.get("label", "")),
+                         f"+{jp:g}" if jp else "—",
+                         f"-{jm:g}" if jm else "—"])
+        data.append(["Total", f"+{tot_p:g}", f"-{tot_m:g}"])
+        td = Table(data, colWidths=[8*cm, 4*cm, 4*cm])
+        td.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("TEXTCOLOR", (1, 1), (1, -2), colors.HexColor("#276221")),
+            ("TEXTCOLOR", (2, 1), (2, -2), colors.HexColor("#9C0006")),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#EAF1FB")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(td)
+    else:
+        elements.append(Paragraph(
+            "Détail jour par jour non disponible pour ce relevé.", petit))
+
     elements.append(Spacer(1, 1*cm))
     elements.append(Paragraph(
         "Pharmacie Apothical Nanterre Université — document généré automatiquement par botRh.",
