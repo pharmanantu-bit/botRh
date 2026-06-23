@@ -179,6 +179,12 @@
         <label>Poste / fonction
           <input type="text" name="poste" value="{{ profil.poste|default('') }}" placeholder="ex: Préparatrice">
         </label>
+        <label>Code opérateur
+          <input type="text" name="code_operateur" value="{{ profil.code_operateur|default('') }}" placeholder="ex: OP1234">
+        </label>
+        <label>N° RPPS
+          <input type="text" name="rpps" value="{{ profil.rpps|default('') }}" placeholder="11 chiffres">
+        </label>
         <label>Type de contrat
           <select name="type_contrat">
             {% set tc = profil.type_contrat|default('') %}

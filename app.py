@@ -406,6 +406,8 @@ PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 # Champs du profil RH (clé interne -> libellé affiché)
 CHAMPS_PROFIL = [
     ("poste", "Poste / fonction"),
+    ("code_operateur", "Code opérateur"),
+    ("rpps", "N° RPPS"),
     ("type_contrat", "Type de contrat"),
     ("date_entree", "Date d'entrée"),
     ("date_fin", "Fin de contrat (si CDD)"),
