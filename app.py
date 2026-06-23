@@ -425,17 +425,30 @@ CHAMPS_PROFIL = [
 DOCS_REQUIS = ["Contrat de travail", "RIB / coordonnées bancaires", "Pièce d'identité"]
 
 def parse_date_fr(s):
-    """Parse 'jj/mm/aaaa' (ou jj-mm-aaaa) -> date, sinon None."""
+    """Parse une date (jj/mm/aaaa, jj-mm-aaaa, ou ISO aaaa-mm-jj) -> date, sinon None."""
     if not s:
         return None
-    s = s.strip().replace("-", "/").replace(".", "/")
+    s = s.strip()
     from datetime import datetime as _dt
-    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d.%m.%Y"):
         try:
             return _dt.strptime(s, fmt).date()
         except ValueError:
             continue
     return None
+
+def format_date_fr(s):
+    """Affiche une date stockée (ISO ou jj/mm) au format jj/mm/aaaa."""
+    d = parse_date_fr(s)
+    return f"{d:%d/%m/%Y}" if d else (s or "")
+
+def to_iso(s):
+    """Convertit une date stockée en ISO (aaaa-mm-jj) pour les champs <input type=date>."""
+    d = parse_date_fr(s)
+    return f"{d:%Y-%m-%d}" if d else ""
+
+app.jinja_env.filters["date_fr"] = format_date_fr
+app.jinja_env.filters["iso_date"] = to_iso
 
 def alertes_employe(profil):
     """Liste d'alertes/échéances d'un employé, calculées depuis son profil.
@@ -931,6 +944,21 @@ def admin_dashboard():
             if d and d.get("jours"):
                 releves_jours[f"{p}|{m}"] = d["jours"]
 
+    # Cockpit : indicateurs clés du moment (en-tête de la page d'accueil)
+    profils_ck = charger_profils()
+    actifs_ck = [e for e in employes if profils_ck.get(e["email"], {}).get("statut") != "archive"]
+    mc, ac = datetime.now().month, datetime.now().year
+    reps_mc = charger_reponses(mc, ac)
+    nb_recus = sum(1 for e in actifs_ck if reponse_de(reps_mc, e["prenom"], e["email"]))
+    cockpit = {
+        "mois_nom": f"{MOIS_FR[mc]} {ac}",
+        "nb_actifs": len(actifs_ck),
+        "nb_recus": nb_recus,
+        "nb_attente": len(actifs_ck) - nb_recus,
+        "nb_alertes": sum(len(alertes_completes(e["email"], profils_ck.get(e["email"], {}))) for e in actifs_ck),
+        "nb_manquants": sum(len(docs_manquants(e["email"])) for e in actifs_ck),
+    }
+
     return render_template("admin_dashboard.html",
         employes=employes,
         donnees=donnees,
@@ -941,6 +969,7 @@ def admin_dashboard():
         annees_dispo=annees_dispo,
         classement_abs=classement_abs,
         releves_jours=releves_jours,
+        cockpit=cockpit,
     )
 
 
@@ -1717,6 +1746,8 @@ def export_backup():
         "employes": charger_employes(),
         "reponses": {},
         "planning": {},
+        "profils_rh": charger_profils(),
+        "documents_index": charger_docs_index(),
     }
     for fichier in os.listdir(BASE_DIR):
         if fichier.endswith(".json") and (fichier.startswith("reponses_") or fichier.startswith("planning_")):

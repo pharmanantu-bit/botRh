@@ -46,7 +46,7 @@
       atteste que <strong>{{ emp.prenom }} {{ emp.nom|upper }}</strong>
       {% if profil.poste %}occupe le poste de <strong>{{ profil.poste }}</strong>{% else %}fait partie de notre personnel{% endif %}
       au sein de notre établissement{% if profil.type_contrat %} dans le cadre d'un contrat de type <strong>{{ profil.type_contrat }}</strong>{% endif %}{% if profil.date_entree %},
-      depuis le <strong>{{ profil.date_entree }}</strong>{% endif %}.</p>
+      depuis le <strong>{{ profil.date_entree|date_fr }}</strong>{% endif %}.</p>
 
       <p>La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.</p>
     </div>

@@ -40,7 +40,8 @@ msg["From"] = gmail_user
 msg["To"] = ADMIN_EMAIL
 msg["Subject"] = f"[Sauvegarde botRh] {horodatage}"
 msg.attach(MIMEText(
-    "Sauvegarde automatique des données botRh (employés, relevés, planning).\n\n"
+    "Sauvegarde automatique des données botRh (employés, relevés, planning, "
+    "dossiers RH et index des documents).\n\n"
     "Conservez cet e-mail : en cas de problème serveur, le fichier ZIP joint "
     "permet de restaurer les données.\n\n"
     "(Sauvegarde quotidienne automatique — botRh)", "plain", "utf-8"))

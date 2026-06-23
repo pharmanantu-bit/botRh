@@ -60,6 +60,17 @@
     .section-body { overflow: hidden; transition: max-height 0.3s ease; }
     .section-body.replié { max-height: 0 !important; }
 
+    /* Cockpit (indicateurs du moment) */
+    .cockpit { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 26px; }
+    .ck-card { text-decoration: none; border-radius: 12px; padding: 18px 16px; text-align: center; color: white; transition: transform 0.15s, box-shadow 0.15s; }
+    .ck-card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.18); }
+    .ck-v { font-size: 2em; font-weight: bold; line-height: 1; }
+    .ck-l { font-size: 0.82em; margin-top: 6px; opacity: 0.95; }
+    .ck-bleu { background: #1F4E79; }
+    .ck-orange { background: #e67e22; }
+    .ck-rouge { background: #c0392b; }
+    .ck-vert { background: #1a7a6e; }
+
     /* Cellule cliquable + détail */
     td.cell-clic { cursor: pointer; position: relative; transition: background 0.15s; }
     td.cell-clic:hover { background: #fff7e0 !important; box-shadow: inset 0 0 0 2px #f1c40f; }
@@ -123,6 +134,26 @@
       </div>
       <a href="/admin/mois" class="btn-retour">🏠 Relevés du mois</a>
     </div>
+  </div>
+
+  <!-- Cockpit : ce qui demande attention maintenant -->
+  <div class="cockpit">
+    <a class="ck-card ck-bleu" href="/admin/mois">
+      <div class="ck-v">{{ cockpit.nb_recus }}/{{ cockpit.nb_actifs }}</div>
+      <div class="ck-l">Relevés reçus — {{ cockpit.mois_nom }}</div>
+    </a>
+    <a class="ck-card {% if cockpit.nb_attente %}ck-orange{% else %}ck-vert{% endif %}" href="/admin/mois">
+      <div class="ck-v">{{ cockpit.nb_attente }}</div>
+      <div class="ck-l">Relevés en attente</div>
+    </a>
+    <a class="ck-card {% if cockpit.nb_alertes %}ck-rouge{% else %}ck-vert{% endif %}" href="/admin/employes#synthese">
+      <div class="ck-v">{{ cockpit.nb_alertes }}</div>
+      <div class="ck-l">Alertes RH à traiter</div>
+    </a>
+    <a class="ck-card {% if cockpit.nb_manquants %}ck-rouge{% else %}ck-vert{% endif %}" href="/admin/employes">
+      <div class="ck-v">{{ cockpit.nb_manquants }}</div>
+      <div class="ck-l">Documents manquants</div>
+    </a>
   </div>
 
   <!-- Stats globales -->

@@ -41,6 +41,8 @@
     .doc-upload select, .doc-upload input[type=text] { padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.88em; }
     .doc-upload input[type=text] { flex:1; min-width:160px; }
     .doc-hint { font-size:0.75em; color:#888; margin:8px 0 14px; }
+    .doc-exp-lbl { font-size:0.8em; color:#555; display:flex; align-items:center; gap:5px; white-space:nowrap; }
+    .doc-exp-lbl input { padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.88em; }
     .doc-table { width:100%; border-collapse:collapse; font-size:0.85em; margin-bottom:0; }
     .doc-table th { background:#1F4E79; color:white; padding:8px 6px; }
     .doc-table td { padding:7px 8px; border:1px solid #eee; text-align:left; vertical-align:middle; }
@@ -195,22 +197,22 @@
           </select>
         </label>
         <label>Date d'entrée
-          <input type="text" name="date_entree" value="{{ profil.date_entree|default('') }}" placeholder="jj/mm/aaaa">
+          <input type="date" name="date_entree" value="{{ profil.date_entree|iso_date }}">
         </label>
         <label>Fin de contrat (si CDD)
-          <input type="text" name="date_fin" value="{{ profil.date_fin|default('') }}" placeholder="jj/mm/aaaa">
+          <input type="date" name="date_fin" value="{{ profil.date_fin|iso_date }}">
         </label>
         <label>Fin de période d'essai
-          <input type="text" name="fin_essai" value="{{ profil.fin_essai|default('') }}" placeholder="jj/mm/aaaa">
+          <input type="date" name="fin_essai" value="{{ profil.fin_essai|iso_date }}">
         </label>
         <label>Prochaine visite médicale
-          <input type="text" name="visite_medicale" value="{{ profil.visite_medicale|default('') }}" placeholder="jj/mm/aaaa">
+          <input type="date" name="visite_medicale" value="{{ profil.visite_medicale|iso_date }}">
         </label>
         <label>Téléphone
           <input type="text" name="telephone" value="{{ profil.telephone|default('') }}" placeholder="06 ..">
         </label>
         <label>Date de naissance
-          <input type="text" name="naissance" value="{{ profil.naissance|default('') }}" placeholder="jj/mm/aaaa">
+          <input type="date" name="naissance" value="{{ profil.naissance|iso_date }}">
         </label>
         <label class="large">Adresse
           <input type="text" name="adresse" value="{{ profil.adresse|default('') }}" placeholder="N°, rue, ville">
@@ -253,7 +255,7 @@
           {% endfor %}
         </select>
         <input type="text" name="libelle" placeholder="Libellé (ex: Paie mai 2026)">
-        <input type="text" name="expiration" placeholder="Expire le (jj/mm/aaaa, option.)">
+        <label class="doc-exp-lbl">Expire le <input type="date" name="expiration"></label>
         <input type="file" name="fichier" required>
         <button type="submit" class="btn-save" style="margin:0;">⬆️ Déposer</button>
       </form>
@@ -269,7 +271,7 @@
             <tr>
               <td><span class="doc-type">{{ d.type }}</span></td>
               <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a>
-                {% if d.expiration %}<span class="doc-exp">⏳ expire le {{ d.expiration }}</span>{% endif %}
+                {% if d.expiration %}<span class="doc-exp">⏳ expire le {{ d.expiration|date_fr }}</span>{% endif %}
               </td>
               <td>{{ d.taille }}</td>
               <td>{{ d.date_ajout }}</td>
@@ -299,7 +301,7 @@
     <div class="profil-form">
       <form method="POST" action="/admin/employe/journal" class="journal-form">
         <input type="hidden" name="email" value="{{ emp.email }}">
-        <input type="text" name="date" placeholder="jj/mm/aaaa">
+        <input type="date" name="date" title="Date de l'événement">
         <select name="type">
           {% for t in types_evenement %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
         </select>
@@ -310,7 +312,7 @@
       <div class="timeline">
         {% for ev in journal %}
         <div class="tl-item">
-          <div class="tl-date">{{ ev.date }}</div>
+          <div class="tl-date">{{ ev.date|date_fr }}</div>
           <div class="tl-contenu">
             <span class="tl-type">{{ ev.type }}</span>
             {% if ev.note %}<span class="tl-note">{{ ev.note }}</span>{% endif %}
