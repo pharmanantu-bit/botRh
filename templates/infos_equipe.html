@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infos Équipe — Apothical</title>
+  <style>
+    @page { size: A4 landscape; margin: 1cm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; background: #e9eef0; padding: 16px; color: #222; }
+    .feuille { background: white; max-width: 1180px; margin: 0 auto; padding: 26px 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+
+    .barre-haut { display: flex; align-items: center; gap: 8px; border-bottom: 2px solid #2f7d4f; padding-bottom: 8px; font-size: 0.92em; }
+    .puce { width: 12px; height: 12px; border-radius: 50%; background: #2f7d4f; display: inline-block; }
+    .barre-haut .marque { font-weight: bold; color: #2f7d4f; letter-spacing: 0.5px; }
+    .barre-haut .ie { color: #2f7d4f; font-weight: bold; }
+    .barre-haut .maj { color: #777; }
+
+    h1 { color: #2f7d4f; font-size: 1.45em; margin: 18px 0 14px; }
+    h1 .nb { color: #4f9d63; font-weight: normal; font-size: 0.7em; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+    thead th { background: #3a7d4f; color: white; padding: 9px 8px; text-align: left; font-size: 0.95em; border: 1px solid #ffffff; }
+    tbody td { padding: 8px; border: 1px solid #e3e9e3; vertical-align: middle; }
+    tbody tr:nth-child(even) td { background: #f6faf6; }
+    td.nom { font-weight: bold; background: #eef4ee; color: #1f3d2a; }
+    td.op { text-align: center; }
+    td.poste { text-align: center; font-weight: bold; border-radius: 0; }
+    .p-titulaire { background: #1e5631 !important; color: white; }
+    .p-pharmacien { background: #4f9d63 !important; color: white; }
+    .p-autre { color: #3a7d4f; font-weight: 600; }
+
+    .legende { margin-top: 16px; font-size: 0.78em; color: #555; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .lg { padding: 2px 10px; border-radius: 4px; font-weight: bold; font-size: 0.92em; }
+    .lg-tit { background: #1e5631; color: white; }
+    .lg-pha { background: #4f9d63; color: white; }
+    .pied { text-align: center; color: #999; font-size: 0.78em; margin-top: 20px; border-top: 1px solid #eee; padding-top: 8px; }
+
+    .barre-actions { max-width: 1180px; margin: 0 auto 14px; display: flex; gap: 10px; }
+    .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9em; font-weight: bold; text-decoration: none; }
+    .btn-print { background: #2f7d4f; color: white; }
+    .btn-retour { background: #888; color: white; }
+
+    @media print {
+      body { background: white; padding: 0; }
+      .barre-actions { display: none; }
+      .feuille { box-shadow: none; max-width: 100%; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="barre-actions">
+    <button class="btn btn-print" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF (paysage)</button>
+    <a class="btn btn-retour" href="/admin/employes" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
+  </div>
+
+  <div class="feuille">
+    <div class="barre-haut">
+      <span class="puce"></span>
+      <span class="marque">APOTHICAL</span> <span class="ie">— INFOS ÉQUIPE</span>
+      <span class="maj">| Mise à jour : {{ maj }}</span>
+    </div>
+
+    <h1>LISTING DE L'ÉQUIPE <span class="nb">— {{ nb }} collaborateur{{ 's' if nb > 1 else '' }}</span></h1>
+
+    <table>
+      <thead>
+        <tr>
+          <th>NOM</th><th>PRÉNOM</th><th>Op.</th><th>PORTABLE</th>
+          <th>E-MAIL</th><th>RPPS</th><th>POSTE</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in equipe %}
+        <tr>
+          <td class="nom">{{ c.nom|upper }}</td>
+          <td>{{ c.prenom }}</td>
+          <td class="op">{{ c.op }}</td>
+          <td>{{ c.tel }}</td>
+          <td>{{ c.email }}</td>
+          <td>{{ c.rpps }}</td>
+          <td class="poste p-{{ c.cat }}">{{ c.poste }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="legende">
+      <strong>Légende :</strong>
+      <span class="lg lg-tit">Titulaire</span>
+      <span class="lg lg-pha">Pharmacien</span>
+      <span style="color:#3a7d4f; font-weight:600;">Autres postes en vert clair</span>
+    </div>
+
+    <div class="pied">Groupement Apothical — Document confidentiel</div>
+  </div>
+</body>
+</html>

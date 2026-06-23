@@ -701,6 +701,34 @@ def admin_employes():
                            synthese=synthese, nb_rouge=nb_rouge, nb_manquants=nb_manquants)
 
 
+@app.route("/admin/infos-equipe")
+def admin_infos_equipe():
+    """Document 'Infos Équipe' imprimable (paysage) — listing à afficher."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    profils = charger_profils()
+    equipe = []
+    for e in charger_employes():
+        profil = profils.get(e["email"], {})
+        if profil.get("statut") == "archive":
+            continue
+        poste = profil.get("poste", "")
+        pl = poste.lower()
+        cat = "titulaire" if "titulaire" in pl else ("pharmacien" if "pharmacien" in pl else "autre")
+        equipe.append({
+            "nom": e["nom"], "prenom": e["prenom"], "email": e["email"],
+            "op": profil.get("code_operateur", ""),
+            "tel": profil.get("telephone", ""),
+            "rpps": profil.get("rpps", ""),
+            "poste": poste, "cat": cat,
+        })
+    # Pharmaciens en tête, autres au milieu, titulaires à la fin (comme le modèle)
+    ordre = {"pharmacien": 0, "autre": 1, "titulaire": 2}
+    equipe.sort(key=lambda x: ordre.get(x["cat"], 1))
+    maj = f"{datetime.now().day} {MOIS_FR[datetime.now().month]} {datetime.now().year}"
+    return render_template("infos_equipe.html", equipe=equipe, maj=maj, nb=len(equipe))
+
+
 @app.route("/mon-espace")
 def mon_espace():
     token = request.args.get("token", "")
