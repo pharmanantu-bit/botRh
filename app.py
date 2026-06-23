@@ -868,6 +868,30 @@ def admin_planning():
                            mois_annee=f"{MOIS_FR[mois]} {annee}", img_url=img_url)
 
 
+@app.route("/admin/planning/supprimer-image", methods=["POST"])
+def admin_planning_supprimer_image():
+    """Supprime l'image de planning chargée pour le mois en cours."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    mois, annee = datetime.now().month, datetime.now().year
+    img_path = os.path.join(UPLOAD_FOLDER, f"planning_{mois}_{annee}.png")
+    try:
+        if os.path.exists(img_path):
+            os.remove(img_path)
+    except OSError:
+        app.logger.exception("Échec suppression image planning")
+    return redirect(url_for("admin_planning"))
+
+
+@app.route("/admin/planning/reset", methods=["POST"])
+def admin_planning_reset():
+    """Réinitialise le remplissage du planning (les données saisies) du mois en cours."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    sauvegarder_planning({})
+    return redirect(url_for("admin_planning"))
+
+
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("admin", None)
