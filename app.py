@@ -501,7 +501,16 @@ def admin_employes():
 
         employes = charger_employes()
 
-    return render_template("admin_employes.html", employes=employes, message=message)
+    # Enrichit chaque employé (poste + nb de documents) pour les cartes
+    profils = charger_profils()
+    idx_docs = charger_docs_index()
+    employes_info = [{
+        **e,
+        "poste": profils.get(e["email"], {}).get("poste", ""),
+        "nb_docs": len(idx_docs.get(e["email"], [])),
+    } for e in employes]
+
+    return render_template("admin_employes.html", employes=employes_info, message=message)
 
 
 @app.route("/mon-espace")

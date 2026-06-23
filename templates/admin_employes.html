@@ -7,32 +7,51 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
-    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 800px; margin: 0 auto; }
-    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1000px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
     h1 { color: #1F4E79; font-size: 1.3em; }
     .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
     .message { background: #C6EFCE; color: #276221; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9em; }
 
-    /* Formulaire ajout */
-    .form-ajout { background: #f5f8fc; border: 1px solid #dde3ed; border-radius: 10px; padding: 20px; margin-bottom: 28px; }
-    .form-ajout h2 { color: #1F4E79; font-size: 1em; margin-bottom: 14px; }
-    .form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    /* Formulaire ajout (repliable) */
+    details.form-ajout { background: #f5f8fc; border: 1px solid #dde3ed; border-radius: 10px; margin-bottom: 26px; }
+    details.form-ajout summary { cursor: pointer; padding: 14px 18px; font-weight: bold; color: #1F4E79; font-size: 0.95em; user-select: none; }
+    details.form-ajout summary:hover { background: #eef4fb; border-radius: 10px; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; padding: 0 18px 18px; }
     .form-row input { flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
     .btn-ajouter { padding: 8px 20px; background: #1F4E79; color: white; border: none; border-radius: 6px; font-size: 0.9em; font-weight: bold; cursor: pointer; }
     .btn-ajouter:hover { background: #163d60; }
 
-    /* Tableau employés */
-    table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
-    th { background: #1F4E79; color: white; padding: 10px 8px; text-align: left; }
-    tr:nth-child(even) td { background: #f5f8fc; }
-    td { padding: 8px; border: 1px solid #ddd; vertical-align: middle; }
-    .btn-dossier { background: #1a7a6e; color: white; padding: 5px 12px; border-radius: 4px; font-size: 0.8em; text-decoration: none; font-weight: bold; }
-    .btn-dossier:hover { background: #145f56; }
-    .btn-edit { background: #2E75B6; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
-    .btn-del { background: #c0392b; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; margin-left: 4px; }
+    /* Recherche */
+    #recherche { width: 100%; padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95em; margin-bottom: 18px; }
+
+    /* Grille de cartes */
+    .grille-emp { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+    .carte-emp {
+      position: relative; background: white; border: 1px solid #e3e9f0; border-radius: 12px;
+      padding: 20px 16px 14px; text-align: center; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    .carte-emp:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(31,78,121,0.16); border-color: #2E75B6; }
+    .avatar {
+      width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 1.4em; font-weight: bold; letter-spacing: 1px;
+    }
+    .carte-emp .nom { font-weight: bold; color: #1F4E79; font-size: 1.02em; }
+    .carte-emp .poste { color: #2E75B6; font-size: 0.85em; margin-top: 2px; min-height: 1em; }
+    .carte-emp .email { color: #888; font-size: 0.78em; margin-top: 6px; word-break: break-all; }
+    .carte-emp .docs { display: inline-block; margin-top: 10px; background: #eaf1fb; color: #1F4E79; font-size: 0.78em; font-weight: bold; padding: 3px 10px; border-radius: 12px; }
+    .carte-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+    .btn-edit { background: #2E75B6; color: white; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+    .btn-edit:hover { background: #1F4E79; }
+    .btn-del { background: #fff; color: #c0392b; border: 1px solid #e3b3ad; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+    .btn-del:hover { background: #c0392b; color: white; }
+    .ouvrir-hint { position: absolute; top: 10px; right: 12px; color: #c3d2e6; font-size: 0.9em; }
+    .vide { text-align: center; color: #888; padding: 30px; font-style: italic; }
 
     /* Modal modification */
-    .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; }
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:2000; align-items:center; justify-content:center; }
     .modal.actif { display:flex; }
     .modal-box { background:white; border-radius:12px; padding:28px; max-width:420px; width:90%; }
     .modal-box h2 { color:#1F4E79; font-size:1em; margin-bottom:16px; }
@@ -54,9 +73,9 @@
   <div class="message">{{ message }}</div>
   {% endif %}
 
-  <!-- Formulaire ajout -->
-  <div class="form-ajout">
-    <h2>Ajouter un employé</h2>
+  <!-- Formulaire ajout (repliable) -->
+  <details class="form-ajout">
+    <summary>➕ Ajouter un employé</summary>
     <form method="POST" action="/admin/employes">
       <input type="hidden" name="action" value="ajouter">
       <div class="form-row">
@@ -66,32 +85,38 @@
         <button type="submit" class="btn-ajouter">Ajouter</button>
       </div>
     </form>
-  </div>
+  </details>
 
-  <!-- Liste employés -->
-  <table>
-    <thead>
-      <tr><th>Prénom</th><th>Nom</th><th>Email</th><th>Actions</th></tr>
-    </thead>
-    <tbody>
-      {% for emp in employes %}
-      <tr>
-        <td>{{ emp.prenom }}</td>
-        <td>{{ emp.nom }}</td>
-        <td>{{ emp.email }}</td>
-        <td>
-          <a class="btn-dossier" href="/admin/employe?email={{ emp.email|urlencode }}">📁 Dossier</a>
-          <button class="btn-edit" onclick="ouvrirModal('{{ emp.prenom }}','{{ emp.nom }}','{{ emp.email }}')">Modifier</button>
-          <form method="POST" action="/admin/employes" style="display:inline;" onsubmit="return confirm('Supprimer {{ emp.prenom }} {{ emp.nom }} ?')">
-            <input type="hidden" name="action" value="supprimer">
-            <input type="hidden" name="email" value="{{ emp.email }}">
-            <button type="submit" class="btn-del">Supprimer</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <input type="text" id="recherche" placeholder="Rechercher un employé..." oninput="filtrer()">
+
+  <!-- Grille de cartes employés -->
+  {% set couleurs = ['#1F4E79','#2E75B6','#1a7a6e','#6b5ea8','#c0392b','#e67e22','#16a085','#8e44ad'] %}
+  <div class="grille-emp" id="grille">
+    {% for emp in employes %}
+    <div class="carte-emp" data-nom="{{ emp.prenom }} {{ emp.nom }}"
+         onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
+      <span class="ouvrir-hint">›</span>
+      <div class="avatar" style="background:{{ couleurs[loop.index0 % couleurs|length] }}">
+        {{ emp.prenom[0]|upper }}{{ emp.nom[0]|upper }}
+      </div>
+      <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
+      <div class="poste">{{ emp.poste or '—' }}</div>
+      <div class="email">{{ emp.email }}</div>
+      <div class="docs">📎 {{ emp.nb_docs }} document{{ 's' if emp.nb_docs != 1 else '' }}</div>
+      <div class="carte-actions">
+        <button class="btn-edit" onclick="event.stopPropagation(); ouvrirModal('{{ emp.prenom }}','{{ emp.nom }}','{{ emp.email }}')">Modifier</button>
+        <form method="POST" action="/admin/employes" style="display:inline;"
+              onclick="event.stopPropagation();"
+              onsubmit="return confirm('Supprimer {{ emp.prenom }} {{ emp.nom }} ?')">
+          <input type="hidden" name="action" value="supprimer">
+          <input type="hidden" name="email" value="{{ emp.email }}">
+          <button type="submit" class="btn-del">Supprimer</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="vide" id="aucun" style="display:none;">Aucun employé ne correspond.</div>
 </div>
 
 <!-- Modal modification -->
@@ -126,6 +151,17 @@ function fermerModal() {
 document.getElementById('modal').addEventListener('click', function(e) {
   if (e.target === this) fermerModal();
 });
+function filtrer() {
+  var q = document.getElementById('recherche').value.toLowerCase();
+  var cartes = document.querySelectorAll('.carte-emp');
+  var visibles = 0;
+  cartes.forEach(function(c) {
+    var ok = c.dataset.nom.toLowerCase().includes(q);
+    c.style.display = ok ? '' : 'none';
+    if (ok) visibles++;
+  });
+  document.getElementById('aucun').style.display = visibles ? 'none' : 'block';
+}
 </script>
 </body>
 </html>
