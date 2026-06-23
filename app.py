@@ -219,6 +219,8 @@ def envoyer():
     })
 
     try:
+        # NB : repository_dispatch limite client_payload à 10 propriétés max.
+        # On regroupe donc mois+annee dans "periode" pour rester sous la limite.
         notifier_releve({
             "prenom": prenom,
             "email": emp["email"],
@@ -228,8 +230,7 @@ def envoyer():
             "date_signature": date_signature,
             "signature": signature,
             "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "mois": mois,
-            "annee": annee,
+            "periode": [mois, annee],
             "jours": jours_detail,
         })
     except Exception:

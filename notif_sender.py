@@ -43,8 +43,11 @@ commentaire = str(p.get("commentaire", "")).strip() or "aucun"
 date_signature = str(p.get("date_signature", "")).strip()
 signature = str(p.get("signature", "")).strip()
 date_soumission = str(p.get("date", "")).strip()
-mois = int(p.get("mois", 0) or 0)
-annee = int(p.get("annee", 0) or 0)
+# "periode" = [mois, annee] (format compact pour rester sous la limite de 10
+# propriétés du repository_dispatch) ; repli sur les anciennes clés mois/annee.
+periode = p.get("periode") or [p.get("mois", 0), p.get("annee", 0)]
+mois = int((periode[0] if len(periode) > 0 else 0) or 0)
+annee = int((periode[1] if len(periode) > 1 else 0) or 0)
 mois_annee = f"{MOIS_FR.get(mois, '')} {annee}".strip()
 jours = p.get("jours") or []  # détail jour par jour : [{label, plus, moins}, ...]
 
