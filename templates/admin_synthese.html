@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthèse RH</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1000px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .stats { display: flex; gap: 14px; margin-bottom: 26px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 130px; background: #f5f8fc; border: 1px solid #dde3ed; border-radius: 10px; padding: 16px; text-align: center; }
+    .stat .v { font-size: 1.8em; font-weight: bold; }
+    .stat .l { font-size: 0.78em; color: #555; margin-top: 4px; }
+    .v-rouge { color: #9C0006; } .v-orange { color: #9C6500; } .v-bleu { color: #1F4E79; }
+    .ligne-emp { border: 1px solid #e3e9f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+    .ligne-emp.urgent { border-left: 5px solid #9C0006; }
+    .le-tete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
+    .le-nom { font-weight: bold; color: #1F4E79; text-decoration: none; font-size: 1.02em; }
+    .le-nom:hover { text-decoration: underline; }
+    .le-poste { color: #888; font-size: 0.82em; }
+    .alerte { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.82em; font-weight: 500; margin: 3px 4px 0 0; }
+    .a-rouge { background: #FFE5E5; color: #9C0006; }
+    .a-orange { background: #FFF3D6; color: #9C6500; }
+    .a-info { background: #eaf1fb; color: #1F4E79; }
+    .a-manque { background: #FFD6D6; color: #9C0006; }
+    .rien { text-align: center; color: #276221; padding: 30px; font-size: 1.05em; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>📊 Synthèse RH — échéances de l'équipe</h1>
+    <a href="/admin/employes" class="btn-retour">← Employés</a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="v v-bleu">{{ nb_concernes }}</div><div class="l">Employés à suivre</div></div>
+    <div class="stat"><div class="v v-rouge">{{ nb_rouge }}</div><div class="l">Alertes urgentes</div></div>
+    <div class="stat"><div class="v v-orange">{{ nb_alertes }}</div><div class="l">Alertes au total</div></div>
+    <div class="stat"><div class="v v-rouge">{{ nb_manquants }}</div><div class="l">Documents manquants</div></div>
+  </div>
+
+  {% if lignes %}
+  {% for l in lignes %}
+  <div class="ligne-emp {% if l.a_rouge %}urgent{% endif %}">
+    <div class="le-tete">
+      <a class="le-nom" href="/admin/employe?email={{ l.email|urlencode }}">{{ l.prenom }} {{ l.nom }}</a>
+      <span class="le-poste">{{ l.poste or '' }}</span>
+    </div>
+    <div>
+      {% for a in l.alertes %}
+      <span class="alerte a-{{ a.niveau }}">⚠️ {{ a.texte }}</span>
+      {% endfor %}
+      {% for m in l.manquants %}
+      <span class="alerte a-manque">📋 Manque : {{ m }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="rien">✅ Rien à signaler — aucune échéance proche ni document manquant.</div>
+  {% endif %}
+</div>
+</body>
+</html>

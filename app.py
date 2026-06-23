@@ -466,6 +466,12 @@ def docs_manquants(email):
 TYPES_EVENEMENT = ["Entretien", "Augmentation", "Avertissement",
                    "Changement de poste", "Formation", "Congés", "Autre"]
 
+# Checklists d'arrivée (onboarding) et de départ (offboarding)
+TACHES_ARRIVEE = ["Contrat signé", "RIB reçu", "Badge / clés remis", "Blouse fournie",
+                  "Accès logiciel créé", "Visite médicale d'embauche", "Présentation à l'équipe"]
+TACHES_DEPART = ["Badge / clés récupérés", "Blouse rendue", "Accès logiciel désactivés",
+                 "Solde de tout compte", "Attestation employeur remise", "Certificat de travail remis"]
+
 # Dossier des photos de profil (gitignoré, données perso)
 PHOTOS_DIR = os.path.join(BASE_DIR, "photos_rh")
 
@@ -639,6 +645,7 @@ def admin_employes():
         info = {
             **e,
             "poste": profil.get("poste", ""),
+            "contrat": profil.get("type_contrat", ""),
             "nb_docs": len(idx_docs.get(e["email"], [])),
             "alertes": alertes_completes(e["email"], profil),
             "manquants": docs_manquants(e["email"]),
@@ -647,8 +654,10 @@ def admin_employes():
         }
         (archives if info["statut"] == "archive" else actifs).append(info)
 
+    postes = sorted({i["poste"] for i in actifs if i["poste"]})
+    contrats = sorted({i["contrat"] for i in actifs if i["contrat"]})
     return render_template("admin_employes.html", employes=actifs, archives=archives,
-                           message=message)
+                           message=message, postes=postes, contrats=contrats)
 
 
 @app.route("/mon-espace")
@@ -1120,7 +1129,10 @@ def admin_employe():
                            statut=profil_de(email).get("statut", "actif"),
                            journal=journal_trie(profil_de(email).get("journal", [])),
                            types_evenement=TYPES_EVENEMENT,
-                           a_photo=bool(profil_de(email).get("photo")))
+                           a_photo=bool(profil_de(email).get("photo")),
+                           taches_arrivee=TACHES_ARRIVEE, taches_depart=TACHES_DEPART,
+                           check_arrivee=profil_de(email).get("check_arrivee", []),
+                           check_depart=profil_de(email).get("check_depart", []))
 
 
 @app.route("/admin/employe/document", methods=["POST"])
@@ -1355,6 +1367,57 @@ def admin_employe_attestation():
         abort(404)
     return render_template("attestation.html", emp=emp, profil=profil_de(email),
                            today=datetime.now().strftime("%d/%m/%Y"))
+
+
+@app.route("/admin/employe/checklist", methods=["POST"])
+def admin_employe_checklist():
+    """Enregistre une checklist d'arrivée ou de départ d'un employé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    typ = request.form.get("type")
+    if typ not in ("arrivee", "depart"):
+        abort(400)
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    taches = TACHES_ARRIVEE if typ == "arrivee" else TACHES_DEPART
+    cochees = [t for t in request.form.getlist("tache") if t in taches]
+    profils = charger_profils()
+    profil = profils.get(email, {})
+    profil["check_" + typ] = cochees
+    profils[email] = profil
+    sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/synthese")
+def admin_synthese():
+    """Synthèse RH : toutes les échéances et documents manquants de l'équipe."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    profils = charger_profils()
+    lignes = []
+    for e in charger_employes():
+        profil = profils.get(e["email"], {})
+        if profil.get("statut") == "archive":
+            continue
+        al = alertes_completes(e["email"], profil)
+        manq = docs_manquants(e["email"])
+        if al or manq:
+            lignes.append({
+                "prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
+                "poste": profil.get("poste", ""),
+                "alertes": al, "manquants": manq,
+                "a_rouge": any(a["niveau"] == "rouge" for a in al),
+            })
+    lignes.sort(key=lambda l: (l["a_rouge"], len(l["alertes"]), len(l["manquants"])), reverse=True)
+    return render_template("admin_synthese.html",
+        lignes=lignes,
+        nb_concernes=len(lignes),
+        nb_alertes=sum(len(l["alertes"]) for l in lignes),
+        nb_rouge=sum(1 for l in lignes for a in l["alertes"] if a["niveau"] == "rouge"),
+        nb_manquants=sum(len(l["manquants"]) for l in lignes))
 
 
 def construire_recap_xlsx(mois, annee):

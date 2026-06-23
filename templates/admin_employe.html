@@ -101,6 +101,12 @@
     .tl-note { font-size:0.88em; color:#333; }
     .tl-suppr { background:none; border:none; cursor:pointer; opacity:0.5; font-size:0.9em; }
     .tl-suppr:hover { opacity:1; }
+
+    /* Checklists arrivée / départ */
+    .chk-cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .chk-titre { font-weight:bold; color:#1F4E79; font-size:0.9em; margin-bottom:8px; }
+    .chk-row { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:0.9em; color:#333; cursor:pointer; }
+    @media (max-width:600px){ .chk-cols { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -315,6 +321,31 @@
       {% else %}
       <p class="doc-vide">Aucun événement enregistré.</p>
       {% endif %}
+    </div>
+  </details>
+
+  <!-- Checklists arrivée / départ -->
+  <details class="dossier">
+    <summary>✅ Arrivée / Départ</summary>
+    <div class="profil-form chk-cols">
+      <form method="POST" action="/admin/employe/checklist">
+        <input type="hidden" name="email" value="{{ emp.email }}">
+        <input type="hidden" name="type" value="arrivee">
+        <div class="chk-titre">🟢 Arrivée (onboarding)</div>
+        {% for t in taches_arrivee %}
+        <label class="chk-row"><input type="checkbox" name="tache" value="{{ t }}" {% if t in check_arrivee %}checked{% endif %}> {{ t }}</label>
+        {% endfor %}
+        <button type="submit" class="btn-save" style="margin-top:10px;">💾 Enregistrer</button>
+      </form>
+      <form method="POST" action="/admin/employe/checklist">
+        <input type="hidden" name="email" value="{{ emp.email }}">
+        <input type="hidden" name="type" value="depart">
+        <div class="chk-titre">🔴 Départ (offboarding)</div>
+        {% for t in taches_depart %}
+        <label class="chk-row"><input type="checkbox" name="tache" value="{{ t }}" {% if t in check_depart %}checked{% endif %}> {{ t }}</label>
+        {% endfor %}
+        <button type="submit" class="btn-save" style="margin-top:10px;">💾 Enregistrer</button>
+      </form>
     </div>
   </details>
 

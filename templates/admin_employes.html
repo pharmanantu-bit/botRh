@@ -23,7 +23,10 @@
     .btn-ajouter:hover { background: #163d60; }
 
     /* Recherche */
-    #recherche { width: 100%; padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95em; margin-bottom: 18px; }
+    #recherche { width: 100%; padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95em; margin-bottom: 10px; }
+    .filtres { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+    .filtres select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85em; }
+    .f-check { font-size: 0.85em; color: #555; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 
     /* Grille de cartes */
     .grille-emp { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
@@ -99,12 +102,26 @@
   </details>
 
   <input type="text" id="recherche" placeholder="Rechercher un employé..." oninput="filtrer()">
+  <div class="filtres">
+    <select id="f-poste" onchange="filtrer()">
+      <option value="">Tous les postes</option>
+      {% for p in postes %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+    </select>
+    <select id="f-contrat" onchange="filtrer()">
+      <option value="">Tous les contrats</option>
+      {% for c in contrats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+    </select>
+    <label class="f-check"><input type="checkbox" id="f-alerte" onchange="filtrer()"> ⚠️ Avec alerte</label>
+    <label class="f-check"><input type="checkbox" id="f-manque" onchange="filtrer()"> 📋 Docs manquants</label>
+  </div>
 
   <!-- Grille de cartes employés -->
   {% set couleurs = ['#1F4E79','#2E75B6','#1a7a6e','#6b5ea8','#c0392b','#e67e22','#16a085','#8e44ad'] %}
   <div class="grille-emp" id="grille">
     {% for emp in employes %}
     <div class="carte-emp" data-nom="{{ emp.prenom }} {{ emp.nom }}"
+         data-poste="{{ emp.poste }}" data-contrat="{{ emp.contrat }}"
+         data-alertes="{{ emp.alertes|length }}" data-manquants="{{ emp.manquants|length }}"
          onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
       <span class="ouvrir-hint">›</span>
       {% if emp.photo %}
@@ -202,10 +219,19 @@ document.getElementById('modal').addEventListener('click', function(e) {
 });
 function filtrer() {
   var q = document.getElementById('recherche').value.toLowerCase();
-  var cartes = document.querySelectorAll('.carte-emp');
+  var fp = document.getElementById('f-poste').value;
+  var fc = document.getElementById('f-contrat').value;
+  var fa = document.getElementById('f-alerte').checked;
+  var fm = document.getElementById('f-manque').checked;
+  var cartes = document.querySelectorAll('#grille .carte-emp');
   var visibles = 0;
   cartes.forEach(function(c) {
-    var ok = c.dataset.nom.toLowerCase().includes(q);
+    var d = c.dataset;
+    var ok = d.nom.toLowerCase().includes(q)
+      && (!fp || d.poste === fp)
+      && (!fc || d.contrat === fc)
+      && (!fa || parseInt(d.alertes) > 0)
+      && (!fm || parseInt(d.manquants) > 0);
     c.style.display = ok ? '' : 'none';
     if (ok) visibles++;
   });
