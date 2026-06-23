@@ -137,6 +137,39 @@ def formulaire():
     )
 
 
+def extraire_detail_jours(form, mois, annee):
+    """Reconstruit le détail jour par jour saisi dans le formulaire de relevé.
+    Renvoie une liste {label, plus, moins} pour les seuls jours ayant des heures.
+    La période couvre du 24 du mois précédent à la fin du mois courant
+    (mêmes champs que form.html : prec_plus_J / prec_moins_J / mois_plus_J / mois_moins_J)."""
+    import calendar
+    from datetime import date as dt_date
+    JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    mois_prec = 12 if mois == 1 else mois - 1
+    annee_prec = annee - 1 if mois == 1 else annee
+    nb_jours_prec = calendar.monthrange(annee_prec, mois_prec)[1]
+    nb_jours_mois = calendar.monthrange(annee, mois)[1]
+
+    def lire(champ):
+        try:
+            return float(form.get(champ, 0) or 0)
+        except ValueError:
+            return 0.0
+
+    jours = []
+    for j in range(24, nb_jours_prec + 1):
+        p, m = lire(f"prec_plus_{j}"), lire(f"prec_moins_{j}")
+        if p or m:
+            nom = JOURS_FR[dt_date(annee_prec, mois_prec, j).weekday()]
+            jours.append({"label": f"{nom} {j:02d}/{mois_prec:02d}", "plus": p, "moins": m})
+    for j in range(1, nb_jours_mois + 1):
+        p, m = lire(f"mois_plus_{j}"), lire(f"mois_moins_{j}")
+        if p or m:
+            nom = JOURS_FR[dt_date(annee, mois, j).weekday()]
+            jours.append({"label": f"{nom} {j:02d}/{mois:02d}", "plus": p, "moins": m})
+    return jours
+
+
 @app.route("/envoyer", methods=["POST"])
 def envoyer():
     token = request.form.get("token", "")
@@ -163,6 +196,7 @@ def envoyer():
 
     mois = datetime.now().month
     annee = datetime.now().year
+    jours_detail = extraire_detail_jours(request.form, mois, annee)
 
     sauvegarder_reponse(token, {
         "prenom": prenom,
@@ -174,6 +208,7 @@ def envoyer():
         "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "mois": mois,
         "annee": annee,
+        "jours": jours_detail,
     })
 
     try:
@@ -497,6 +532,7 @@ def admin_dashboard():
                         "signature": r.get("signature", ""),
                         "date_signature": r.get("date_signature", ""),
                         "date": r.get("date", ""),
+                        "jours": r.get("jours", []),
                     }
                 else:
                     donnees[emp["prenom"]][m] = None
@@ -535,6 +571,16 @@ def admin_dashboard():
         })
     classement_abs.sort(key=lambda x: x["total"], reverse=True)
 
+    # Détail jour par jour, indexé par "prénom|mois" pour la fenêtre de détail.
+    # Vide pour les relevés antérieurs à l'activation de cette sauvegarde.
+    releves_jours = {}
+    for emp in employes:
+        p = emp["prenom"]
+        for m in mois_disponibles:
+            d = donnees[p].get(m)
+            if d and d.get("jours"):
+                releves_jours[f"{p}|{m}"] = d["jours"]
+
     return render_template("admin_dashboard.html",
         employes=employes,
         donnees=donnees,
@@ -544,6 +590,7 @@ def admin_dashboard():
         annee=annee,
         annees_dispo=annees_dispo,
         classement_abs=classement_abs,
+        releves_jours=releves_jours,
     )
 
 

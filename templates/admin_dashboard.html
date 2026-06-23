@@ -93,6 +93,17 @@
     .detail-ligne .k { width: 130px; color: #888; flex-shrink: 0; }
     .detail-ligne .val { color: #222; font-weight: 500; word-break: break-word; }
     .detail-ligne .val.vide { color: #bbb; font-style: italic; font-weight: normal; }
+
+    /* Détail jour par jour */
+    .jours-table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+    .jours-table th { background: #f0f4f8; color: #1F4E79; padding: 5px 8px; text-align: center; border: 1px solid #dde3ed; position: static; }
+    .jours-table td { padding: 4px 8px; border: 1px solid #eee; text-align: center; }
+    .jours-table td.j { text-align: left; color: #333; }
+    .jours-table .p { color: #276221; font-weight: bold; }
+    .jours-table .m { color: #9C0006; font-weight: bold; }
+    .jours-table tfoot td { background: #f5f8fc; font-weight: bold; }
+    .jours-vide { font-size: 0.85em; color: #888; font-style: italic; padding: 6px 0; }
+    .jours-wrap { max-height: 220px; overflow-y: auto; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -213,6 +224,7 @@
           {% if d %}
           <td class="cell-clic"
               onclick="voirDetail(this)"
+              data-key="{{ emp.prenom }}|{{ m }}"
               data-emp="{{ emp.prenom }} {{ emp.nom }}"
               data-mois="{{ mois_noms[m] }} {{ annee }}"
               data-plus="{{ '%.1f'|format(d.plus) }}"
@@ -276,6 +288,11 @@
       <div class="detail-ligne"><span class="k">Signature</span><span class="val" id="md-signature">—</span></div>
       <div class="detail-ligne"><span class="k">Date signature</span><span class="val" id="md-datesign">—</span></div>
       <div class="detail-ligne"><span class="k">Envoyé le</span><span class="val" id="md-envoi">—</span></div>
+
+      <div id="md-jours-bloc" style="margin-top:18px;">
+        <div style="font-size:0.82em; color:#1F4E79; font-weight:bold; margin-bottom:8px;">Détail jour par jour</div>
+        <div id="md-jours"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -356,6 +373,9 @@
     titre.classList.toggle('replié', replié);
   }
 
+  // Détail jour par jour de chaque relevé, indexé par "prénom|mois"
+  const RELEVES_JOURS = {{ releves_jours | tojson }};
+
   // Détail du relevé rempli par le collaborateur
   function voirDetail(td) {
     const d = td.dataset;
@@ -373,7 +393,32 @@
     setVal('md-datesign', d.datesign);
     setVal('md-envoi', d.envoi);
 
+    afficherJours(RELEVES_JOURS[d.key]);
+
     document.getElementById('modalDetail').classList.add('ouvert');
+  }
+
+  function afficherJours(jours) {
+    const cible = document.getElementById('md-jours');
+    if (!jours || !jours.length) {
+      cible.innerHTML = '<div class="jours-vide">Détail jour par jour non disponible (relevé enregistré avant l\'activation de cette fonction).</div>';
+      return;
+    }
+    let totP = 0, totM = 0, lignes = '';
+    jours.forEach(j => {
+      const p = j.plus || 0, m = j.moins || 0;
+      totP += p; totM += m;
+      lignes += '<tr><td class="j">' + j.label + '</td>'
+        + '<td class="p">' + (p ? '+' + p : '—') + '</td>'
+        + '<td class="m">' + (m ? '-' + m : '—') + '</td></tr>';
+    });
+    cible.innerHTML =
+      '<div class="jours-wrap"><table class="jours-table">'
+      + '<thead><tr><th>Jour</th><th>H +</th><th>H −</th></tr></thead>'
+      + '<tbody>' + lignes + '</tbody>'
+      + '<tfoot><tr><td class="j">Total</td><td class="p">+' + totP.toFixed(1)
+      + '</td><td class="m">-' + totM.toFixed(1) + '</td></tr></tfoot>'
+      + '</table></div>';
   }
   function setVal(id, v) {
     const el = document.getElementById(id);
