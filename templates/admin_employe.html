@@ -122,7 +122,7 @@
         {% endif %}
       </div>
       <div>
-        <h1>{{ emp.prenom }} {{ emp.nom }}
+        <h1>{{ emp.prenom }} {{ emp.nom|upper }}
           {% if statut == 'archive' %}<span class="badge-archive">Archivé</span>{% endif %}
         </h1>
         <div class="contacts">

@@ -139,7 +139,7 @@
     <tbody>
       {% for r in resultats %}
       <tr class="{% if r.repondu %}recu{% else %}attente{% endif %}">
-        <td class="nom"><a href="/admin/employe?email={{ r.email|urlencode }}" style="color:#1F4E79; text-decoration:none;" title="Voir la fiche annuelle">{{ r.prenom }} {{ r.nom }}</a></td>
+        <td class="nom"><a href="/admin/employe?email={{ r.email|urlencode }}" style="color:#1F4E79; text-decoration:none;" title="Voir la fiche annuelle">{{ r.prenom }} {{ r.nom|upper }}</a></td>
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>
@@ -172,7 +172,7 @@
           {% if r.repondu %}
           <button type="button" class="btn-detail"
               data-email="{{ r.email }}"
-              data-nom="{{ r.prenom }} {{ r.nom }}"
+              data-nom="{{ r.prenom }} {{ r.nom|upper }}"
               data-plus="{{ r.heures_plus }}"
               data-moins="{{ r.heures_moins }}"
               data-solde="{{ r.solde }}"
@@ -222,7 +222,7 @@
         {% for r in resultats %}
         {% set p = planning.get(r.prenom, {}) %}
         <tr>
-          <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
+          <td class="nom">{{ r.prenom }} {{ r.nom|upper }}</td>
           <td>{{ p.get('trame', '—') }}</td>
           <td>{{ p.get('total', '—') }}</td>
           <td>{{ p.get('absences', '') or '—' }}</td>

@@ -218,7 +218,7 @@
         {% set p = emp.prenom %}
         {% set c = cumuls[p] %}
         <tr>
-          <td class="nom">{{ emp.prenom }} {{ emp.nom }}</td>
+          <td class="nom">{{ emp.prenom }} {{ emp.nom|upper }}</td>
 
           {% for m in mois_disponibles %}
           {% set d = donnees[p].get(m) %}
@@ -226,7 +226,7 @@
           <td class="cell-clic"
               onclick="voirDetail(this)"
               data-key="{{ emp.prenom }}|{{ m }}"
-              data-emp="{{ emp.prenom }} {{ emp.nom }}"
+              data-emp="{{ emp.prenom }} {{ emp.nom|upper }}"
               data-mois="{{ mois_noms[m] }} {{ annee }}"
               data-plus="{{ '%.1f'|format(d.plus) }}"
               data-moins="{{ '%.1f'|format(d.moins) }}"

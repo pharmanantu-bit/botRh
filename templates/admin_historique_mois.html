@@ -52,7 +52,7 @@
     <tbody>
       {% for r in resultats %}
       <tr>
-        <td class="nom">{{ r.prenom }} {{ r.nom }}</td>
+        <td class="nom">{{ r.prenom }} {{ r.nom|upper }}</td>
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>

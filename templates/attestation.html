@@ -43,7 +43,7 @@
 
     <div class="corps">
       <p>Je soussigné(e), responsable de la <strong>Pharmacie Apothical Nanterre Université</strong>,
-      atteste que <strong>{{ emp.prenom }} {{ emp.nom }}</strong>
+      atteste que <strong>{{ emp.prenom }} {{ emp.nom|upper }}</strong>
       {% if profil.poste %}occupe le poste de <strong>{{ profil.poste }}</strong>{% else %}fait partie de notre personnel{% endif %}
       au sein de notre établissement{% if profil.type_contrat %} dans le cadre d'un contrat de type <strong>{{ profil.type_contrat }}</strong>{% endif %}{% if profil.date_entree %},
       depuis le <strong>{{ profil.date_entree }}</strong>{% endif %}.</p>

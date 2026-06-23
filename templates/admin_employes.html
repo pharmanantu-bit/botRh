@@ -112,7 +112,7 @@
       {% for l in synthese %}
       {% set urgent = l.alertes|selectattr('niveau','equalto','rouge')|list|length > 0 %}
       <div class="sb-ligne {% if urgent %}urgent{% endif %}">
-        <a class="sb-nom" href="/admin/employe?email={{ l.email|urlencode }}">{{ l.prenom }} {{ l.nom }}</a>
+        <a class="sb-nom" href="/admin/employe?email={{ l.email|urlencode }}">{{ l.prenom }} {{ l.nom|upper }}</a>
         <div class="sb-alertes">
           {% for a in l.alertes %}<span class="sb-a sb-{{ a.niveau }}">⚠️ {{ a.texte }}</span>{% endfor %}
           {% for m in l.manquants %}<span class="sb-a sb-manque">📋 {{ m }}</span>{% endfor %}
@@ -205,7 +205,7 @@
       {% for emp in archives %}
       <div class="carte-emp carte-archive" onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
         <div class="avatar" style="background:#9aa7b5">{{ emp.prenom[0]|upper }}{{ emp.nom[0]|upper }}</div>
-        <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
+        <div class="nom">{{ emp.prenom }} {{ emp.nom|upper }}</div>
         <div class="poste">{{ emp.poste or '—' }}</div>
         <div class="carte-actions">
           <form method="POST" action="/admin/employe/statut" style="display:inline;" onclick="event.stopPropagation();">

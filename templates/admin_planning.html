@@ -79,7 +79,7 @@
         {% for emp in employes %}
         {% set p = planning.get(emp.prenom, {}) %}
         <tr>
-          <td class="nom">{{ emp.prenom }} {{ emp.nom }}</td>
+          <td class="nom">{{ emp.prenom }} {{ emp.nom|upper }}</td>
           <td><input type="text" name="trame_{{ emp.prenom }}" value="{{ p.get('trame', '') }}" placeholder="ex: 157h00min"></td>
           <td><input type="text" name="total_{{ emp.prenom }}" value="{{ p.get('total', '') }}" placeholder="ex: 159h30min"></td>
           <td><input type="text" name="absences_{{ emp.prenom }}" value="{{ p.get('absences', '') }}" placeholder="ex: Congés payés : 9h"></td>
