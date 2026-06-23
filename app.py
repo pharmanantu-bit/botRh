@@ -367,6 +367,37 @@ def sauvegarder_employes(employes):
         writer.writerows(employes)
 
 
+# --- Dossier salarié (données personnelles, fichier gitignoré, source = serveur) ---
+PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
+
+# Champs du profil RH (clé interne -> libellé affiché)
+CHAMPS_PROFIL = [
+    ("poste", "Poste / fonction"),
+    ("type_contrat", "Type de contrat"),
+    ("date_entree", "Date d'entrée"),
+    ("date_fin", "Fin de contrat (si CDD)"),
+    ("telephone", "Téléphone"),
+    ("naissance", "Date de naissance"),
+    ("adresse", "Adresse"),
+    ("urgence_nom", "Contact d'urgence (nom)"),
+    ("urgence_tel", "Contact d'urgence (tél.)"),
+    ("notes", "Notes RH (interne)"),
+]
+
+def charger_profils():
+    if os.path.exists(PROFILS_FILE):
+        with open(PROFILS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def sauvegarder_profils(profils):
+    with open(PROFILS_FILE, "w", encoding="utf-8") as f:
+        json.dump(profils, f, ensure_ascii=False, indent=2)
+
+def profil_de(email):
+    return charger_profils().get(email, {})
+
+
 @app.route("/admin/employes", methods=["GET", "POST"])
 def admin_employes():
     if not session.get("admin"):
@@ -842,7 +873,23 @@ def admin_employe():
     cm = sum(d["moins"] for d in mois_data if d["rempli"])
     return render_template("admin_employe.html", emp=emp, annee=annee, mois_data=mois_data,
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
-                           cumul_solde=round(cp - cm, 2))
+                           cumul_solde=round(cp - cm, 2),
+                           profil=profil_de(email), champs_profil=CHAMPS_PROFIL)
+
+
+@app.route("/admin/employe/profil", methods=["POST"])
+def admin_employe_profil():
+    """Enregistre le dossier salarié (profil RH) d'un employé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    profils[email] = {cle: request.form.get(cle, "").strip() for cle, _ in CHAMPS_PROFIL}
+    sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email, annee=request.form.get("annee", datetime.now().year)))
 
 
 def construire_recap_xlsx(mois, annee):

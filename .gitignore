@@ -12,4 +12,6 @@ processed_emails.json
 contacts*.csv
 employees_live.csv
 reponses_*.json
+profils_rh.json
+documents_rh/
 IDENTIFIANTS.txt
