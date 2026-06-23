@@ -34,6 +34,37 @@
     .lien { color: #2E75B6; font-size: 0.8em; text-decoration: none; }
     .lien:hover { text-decoration: underline; }
     .sep { background: #5c7a3e !important; }
+    .btn-detail { border:none; cursor:pointer; background:#1F4E79; color:white; padding:4px 10px; border-radius:6px; font-size:0.78em; font-weight:bold; margin-top:4px; }
+    .btn-detail:hover { background:#163d60; }
+
+    /* Fenêtre de détail */
+    .modal-overlay { display:none; position:fixed; inset:0; z-index:1000; background:rgba(31,78,121,0.45); align-items:center; justify-content:center; padding:20px; }
+    .modal-overlay.ouvert { display:flex; }
+    .modal-box { background:white; border-radius:12px; max-width:460px; width:100%; box-shadow:0 10px 40px rgba(0,0,0,0.25); overflow:hidden; }
+    .modal-head { background:#1F4E79; color:white; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; }
+    .modal-head h3 { font-size:1.05em; margin:0; }
+    .modal-head .periode { font-size:0.8em; opacity:0.85; font-weight:normal; }
+    .modal-close { background:none; border:none; color:white; font-size:1.4em; cursor:pointer; line-height:1; }
+    .modal-body { padding:20px; }
+    .detail-stats { display:flex; gap:10px; margin-bottom:18px; }
+    .detail-stats .box { flex:1; text-align:center; border-radius:8px; padding:12px 6px; border:1px solid #dde3ed; background:#f5f8fc; }
+    .detail-stats .box .v { font-size:1.4em; font-weight:bold; }
+    .detail-stats .box .l { font-size:0.72em; color:#555; margin-top:2px; }
+    .plus { color:#276221; } .moins { color:#9C0006; }
+    .detail-ligne { display:flex; padding:8px 0; border-bottom:1px solid #eee; font-size:0.88em; }
+    .detail-ligne:last-child { border-bottom:none; }
+    .detail-ligne .k { width:130px; color:#888; flex-shrink:0; }
+    .detail-ligne .val { color:#222; font-weight:500; word-break:break-word; }
+    .detail-ligne .val.vide { color:#bbb; font-style:italic; font-weight:normal; }
+    .jours-wrap { max-height:220px; overflow-y:auto; border-radius:6px; margin-top:6px; }
+    .jours-table { width:100%; border-collapse:collapse; font-size:0.82em; }
+    .jours-table th { background:#f0f4f8; color:#1F4E79; padding:5px 8px; text-align:center; border:1px solid #dde3ed; }
+    .jours-table td { padding:4px 8px; border:1px solid #eee; text-align:center; }
+    .jours-table td.j { text-align:left; color:#333; }
+    .jours-table .p { color:#276221; font-weight:bold; } .jours-table .m { color:#9C0006; font-weight:bold; }
+    .jours-table tfoot td { background:#f5f8fc; font-weight:bold; }
+    .jours-vide { font-size:0.85em; color:#888; font-style:italic; padding:6px 0; }
+    @media print { .btn-detail, .modal-overlay { display:none !important; } }
 
     @media print {
       body { background: white; padding: 0; }
@@ -117,7 +148,18 @@
           <span class="badge-verif">A VÉRIFIER</span>
           {% else %}-{% endif %}
         </td>
-        <td><a href="{{ r.lien }}" class="lien" target="_blank">Voir</a></td>
+        <td>
+          <a href="{{ r.lien }}" class="lien" target="_blank">Voir</a>
+          {% if r.repondu %}
+          <br><button type="button" class="btn-detail"
+              data-email="{{ r.email }}"
+              data-nom="{{ r.prenom }} {{ r.nom }}"
+              data-plus="{{ r.heures_plus }}"
+              data-moins="{{ r.heures_moins }}"
+              data-solde="{{ r.solde }}"
+              onclick="voirDetail(this)">🔍 Détail</button>
+          {% endif %}
+        </td>
         <td>
           {% if r.repondu %}
             {% if r.valide %}
@@ -141,7 +183,38 @@
     </tbody>
   </table>
 </div>
+
+<!-- Fenêtre de détail du relevé -->
+<div class="modal-overlay" id="modalDetail" onclick="if(event.target===this)fermerDetail()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h3 id="md-nom">—</h3>
+        <span class="periode">{{ mois_annee }}</span>
+      </div>
+      <button class="modal-close" onclick="fermerDetail()" title="Fermer">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-stats">
+        <div class="box"><div class="v plus" id="md-plus">+0</div><div class="l">Heures en plus</div></div>
+        <div class="box"><div class="v moins" id="md-moins">-0</div><div class="l">Heures en moins</div></div>
+        <div class="box"><div class="v" id="md-solde">0</div><div class="l">Solde</div></div>
+      </div>
+      <div class="detail-ligne"><span class="k">Commentaire</span><span class="val" id="md-commentaire">—</span></div>
+      <div class="detail-ligne"><span class="k">Signature</span><span class="val" id="md-signature">—</span></div>
+      <div class="detail-ligne"><span class="k">Date signature</span><span class="val" id="md-datesign">—</span></div>
+      <div class="detail-ligne"><span class="k">Envoyé le</span><span class="val" id="md-envoi">—</span></div>
+      <div style="margin-top:18px;">
+        <div style="font-size:0.82em; color:#1F4E79; font-weight:bold; margin-bottom:4px;">Détail jour par jour</div>
+        <div id="md-jours"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+const RELEVES_DETAIL = {{ releves_detail | tojson }};
+
 function filtrer() {
   const q = document.getElementById('recherche').value.toLowerCase();
   document.querySelectorAll('tbody tr').forEach(tr => {
@@ -149,6 +222,53 @@ function filtrer() {
     tr.style.display = nom && nom.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
+
+function voirDetail(btn) {
+  const d = btn.dataset;
+  const det = RELEVES_DETAIL[d.email] || {};
+  document.getElementById('md-nom').textContent = d.nom;
+  document.getElementById('md-plus').textContent = '+' + d.plus + ' h';
+  document.getElementById('md-moins').textContent = '-' + d.moins + ' h';
+  const solde = document.getElementById('md-solde');
+  const s = parseFloat(d.solde);
+  solde.textContent = (s >= 0 ? '+' : '') + d.solde + ' h';
+  solde.className = 'v ' + (s >= 0 ? 'plus' : 'moins');
+  setVal('md-commentaire', det.commentaire);
+  setVal('md-signature', det.signature);
+  setVal('md-datesign', det.date_signature);
+  setVal('md-envoi', det.date);
+  afficherJours(det.jours);
+  document.getElementById('modalDetail').classList.add('ouvert');
+}
+
+function setVal(id, v) {
+  const el = document.getElementById(id);
+  if (v && String(v).trim()) { el.textContent = v; el.classList.remove('vide'); }
+  else { el.textContent = '— (vide)'; el.classList.add('vide'); }
+}
+
+function afficherJours(jours) {
+  const cible = document.getElementById('md-jours');
+  if (!jours || !jours.length) {
+    cible.innerHTML = '<div class="jours-vide">Détail jour par jour non disponible (relevé enregistré avant l\'activation de cette fonction).</div>';
+    return;
+  }
+  let totP = 0, totM = 0, lignes = '';
+  jours.forEach(j => {
+    const p = j.plus || 0, m = j.moins || 0;
+    totP += p; totM += m;
+    lignes += '<tr><td class="j">' + j.label + '</td>'
+      + '<td class="p">' + (p ? '+' + p : '—') + '</td>'
+      + '<td class="m">' + (m ? '-' + m : '—') + '</td></tr>';
+  });
+  cible.innerHTML = '<div class="jours-wrap"><table class="jours-table">'
+    + '<thead><tr><th>Jour</th><th>H +</th><th>H −</th></tr></thead><tbody>' + lignes + '</tbody>'
+    + '<tfoot><tr><td class="j">Total</td><td class="p">+' + totP.toFixed(1)
+    + '</td><td class="m">-' + totM.toFixed(1) + '</td></tr></tfoot></table></div>';
+}
+
+function fermerDetail() { document.getElementById('modalDetail').classList.remove('ouvert'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerDetail(); });
 </script>
 </body>
 </html>

@@ -339,11 +339,25 @@ def admin():
             "lien": f"/releve?token={token}&prenom={emp['prenom']}",
         })
 
+    # Détail complet par employé (clé = email) pour la fenêtre de détail.
+    # "jours" est vide pour les relevés antérieurs à la sauvegarde du détail.
+    releves_detail = {}
+    for emp in employes:
+        reponse = reponse_de(reponses, emp["prenom"], emp["email"])
+        if reponse:
+            releves_detail[emp["email"]] = {
+                "commentaire": reponse.get("commentaire", ""),
+                "signature": reponse.get("signature", ""),
+                "date_signature": reponse.get("date_signature", ""),
+                "date": reponse.get("date", ""),
+                "jours": reponse.get("jours", []),
+            }
+
     repondus = sum(1 for r in resultats if r["repondu"])
     a_planifier = charger_planning() != {}
     return render_template("admin.html", resultats=resultats, repondus=repondus,
                            total=len(resultats), mois_annee=f"{MOIS_FR[mois]} {annee}",
-                           a_planifier=a_planifier)
+                           a_planifier=a_planifier, releves_detail=releves_detail)
 
 
 def sauvegarder_employes(employes):
