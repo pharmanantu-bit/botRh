@@ -26,6 +26,8 @@
     th { background: #1F4E79; color: white; padding: 10px 8px; text-align: left; }
     tr:nth-child(even) td { background: #f5f8fc; }
     td { padding: 8px; border: 1px solid #ddd; vertical-align: middle; }
+    .btn-dossier { background: #1a7a6e; color: white; padding: 5px 12px; border-radius: 4px; font-size: 0.8em; text-decoration: none; font-weight: bold; }
+    .btn-dossier:hover { background: #145f56; }
     .btn-edit { background: #2E75B6; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
     .btn-del { background: #c0392b; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; margin-left: 4px; }
 
@@ -78,6 +80,7 @@
         <td>{{ emp.nom }}</td>
         <td>{{ emp.email }}</td>
         <td>
+          <a class="btn-dossier" href="/admin/employe?email={{ emp.email|urlencode }}">📁 Dossier</a>
           <button class="btn-edit" onclick="ouvrirModal('{{ emp.prenom }}','{{ emp.nom }}','{{ emp.email }}')">Modifier</button>
           <form method="POST" action="/admin/employes" style="display:inline;" onsubmit="return confirm('Supprimer {{ emp.prenom }} {{ emp.nom }} ?')">
             <input type="hidden" name="action" value="supprimer">

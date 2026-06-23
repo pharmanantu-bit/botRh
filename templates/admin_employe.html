@@ -51,6 +51,10 @@
     .doc-suppr:hover { opacity:1; }
     .doc-vide { font-size:0.85em; color:#888; font-style:italic; }
     .doc-msg.err { background:#FFE5E5; color:#9C0006; padding:8px 12px; border-radius:6px; font-size:0.85em; margin-bottom:10px; }
+    .doc-famille { margin-bottom:16px; }
+    .doc-famille-titre { font-size:0.85em; font-weight:bold; color:#1F4E79; background:#eaf1fb; padding:6px 12px; border-radius:6px 6px 0 0; }
+    .doc-famille-titre span { color:#7a93b3; font-weight:normal; }
+    .doc-famille .doc-table td:first-child { white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -119,7 +123,11 @@
       <form method="POST" action="/admin/employe/document" enctype="multipart/form-data" class="doc-upload">
         <input type="hidden" name="email" value="{{ emp.email }}">
         <select name="type">
-          {% for t in types_docs %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          {% for fam, sous in familles_docs.items() %}
+          <optgroup label="{{ fam }}">
+            {% for t in sous %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </optgroup>
+          {% endfor %}
         </select>
         <input type="text" name="libelle" placeholder="Libellé (ex: Paie mai 2026)">
         <input type="file" name="fichier" required>
@@ -128,27 +136,31 @@
       <p class="doc-hint">Formats : PDF, images, Word — 12 Mo max. Documents privés (non visibles par l'employé).</p>
 
       {% if documents %}
-      <table class="doc-table">
-        <thead><tr><th>Type</th><th>Libellé</th><th>Taille</th><th>Ajouté le</th><th></th></tr></thead>
-        <tbody>
-          {% for d in documents %}
-          <tr>
-            <td><span class="doc-type">{{ d.type }}</span></td>
-            <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a></td>
-            <td>{{ d.taille }}</td>
-            <td>{{ d.date_ajout }}</td>
-            <td>
-              <form method="POST" action="/admin/employe/document/supprimer" style="display:inline"
-                    onsubmit="return confirm('Supprimer définitivement ce document ?');">
-                <input type="hidden" name="email" value="{{ emp.email }}">
-                <input type="hidden" name="id" value="{{ d.id }}">
-                <button type="submit" class="doc-suppr" title="Supprimer">🗑</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      {% for fam, items in docs_par_famille.items() %}
+      <div class="doc-famille">
+        <div class="doc-famille-titre">{{ fam }} <span>({{ items|length }})</span></div>
+        <table class="doc-table">
+          <tbody>
+            {% for d in items %}
+            <tr>
+              <td><span class="doc-type">{{ d.type }}</span></td>
+              <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a></td>
+              <td>{{ d.taille }}</td>
+              <td>{{ d.date_ajout }}</td>
+              <td>
+                <form method="POST" action="/admin/employe/document/supprimer" style="display:inline"
+                      onsubmit="return confirm('Supprimer définitivement ce document ?');">
+                  <input type="hidden" name="email" value="{{ emp.email }}">
+                  <input type="hidden" name="id" value="{{ d.id }}">
+                  <button type="submit" class="doc-suppr" title="Supprimer">🗑</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
       {% else %}
       <p class="doc-vide">Aucun document pour le moment.</p>
       {% endif %}

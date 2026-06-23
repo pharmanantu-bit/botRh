@@ -405,7 +405,41 @@ def profil_de(email):
 DOCS_DIR = os.path.join(BASE_DIR, "documents_rh")
 DOCS_INDEX = os.path.join(DOCS_DIR, "index.json")
 EXT_DOCS_OK = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".doc"}
-TYPES_DOCS = ["Bulletin de paie", "Contrat / avenant", "Attestation", "Autre / divers"]
+
+# Familles de documents RH -> sous-types. Sert au menu déroulant (optgroups)
+# et au classement des documents par famille dans la fiche.
+FAMILLES_DOCS = {
+    "Contractuel & paie": [
+        "Contrat de travail", "Avenant", "Bulletin de paie",
+        "Solde de tout compte", "RIB / coordonnées bancaires",
+    ],
+    "Identité & administratif": [
+        "Pièce d'identité", "Titre de séjour", "Carte vitale",
+        "Justificatif de domicile", "N° de Sécurité sociale",
+    ],
+    "Santé & formation": [
+        "Visite médicale", "Arrêt de travail", "Diplôme",
+        "Certification / habilitation", "Attestation de formation",
+    ],
+    "Suivi RH & divers": [
+        "Entretien annuel / professionnel", "Attestation employeur",
+        "Courrier", "Avertissement", "Autre / divers",
+    ],
+}
+
+def famille_du_type(type_doc):
+    """Retrouve la famille d'un sous-type ; 'Suivi RH & divers' par défaut/legacy."""
+    for fam, sous in FAMILLES_DOCS.items():
+        if type_doc in sous:
+            return fam
+    return "Suivi RH & divers"
+
+def grouper_docs_par_famille(docs):
+    """Regroupe les documents d'un employé par famille, dans l'ordre des familles."""
+    groupes = {fam: [] for fam in FAMILLES_DOCS}
+    for d in docs:
+        groupes[famille_du_type(d.get("type", ""))].append(d)
+    return {fam: items for fam, items in groupes.items() if items}
 
 def charger_docs_index():
     if os.path.exists(DOCS_INDEX):
@@ -905,7 +939,9 @@ def admin_employe():
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
                            cumul_solde=round(cp - cm, 2),
                            profil=profil_de(email), champs_profil=CHAMPS_PROFIL,
-                           documents=docs_de(email), types_docs=TYPES_DOCS,
+                           documents=docs_de(email),
+                           docs_par_famille=grouper_docs_par_famille(docs_de(email)),
+                           familles_docs=FAMILLES_DOCS,
                            doc_err=request.args.get("doc_err"))
 
 
