@@ -29,3 +29,5 @@ PLANNING_SENDER = os.getenv("PLANNING_SENDER", "")    # ex : noreply@monplanning
 ADMIN_RH_DOMAINS = os.getenv("ADMIN_RH_DOMAINS", "")  # ex : @urssaf.fr, @ameli.fr
 ASSISTANT_JOURS = int(os.getenv("ASSISTANT_JOURS", "2"))
 ASSISTANT_MAX_MAILS = int(os.getenv("ASSISTANT_MAX_MAILS", "25"))
+# Noms de tiers (cités par le comptable, etc.) à masquer en plus des salariés.
+EXTRA_NOMS = os.getenv("EXTRA_NOMS", "")

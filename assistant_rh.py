@@ -23,8 +23,9 @@ SYSTEM_PROMPT = (
     "Priorise, repère les dates limites et obligations légales (déclaration d'arrêt de "
     "travail sous 48 h, DSN, visite médicale, solde de tout compte en cas de démission...). "
     "N'invente jamais une échéance absente des mails. Les identités sont anonymisées "
-    "(« Employé A/B... ») : conserve ces étiquettes telles quelles. Réponds UNIQUEMENT "
-    "en JSON valide, en français, conforme au schéma demandé."
+    "(« Employé A/B... ») : conserve ces étiquettes telles quelles et n'écris JAMAIS de "
+    "nom de famille complet (utilise l'étiquette, ou « un(e) salarié(e) »). Réponds "
+    "UNIQUEMENT en JSON valide, en français, conforme au schéma demandé."
 )
 
 SCHEMA_HINT = (
@@ -47,8 +48,10 @@ def _alpha(n):
     return s
 
 
-def construire_table(employes):
-    """employes: [{prenom, nom?, email}] -> (table[(regex, étiquette)], inverse{étiquette: prénom})."""
+def construire_table(employes, extra_noms=None):
+    """employes: [{prenom, nom?, email}] -> étiquettes « Employé X » (ré-identifiables).
+    extra_noms: noms de tiers à masquer en « [nom] » (non ré-identifiés).
+    Renvoie (table[(regex, remplacement)], inverse{étiquette: prénom})."""
     table, inverse = [], {}
     for i, e in enumerate(employes or []):
         etq = f"Employé {_alpha(i)}"
@@ -62,6 +65,14 @@ def construire_table(employes):
             motifs.append(r"\b" + re.escape(e["nom"].strip()) + r"\b")
         if motifs:
             table.append((re.compile("|".join(motifs), re.IGNORECASE), etq))
+    # Noms de tiers (cités par le comptable, etc.) à masquer sans ré-identification.
+    for nom in (extra_noms or []):
+        nom = nom.strip()
+        if not nom:
+            continue
+        motifs = [re.escape(nom)]
+        motifs += [r"\b" + re.escape(t) + r"\b" for t in re.split(r"\s+", nom) if len(t) >= 3]
+        table.append((re.compile("|".join(motifs), re.IGNORECASE), "[nom]"))
     return table, inverse
 
 
@@ -86,8 +97,16 @@ def pseudonymiser_mails(mails, table):
 
 
 def reidentifier(obj, inverse):
-    """Remplace les étiquettes 'Employé X' par le prénom réel (affichage local uniquement)."""
+    """Remplace les étiquettes 'Employé X' par le prénom réel (affichage local uniquement).
+    Nettoie au passage les articles collés (« l'Employé A » -> « Maelys », pas « l'Maelys »)."""
     s = json.dumps(obj, ensure_ascii=False)
+    # Le modèle élide devant « Employé » (voyelle) : « d'Employé A », « l'Employé A ».
+    # Après ré-identification le prénom peut commencer par une consonne -> on désélide.
+    # « d'Employé A » -> « de Maelys » (préposition conservée) ; « l'Employé A » -> « Maelys »
+    # (article défini retiré, un prénom n'en prend pas) ; idem « le/la/les Employé A ».
+    s = re.sub(r"[dD]['’]\s*(Employé [A-Z]+)", r"de \1", s)
+    s = re.sub(r"[lL]['’]\s*(Employé [A-Z]+)", r"\1", s)
+    s = re.sub(r"\b[lL][aes]?\s+(Employé [A-Z]+)", r"\1", s)
     for etq, prenom in inverse.items():
         if prenom and prenom != etq:
             s = s.replace(etq, prenom)
@@ -156,9 +175,9 @@ def _moteur_claude(system, prompt, modele):
 MOTEURS = {"fake": _moteur_fake, "mistral": _moteur_mistral, "claude": _moteur_claude}
 
 
-def analyser(mails, employes=None, moteur="fake", modele=None):
+def analyser(mails, employes=None, extra_noms=None, moteur="fake", modele=None):
     """Pseudonymise -> analyse (moteur choisi) -> normalise -> ré-identifie pour l'affichage."""
-    table, inverse = construire_table(employes or [])
+    table, inverse = construire_table(employes or [], extra_noms)
     mails_anon = pseudonymiser_mails(mails, table)
     prompt = construire_prompt(mails_anon)
     fn = MOTEURS.get(moteur, _moteur_fake)

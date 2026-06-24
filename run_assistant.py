@@ -106,8 +106,8 @@ def main():
     from assistant_rh import analyser
     moteur = "fake" if os.environ.get("ASSISTANT_FAKE") == "1" else config.ASSISTANT_MOTEUR
     print(f"Analyse — moteur={moteur} (identités pseudonymisées avant envoi)")
-    resume = analyser(mails, employes=employes, moteur=moteur,
-                      modele=config.ASSISTANT_MODELE or None)
+    resume = analyser(mails, employes=employes, extra_noms=_liste(config.EXTRA_NOMS),
+                      moteur=moteur, modele=config.ASSISTANT_MODELE or None)
 
     resume["date"] = datetime.now().strftime("%Y-%m-%d")
     resume["genere_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
