@@ -43,8 +43,9 @@ app.permanent_session_lifetime = timedelta(hours=8)
 # le jeton est lié à la session (durée 8h) et vérifié sur chaque POST.
 # Exemptions : routes publiques/machines déjà protégées par un secret
 #   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
+#   - /assistant_push : POST machine protégé par la clé API (runner GitHub)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
-CSRF_EXEMPT = {"/envoyer"}
+CSRF_EXEMPT = {"/envoyer", "/assistant_push"}
 
 def csrf_token():
     tok = session.get("_csrf_token")
@@ -1708,6 +1709,68 @@ def trigger():
         return "Envoi relances OK", 200
     else:
         return f"Rien à faire (jour {jour})", 200
+
+
+# --- Assistant RH intelligent ---
+# Les résumés quotidiens sont générés sur le runner GitHub (qui a accès à Gmail
+# et à l'API Claude — le serveur PythonAnywhere gratuit n'a pas l'Internet sortant).
+# Le serveur ne fait que recevoir (clé API), stocker et afficher.
+ASSISTANT_FILE = os.path.join(BASE_DIR, "assistant_resumes.json")
+
+
+@app.route("/admin/assistant")
+def admin_assistant():
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    resumes = _lire_json(ASSISTANT_FILE)  # {"YYYY-MM-DD": {...}}
+    dates = sorted(resumes.keys(), reverse=True)
+    date_sel = request.args.get("date") or (dates[0] if dates else None)
+    resume = resumes.get(date_sel) if date_sel else None
+    return render_template("admin_assistant.html",
+                           resume=resume, date_sel=date_sel, dates=dates,
+                           msg=request.args.get("msg", ""))
+
+
+@app.route("/assistant_push", methods=["POST"])
+def assistant_push():
+    """Reçoit un résumé généré par le runner GitHub. Protégé par la clé API."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return "JSON invalide", 400
+    date = data.get("date") or datetime.now().strftime("%Y-%m-%d")
+    data["date"] = date
+    resumes = _lire_json(ASSISTANT_FILE)
+    resumes[date] = data
+    # Purge des résumés de plus de 90 jours
+    limite = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    resumes = {d: v for d, v in resumes.items() if d >= limite}
+    _ecrire_json(ASSISTANT_FILE, resumes)
+    return "OK", 200
+
+
+@app.route("/admin/assistant/refresh", methods=["POST"])
+def admin_assistant_refresh():
+    """Déclenche le workflow GitHub Actions qui régénère le résumé du jour."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    import urllib.request
+    gh_token = os.getenv("GITHUB_TOKEN")
+    if not gh_token:
+        return redirect(url_for("admin_assistant", msg="no_token"))
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/pharmanantu-bit/botRh/dispatches",
+            data=json.dumps({"event_type": "assistant_refresh"}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {gh_token}",
+                     "Accept": "application/vnd.github+json",
+                     "Content-Type": "application/json",
+                     "User-Agent": "botRh"})
+        urllib.request.urlopen(req, timeout=15)
+        return redirect(url_for("admin_assistant", msg="lance"))
+    except Exception:
+        return redirect(url_for("admin_assistant", msg="erreur"))
 
 
 @app.route("/export_reponses")

@@ -13,6 +13,7 @@ contacts*.csv
 employees_live.csv
 reponses_*.json
 profils_rh.json
+assistant_resumes.json
 documents_rh/
 photos_rh/
 IDENTIFIANTS.txt
