@@ -49,7 +49,7 @@ routes_admin = [
     "/admin/dashboard", "/admin/mois", f"/admin/mois?mois={mois}&annee={annee}",
     "/admin/historique", f"/admin/historique/{mois}/{annee}",
     "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
-    "/admin/sauvegarde", "/admin/sauvegarde/telecharger",
+    "/admin/sauvegarde", "/admin/sauvegarde/telecharger", "/admin/assistant",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")
