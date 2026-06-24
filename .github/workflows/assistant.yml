@@ -1,0 +1,39 @@
+name: Assistant RH botRh
+
+# Tourne ICI (runner GitHub, accès Internet complet) car le serveur PythonAnywhere
+# gratuit n'a pas d'Internet sortant (ni IMAP ni API IA). Le runner lit la boîte
+# Gmail (LECTURE SEULE), analyse les mails RH via Mistral après PSEUDONYMISATION des
+# identités, puis pousse le résumé sur la page /admin/assistant du serveur.
+
+on:
+  schedule:
+    # 06:00 UTC = 08:00 Paris (été) / 07:00 (hiver).
+    - cron: '0 6 * * *'
+  workflow_dispatch:            # lancement manuel depuis l'onglet Actions
+  repository_dispatch:
+    types: [assistant_refresh]  # déclenché par le bouton « Actualiser » de la page admin
+
+jobs:
+  assistant:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Installer les dépendances
+        run: pip install python-dotenv beautifulsoup4
+      - name: Générer le résumé RH
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # API_CLE : non défini ici -> valeur par défaut « botRh-trigger-2026 »,
+          # identique au serveur (comme run_send.py). Ajouter le secret seulement
+          # si tu as personnalisé API_CLE côté serveur.
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          ASSISTANT_MOTEUR: mistral
+          COMPTA_EMAILS: ${{ secrets.COMPTA_EMAILS }}
+          ADMIN_RH_DOMAINS: ${{ secrets.ADMIN_RH_DOMAINS }}
+          EXTRA_NOMS: ${{ secrets.EXTRA_NOMS }}
+          ASSISTANT_JOURS: '2'
+        run: python run_assistant.py
