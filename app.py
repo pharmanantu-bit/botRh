@@ -65,7 +65,8 @@ def _verifier_csrf():
     if request.path in CSRF_EXEMPT:
         return
     attendu = session.get("_csrf_token", "")
-    envoye = request.form.get("csrf_token", "")
+    # form classique OU en-tête X-CSRF-Token (requêtes AJAX/JSON, ex. chat assistant)
+    envoye = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
     if not attendu or not secrets.compare_digest(str(envoye), str(attendu)):
         abort(400, description="Échec de la vérification de sécurité (CSRF). Rechargez la page et réessayez.")
 
@@ -1771,6 +1772,33 @@ def admin_assistant_refresh():
         return redirect(url_for("admin_assistant", msg="lance"))
     except Exception:
         return redirect(url_for("admin_assistant", msg="erreur"))
+
+
+@app.route("/admin/assistant/chat", methods=["POST"])
+def admin_assistant_chat():
+    """Agent conversationnel RH/juridique. Appelle l'IA en direct (nécessite un
+    accès Internet sortant : OK en local ; en prod, PythonAnywhere payant requis)."""
+    if not session.get("admin"):
+        return app.response_class(json.dumps({"error": "non autorisé"}),
+                                  status=403, mimetype="application/json")
+    data = request.get_json(force=True, silent=True) or {}
+    messages = data.get("messages", [])
+    if not isinstance(messages, list) or not messages:
+        return app.response_class(json.dumps({"error": "message vide"}),
+                                  status=400, mimetype="application/json")
+    messages = messages[-20:]  # borne les tokens (20 derniers tours)
+    moteur = os.getenv("ASSISTANT_MOTEUR", "mistral")
+    try:
+        from assistant_rh import chat
+        reponse = chat(messages, moteur=moteur, modele=os.getenv("ASSISTANT_MODELE") or None)
+        return app.response_class(json.dumps({"reply": reponse}, ensure_ascii=False),
+                                  mimetype="application/json")
+    except Exception as e:
+        return app.response_class(
+            json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
+                                 f"En ligne, le chat nécessite un PythonAnywhere payant."},
+                       ensure_ascii=False),
+            status=502, mimetype="application/json")
 
 
 @app.route("/export_reponses")

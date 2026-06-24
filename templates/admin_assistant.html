@@ -47,6 +47,23 @@
     .vide { text-align: center; color: #888; padding: 50px 20px; }
     .vide .ico { font-size: 2.4em; }
     .vide p { margin-top: 10px; font-size: 0.95em; }
+
+    /* Chat RH */
+    .chat-wrap { margin-top: 30px; border-top: 2px solid #eef2f7; padding-top: 20px; }
+    .chat-wrap h2 { color: #1F4E79; font-size: 1.05em; }
+    .chat-sub { color: #888; font-size: 0.8em; margin: 4px 0 10px; }
+    .chat-warn { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; font-size: 0.78em; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; }
+    .chat-log { background: #f9fbfd; border: 1px solid #dde3ed; border-radius: 10px; padding: 14px; min-height: 120px; max-height: 440px; overflow-y: auto; }
+    .msg-c { margin-bottom: 12px; display: flex; }
+    .msg-c.user { justify-content: flex-end; }
+    .bulle { max-width: 82%; padding: 10px 14px; border-radius: 12px; font-size: 0.9em; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+    .msg-c.user .bulle { background: #1F4E79; color: white; border-bottom-right-radius: 3px; }
+    .msg-c.bot .bulle { background: white; border: 1px solid #dde3ed; color: #333; border-bottom-left-radius: 3px; }
+    .chat-vide { color: #888; font-style: italic; font-size: 0.86em; line-height: 1.6; }
+    .chat-form { display: flex; gap: 8px; margin-top: 12px; }
+    .chat-form textarea { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.9em; resize: vertical; min-height: 46px; font-family: inherit; }
+    .chat-form button { background: #1F4E79; color: white; border: none; border-radius: 8px; padding: 0 18px; font-weight: bold; cursor: pointer; }
+    .chat-form button:disabled { background: #9aa7b5; cursor: default; }
   </style>
 </head>
 <body>
@@ -146,6 +163,55 @@
   {% endif %}
 
   {% endif %}
+
+  <!-- Agent conversationnel RH / juridique -->
+  <div class="chat-wrap">
+    <h2>💬 Demander à l'assistant RH</h2>
+    <div class="chat-sub">Questions RH / droit du travail (officine). Information générale — ne remplace pas un avocat ni l'expert-comptable.</div>
+    <div class="chat-warn">⚠️ Évite les données nominatives de salariés dans tes questions.</div>
+    <div class="chat-log" id="chatLog">
+      <div class="chat-vide" id="chatVide">Exemples : « Quel est le préavis légal pour une démission&nbsp;? » · « Comment gérer un arrêt maladie&nbsp;? » · « Qu'est-ce que la DSN et qui la fait&nbsp;? » · « Quelle est la durée de la période d'essai en officine&nbsp;? »</div>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <textarea id="chatInput" placeholder="Ta question RH / juridique…" required></textarea>
+      <button type="submit" id="chatSend">Envoyer</button>
+    </form>
+  </div>
 </div>
+
+<script>
+  const CSRF = "{{ csrf_token() }}";
+  const histo = [];
+  const log = document.getElementById('chatLog');
+  function ajoute(role, texte) {
+    const v = document.getElementById('chatVide'); if (v) v.remove();
+    const w = document.createElement('div'); w.className = 'msg-c ' + (role === 'user' ? 'user' : 'bot');
+    const b = document.createElement('div'); b.className = 'bulle'; b.textContent = texte;
+    w.appendChild(b); log.appendChild(w); log.scrollTop = log.scrollHeight; return b;
+  }
+  document.getElementById('chatForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const inp = document.getElementById('chatInput');
+    const q = inp.value.trim(); if (!q) return;
+    inp.value = '';
+    const send = document.getElementById('chatSend'); send.disabled = true;
+    ajoute('user', q); histo.push({ role: 'user', content: q });
+    const bulle = ajoute('bot', '…');
+    try {
+      const r = await fetch('/admin/assistant/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+        body: JSON.stringify({ messages: histo })
+      });
+      const data = await r.json();
+      if (data.reply) { bulle.textContent = data.reply; histo.push({ role: 'assistant', content: data.reply }); }
+      else { bulle.textContent = '⚠️ ' + (data.error || 'Erreur.'); }
+    } catch (err) { bulle.textContent = '⚠️ Connexion impossible.'; }
+    send.disabled = false; inp.focus();
+  });
+  document.getElementById('chatInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('chatForm').requestSubmit(); }
+  });
+</script>
 </body>
 </html>

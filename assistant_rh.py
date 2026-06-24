@@ -175,6 +175,62 @@ def _moteur_claude(system, prompt, modele):
 MOTEURS = {"fake": _moteur_fake, "mistral": _moteur_mistral, "claude": _moteur_claude}
 
 
+# --- Agent conversationnel RH / juridique ---
+
+SYSTEM_CHAT = (
+    "Tu es un expert en ressources humaines et en droit du travail français, "
+    "pédagogue, qui accompagne le ou la titulaire d'une pharmacie d'officine pour "
+    "l'aider à apprendre et bien exercer le métier de RH. Réponds clairement et "
+    "concrètement, en français, avec des étapes actionnables. Quand c'est pertinent, "
+    "appuie-toi sur le Code du travail et la Convention collective nationale de la "
+    "pharmacie d'officine (IDCC 1996), et cite le principe ou l'article quand tu le "
+    "connais avec certitude — sinon dis-le, n'invente jamais une référence. Précise "
+    "toujours quand un point délicat nécessite l'avis d'un avocat ou de l'expert-"
+    "comptable. Tu donnes une information générale, pas un conseil juridique engageant. "
+    "Ne donne aucun conseil médical. Si l'utilisateur mentionne une situation réelle, "
+    "rappelle-lui d'éviter les données nominatives de salariés."
+)
+
+
+def _chat_mistral(messages, modele):
+    cle = os.getenv("MISTRAL_API_KEY")
+    if not cle:
+        raise RuntimeError("MISTRAL_API_KEY manquante.")
+    rep = _post_json("https://api.mistral.ai/v1/chat/completions",
+                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
+                     {"model": modele or "mistral-small-latest", "messages": messages,
+                      "temperature": 0.3, "max_tokens": 1200})
+    return rep["choices"][0]["message"]["content"].strip()
+
+
+def _chat_claude(messages, modele):
+    cle = os.getenv("ANTHROPIC_API_KEY")
+    if not cle:
+        raise RuntimeError("ANTHROPIC_API_KEY manquante.")
+    # Claude veut le system à part ; on filtre le 1er message system.
+    sys_txt = next((m["content"] for m in messages if m["role"] == "system"), SYSTEM_CHAT)
+    convo = [m for m in messages if m["role"] != "system"]
+    rep = _post_json("https://api.anthropic.com/v1/messages",
+                     {"x-api-key": cle, "anthropic-version": "2023-06-01",
+                      "Content-Type": "application/json"},
+                     {"model": modele or "claude-haiku-4-5", "max_tokens": 1200,
+                      "system": sys_txt, "messages": convo})
+    return rep["content"][0]["text"].strip()
+
+
+def chat(messages, moteur="mistral", modele=None):
+    """messages: [{role:'user'|'assistant', content}]. Renvoie la réponse texte de l'assistant RH."""
+    full = [{"role": "system", "content": SYSTEM_CHAT}] + [
+        {"role": m["role"], "content": m["content"]} for m in messages
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    if moteur == "claude":
+        return _chat_claude(full, modele)
+    if moteur == "fake":
+        return "(mode fake) Réponse simulée — configure un moteur (Mistral) pour de vraies réponses."
+    return _chat_mistral(full, modele)
+
+
 def analyser(mails, employes=None, extra_noms=None, moteur="fake", modele=None):
     """Pseudonymise -> analyse (moteur choisi) -> normalise -> ré-identifie pour l'affichage."""
     table, inverse = construire_table(employes or [], extra_noms)
