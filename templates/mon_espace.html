@@ -30,6 +30,10 @@
     .badge-pos { background: #C6EFCE; color: #276221; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
     .badge-neg { background: #FFCCCC; color: #9C0006; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
     .badge-zero { background: #e8f0fe; color: #1F4E79; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.82em; }
+    .statut-mois { border-radius: 10px; padding: 12px 16px; margin-bottom: 22px; text-align: center; font-size: 0.92em; }
+    .statut-attente { background: #fde8e8; border: 1px solid #f5b5b5; color: #9C0006; }
+    .statut-ok { background: #d8f0de; border: 1px solid #aadab8; color: #276221; }
+    .statut-clos { background: #eef1f5; border: 1px solid #d8dee6; color: #555; }
   </style>
 </head>
 <body>
@@ -37,8 +41,19 @@
   <div class="entete">
     <h1>Bonjour {{ prenom }} !</h1>
     <p>Voici l'historique de vos relevés d'heures.</p>
-    <a href="/releve?token={{ token }}&prenom={{ prenom }}" class="btn-releve">Remplir le relevé du mois en cours</a>
+    <a href="/releve?token={{ token }}&prenom={{ prenom }}" class="btn-releve">{{ 'Modifier mon relevé du mois' if rempli_courant else 'Remplir le relevé du mois en cours' }}</a>
   </div>
+
+  {% if not modifiable %}
+  <div class="statut-mois statut-clos">🔒 La saisie de {{ mois_courant }} est clôturée.{% if rempli_courant %} Votre relevé a bien été enregistré.{% endif %}</div>
+  {% elif rempli_courant %}
+  <div class="statut-mois statut-ok">✓ Votre relevé de <strong>{{ mois_courant }}</strong> a bien été reçu.{% if jours_restants > 0 %} Vous pouvez encore le modifier ({{ jours_restants }} jour{{ 's' if jours_restants > 1 else '' }} restant{{ 's' if jours_restants > 1 else '' }}).{% endif %}</div>
+  {% else %}
+  <div class="statut-mois statut-attente">
+    ⏰ Vous n'avez pas encore rempli votre relevé de <strong>{{ mois_courant }}</strong>.
+    {% if jours_restants > 0 %}Il vous reste <strong>{{ jours_restants }} jour{{ 's' if jours_restants > 1 else '' }}</strong> (avant le 25).{% else %}Dernier délai : clôture le {{ jour_cloture }} !{% endif %}
+  </div>
+  {% endif %}
 
   {% if historique %}
     {% for h in historique %}

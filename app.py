@@ -187,8 +187,13 @@ def formulaire():
     token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
     deja_rempli = (reponse_de(reponses, emp["prenom"], emp["email"]) is not None) if emp else (token_canon in reponses)
     modifiable = datetime.now().day <= JOUR_CLOTURE
+    # Date limite communiquée aux employés (le blocage réel n'a lieu qu'au JOUR_CLOTURE).
+    DATE_LIMITE_COM = 25
+    jours_restants = DATE_LIMITE_COM - datetime.now().day
 
     return render_template("form.html",
+        jours_restants=jours_restants,
+        date_limite=DATE_LIMITE_COM,
         prenom=prenom,
         token=token,
         mois_annee=mois_annee,
@@ -826,7 +831,19 @@ def mon_espace():
                         "lien": f"/releve?token={token}&prenom={prenom}",
                     })
 
-    return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique)
+    # Relevé du mois en cours : a-t-il été rempli, et combien de jours reste-t-il ?
+    mois_c, annee_c = datetime.now().month, datetime.now().year
+    reponses_courant = charger_reponses(mois_c, annee_c)
+    rempli_courant = (reponse_de(reponses_courant, emp["prenom"], emp["email"]) is not None) \
+        if emp else (token_canon in reponses_courant)
+    modifiable = datetime.now().day <= JOUR_CLOTURE
+    jours_restants = 25 - datetime.now().day  # date limite communiquée aux employés
+
+    return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique,
+                           rempli_courant=rempli_courant, modifiable=modifiable,
+                           jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
+                           mois_courant=f"{MOIS_FR[mois_c]} {annee_c}",
+                           lien_releve=f"/releve?token={token}&prenom={prenom}")
 
 
 @app.route("/admin/absences")
