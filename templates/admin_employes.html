@@ -142,7 +142,7 @@
     </form>
   </details>
 
-  <input type="text" id="recherche" placeholder="Rechercher un employé..." oninput="filtrer()">
+  <input type="text" id="recherche" placeholder="Rechercher (nom, email, poste)..." oninput="filtrer()">
   <div class="filtres">
     <select id="f-poste" onchange="filtrer()">
       <option value="">Tous les postes</option>
@@ -161,6 +161,7 @@
   <div class="grille-emp" id="grille">
     {% for emp in employes %}
     <div class="carte-emp" data-nom="{{ emp.prenom }} {{ emp.nom }}"
+         data-email="{{ emp.email }}"
          data-poste="{{ emp.poste }}" data-contrat="{{ emp.contrat }}"
          data-alertes="{{ emp.alertes|length }}" data-manquants="{{ emp.manquants|length }}"
          onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
@@ -268,7 +269,8 @@ function filtrer() {
   var visibles = 0;
   cartes.forEach(function(c) {
     var d = c.dataset;
-    var ok = d.nom.toLowerCase().includes(q)
+    var texte = (d.nom + ' ' + (d.email || '') + ' ' + (d.poste || '')).toLowerCase();
+    var ok = texte.includes(q)
       && (!fp || d.poste === fp)
       && (!fc || d.contrat === fc)
       && (!fa || parseInt(d.alertes) > 0)
