@@ -16,7 +16,7 @@ import urllib.request
 from datetime import datetime
 import config
 
-BASE_URL = "https://pharmacie92000.pythonanywhere.com"
+BASE_URL = os.environ.get("ASSISTANT_BASE_URL", "https://pharmacie92000.pythonanywhere.com")
 CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
 
 
@@ -24,12 +24,14 @@ def _liste(val):
     return [x.strip() for x in (val or "").split(",") if x.strip()]
 
 
-def charger_emails_employes():
-    """Adresses des employés : serveur (source de vérité) sinon CSV local."""
+def charger_employes_complet():
+    """Employés (prénom, nom, email) : serveur (source de vérité) sinon CSV local.
+    Sert au filtrage IMAP ET à la pseudonymisation (option B)."""
     try:
         with urllib.request.urlopen(f"{BASE_URL}/export_employes?cle={CLE}", timeout=30) as r:
             emp = json.loads(r.read().decode("utf-8"))
-        return [e["email"].strip().lower() for e in emp if e.get("email")]
+        return [{"prenom": e.get("prenom", ""), "nom": e.get("nom", ""),
+                 "email": (e.get("email", "") or "").strip()} for e in emp if e.get("email")]
     except Exception as e:
         print(f"  (liste serveur indisponible : {e} — repli sur le CSV local)")
         import csv
@@ -37,12 +39,13 @@ def charger_emails_employes():
             p = os.path.join(os.path.dirname(__file__), nom)
             if os.path.exists(p):
                 with open(p, newline="", encoding="utf-8") as f:
-                    return [row["email"].strip().lower()
+                    return [{"prenom": row.get("prenom", ""), "nom": row.get("nom", ""),
+                             "email": (row.get("email", "") or "").strip()}
                             for row in csv.DictReader(f) if row.get("email")]
         return []
 
 
-def construire_filtres():
+def construire_filtres(employes):
     filtres = {}
     if _liste(config.COMPTA_EMAILS):
         filtres["compta"] = _liste(config.COMPTA_EMAILS)
@@ -50,7 +53,7 @@ def construire_filtres():
         filtres["planning"] = _liste(config.PLANNING_SENDER)
     if _liste(config.ADMIN_RH_DOMAINS):
         filtres["admin_rh"] = _liste(config.ADMIN_RH_DOMAINS)
-    emails_emp = charger_emails_employes()
+    emails_emp = [e["email"].lower() for e in employes if e.get("email")]
     if emails_emp:
         filtres["employes"] = emails_emp
     return filtres
@@ -77,7 +80,8 @@ def main():
 
     user = os.environ.get("GMAIL_USER") or config.GMAIL_USER
     pwd = os.environ.get("GMAIL_APP_PASSWORD") or config.GMAIL_APP_PASSWORD
-    filtres = construire_filtres()
+    employes = charger_employes_complet()
+    filtres = construire_filtres(employes)
     print(f"run_assistant — dry_run={dry} max={maxm} jours={config.ASSISTANT_JOURS}")
     print("Filtres:", {k: len(v) for k, v in filtres.items()})
     if not filtres:
@@ -99,13 +103,11 @@ def main():
         print("DRY-RUN : aucun appel IA, aucun push. Terminé.")
         return
 
-    if os.environ.get("ASSISTANT_FAKE") == "1":
-        resume = {"resume_texte": f"(FAKE) {len(mails)} mail(s) analysé(s) — test sans IA.",
-                  "taches_a_faire": [], "a_mettre_en_place": [], "echeances": [],
-                  "alertes": [], "_meta": {"nb_mails": len(mails), "modele": "fake"}}
-    else:
-        from assistant_rh import analyser
-        resume = analyser(mails, modele=config.ASSISTANT_MODELE)
+    from assistant_rh import analyser
+    moteur = "fake" if os.environ.get("ASSISTANT_FAKE") == "1" else config.ASSISTANT_MOTEUR
+    print(f"Analyse — moteur={moteur} (identités pseudonymisées avant envoi)")
+    resume = analyser(mails, employes=employes, moteur=moteur,
+                      modele=config.ASSISTANT_MODELE or None)
 
     resume["date"] = datetime.now().strftime("%Y-%m-%d")
     resume["genere_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")

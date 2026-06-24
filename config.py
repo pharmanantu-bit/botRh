@@ -16,9 +16,13 @@ LOGS_FOLDER = os.path.join(BASE_DIR, "logs")
 # Jour du mois pour l'envoi automatique
 SEND_DAY = 20
 
-# --- Assistant RH (lecture Gmail + analyse Claude, exécuté sur le runner GitHub) ---
+# --- Assistant RH (lecture Gmail + analyse IA, exécuté sur le runner GitHub) ---
+# Moteur d'analyse interchangeable : "fake" (test, sans réseau), "mistral" (UE),
+# "claude" (Anthropic). Les identités salariés sont pseudonymisées avant tout envoi.
+ASSISTANT_MOTEUR = os.getenv("ASSISTANT_MOTEUR", "fake")
+ASSISTANT_MODELE = os.getenv("ASSISTANT_MODELE", "")  # vide = défaut du moteur choisi
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ASSISTANT_MODELE = os.getenv("ASSISTANT_MODELE", "claude-haiku-4-5")
 # Expéditeurs surveillés (séparés par des virgules ; "@domaine" = tout le domaine)
 COMPTA_EMAILS = os.getenv("COMPTA_EMAILS", "")        # ex : jan@expertise-compta.com
 PLANNING_SENDER = os.getenv("PLANNING_SENDER", "")    # ex : noreply@monplanningpharma.fr
