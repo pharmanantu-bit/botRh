@@ -277,10 +277,19 @@
               <td><span class="doc-type">{{ d.type }}</span></td>
               <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a>
                 {% if d.expiration %}<span class="doc-exp">⏳ expire le {{ d.expiration|date_fr }}</span>{% endif %}
+                {% if d.a_valider %}<span title="Ajouté automatiquement par l'assistant RH — à vérifier" style="display:inline-block; background:#fff3cd; color:#856404; font-size:0.72em; font-weight:bold; padding:2px 8px; border-radius:10px; margin-left:6px;">🤖 à valider</span>{% endif %}
               </td>
               <td>{{ d.taille }}</td>
               <td>{{ d.date_ajout }}</td>
               <td>
+                {% if d.a_valider %}
+                <form method="POST" action="/admin/employe/document/valider" style="display:inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="email" value="{{ emp.email }}">
+                  <input type="hidden" name="doc_id" value="{{ d.id }}">
+                  <button type="submit" title="Marquer comme vérifié" style="background:#2f7d4f; color:white; border:none; border-radius:5px; padding:4px 9px; cursor:pointer;">✓</button>
+                </form>
+                {% endif %}
                 <form method="POST" action="/admin/employe/document/supprimer" style="display:inline"
                       onsubmit="return confirm('Supprimer définitivement ce document ?');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

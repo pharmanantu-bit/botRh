@@ -12,9 +12,12 @@ Usage :
 import sys
 import os
 import json
+import hashlib
 import urllib.request
 from datetime import datetime
 import config
+
+EXT_DOCS_OK = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".doc"}
 
 BASE_URL = os.environ.get("ASSISTANT_BASE_URL", "https://pharmacie92000.pythonanywhere.com")
 CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
@@ -22,6 +25,78 @@ CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
 
 def _liste(val):
     return [x.strip() for x in (val or "").split(",") if x.strip()]
+
+
+def deviner_type(nom, sujet):
+    """Devine le type de document RH à partir du nom de fichier et de l'objet du mail."""
+    t = (nom + " " + sujet).lower()
+    paires = [
+        (("arret", "arrêt", "maladie", "cpam", "prolongation"), "Arrêt de travail"),
+        (("rib", "iban", "bancaire"), "RIB / coordonnées bancaires"),
+        (("avenant",), "Avenant"),
+        (("contrat",), "Contrat de travail"),
+        (("vitale",), "Carte vitale"),
+        (("identite", "identité", "cni", "passeport", "sejour", "séjour"), "Pièce d'identité"),
+        (("domicile",), "Justificatif de domicile"),
+        (("diplome", "diplôme"), "Diplôme"),
+        (("attestation", "formation"), "Attestation de formation"),
+    ]
+    for mots, typ in paires:
+        if any(m in t for m in mots):
+            return typ
+    return "Autre / divers"
+
+
+def pieces_classables(mails, employes):
+    """PJ provenant d'un SALARIÉ connu, classables dans son dossier (types autorisés)."""
+    from mail_reader import _adresse_de
+    par_email = {e["email"].lower(): e for e in employes if e.get("email")}
+    out = []
+    for m in mails:
+        if m.get("categorie") != "employes":
+            continue
+        emp = par_email.get(_adresse_de(m.get("from", "")))
+        if not emp:
+            continue
+        for pj in m.get("pj_data", []):
+            if os.path.splitext(pj["filename"])[1].lower() not in EXT_DOCS_OK:
+                continue
+            out.append({
+                "email": emp["email"], "prenom": emp.get("prenom", ""),
+                "filename": pj["filename"], "content": pj["content"],
+                "type": deviner_type(pj["filename"], m.get("sujet", "")),
+                "sha": hashlib.sha256(pj["content"]).hexdigest(),
+                "message_id": m.get("message_id", ""),
+            })
+    return out
+
+
+def classer_pieces(mails, employes):
+    """Envoie au serveur les PJ des salariés pour classement auto (anti-doublon côté serveur)."""
+    import base64
+    candidats = pieces_classables(mails, employes)
+    if not candidats:
+        print("Aucune pièce jointe de salarié à classer.")
+        return
+    ajout = doublon = autre = 0
+    for c in candidats:
+        payload = {"email": c["email"], "filename": c["filename"], "type": c["type"],
+                   "libelle": c["filename"], "sha": c["sha"], "message_id": c["message_id"],
+                   "content_b64": base64.b64encode(c["content"]).decode()}
+        try:
+            req = urllib.request.Request(
+                f"{BASE_URL}/document_push?cle={CLE}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "botRh"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                st = json.loads(r.read().decode("utf-8")).get("status", "?")
+        except Exception as e:
+            st = f"erreur ({e})"
+        ajout += st == "ajoute"
+        doublon += st == "doublon"
+        autre += st not in ("ajoute", "doublon")
+        print(f"  PJ {c['prenom']} / {c['filename']} -> {st}")
+    print(f"Classement PJ : {ajout} ajout(s), {doublon} doublon(s), {autre} autre(s).")
 
 
 def charger_employes_complet():
@@ -93,14 +168,18 @@ def main():
 
     from mail_reader import lire_mails_rh
     mails = lire_mails_rh(user, pwd, filtres, depuis_jours=config.ASSISTANT_JOURS,
-                          max_mails=maxm, max_chars=4000)
+                          max_mails=maxm, max_chars=4000, avec_pj=True)
     print(f"{len(mails)} mail(s) RH trouvé(s) sur {config.ASSISTANT_JOURS} jour(s) :")
     for m in mails:
         pj = f" [{len(m['pieces_jointes'])} PJ]" if m["pieces_jointes"] else ""
         print(f"  - [{m['categorie']}] {m['from'][:45]} | {m['sujet'][:60]}{pj}")
 
     if dry:
-        print("DRY-RUN : aucun appel IA, aucun push. Terminé.")
+        candidats = pieces_classables(mails, employes)
+        print(f"DRY-RUN : {len(candidats)} pièce(s) jointe(s) de salarié seraient classée(s) :")
+        for c in candidats:
+            print(f"  -> {c['prenom']} : {c['filename']} (type deviné : {c['type']})")
+        print("DRY-RUN : aucun appel IA, aucun push, aucun classement. Terminé.")
         return
 
     from assistant_rh import analyser
@@ -112,6 +191,9 @@ def main():
     resume["date"] = datetime.now().strftime("%Y-%m-%d")
     resume["genere_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     pousser(resume)
+
+    # Classement automatique des pièces jointes des salariés dans leur dossier.
+    classer_pieces(mails, employes)
 
 
 if __name__ == "__main__":

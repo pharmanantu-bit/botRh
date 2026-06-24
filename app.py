@@ -43,9 +43,9 @@ app.permanent_session_lifetime = timedelta(hours=8)
 # le jeton est lié à la session (durée 8h) et vérifié sur chaque POST.
 # Exemptions : routes publiques/machines déjà protégées par un secret
 #   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
-#   - /assistant_push : POST machine protégé par la clé API (runner GitHub)
+#   - /assistant_push, /document_push : POST machine protégés par la clé API (runner)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
-CSRF_EXEMPT = {"/envoyer", "/assistant_push"}
+CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push"}
 
 def csrf_token():
     tok = session.get("_csrf_token")
@@ -1772,6 +1772,75 @@ def admin_assistant_refresh():
         return redirect(url_for("admin_assistant", msg="lance"))
     except Exception:
         return redirect(url_for("admin_assistant", msg="erreur"))
+
+
+@app.route("/document_push", methods=["POST"])
+def document_push():
+    """Reçoit une pièce jointe (base64) classée automatiquement par l'assistant dans
+    le dossier d'un salarié. Protégé par la clé API. Additif, étiqueté « à valider »."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    data = request.get_json(force=True, silent=True) or {}
+    email = data.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        return app.response_class(json.dumps({"status": "ignore", "raison": "employé inconnu"}),
+                                  status=404, mimetype="application/json")
+    nom_original = data.get("filename", "piece")
+    filename = secure_filename(nom_original) or "piece"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in EXT_DOCS_OK:
+        return app.response_class(json.dumps({"status": "ignore", "raison": "type"}),
+                                  mimetype="application/json")
+    sha = data.get("sha", "")
+    idx = charger_docs_index()
+    if sha and any(d.get("sha") == sha for d in idx.get(email, [])):
+        return app.response_class(json.dumps({"status": "doublon"}), mimetype="application/json")
+    import base64
+    try:
+        contenu = base64.b64decode(data.get("content_b64", ""))
+    except Exception:
+        contenu = b""
+    if not contenu:
+        return app.response_class(json.dumps({"status": "erreur", "raison": "contenu vide"}),
+                                  status=400, mimetype="application/json")
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    doc_id = uuid.uuid4().hex[:12]
+    stored = f"{doc_id}_{filename}"
+    with open(os.path.join(DOCS_DIR, stored), "wb") as fp:
+        fp.write(contenu)
+    idx.setdefault(email, []).append({
+        "id": doc_id,
+        "fichier": stored,
+        "nom_original": nom_original,
+        "type": data.get("type", "Autre / divers"),
+        "libelle": (data.get("libelle", "") or nom_original).strip(),
+        "expiration": "",
+        "taille": humaniser_taille(len(contenu)),
+        "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "source": "assistant",
+        "a_valider": True,
+        "sha": sha,
+    })
+    sauvegarder_docs_index(idx)
+    return app.response_class(json.dumps({"status": "ajoute", "id": doc_id}),
+                              mimetype="application/json")
+
+
+@app.route("/admin/employe/document/valider", methods=["POST"])
+def admin_employe_document_valider():
+    """Marque un document auto-classé comme vérifié (retire l'étiquette « à valider »)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    doc_id = request.form.get("doc_id", "")
+    idx = charger_docs_index()
+    for d in idx.get(email, []):
+        if d.get("id") == doc_id:
+            d["a_valider"] = False
+            break
+    sauvegarder_docs_index(idx)
+    return redirect(url_for("admin_employe", email=email))
 
 
 @app.route("/admin/assistant/chat", methods=["POST"])

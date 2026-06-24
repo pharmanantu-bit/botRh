@@ -82,6 +82,29 @@ def _adresse_de(from_header):
     return m.group(0).lower() if m else ""
 
 
+def _extraire_pieces(msg):
+    """Télécharge les pièces jointes : [{filename, content(bytes), content_type}].
+    Utilisé uniquement pour le classement auto dans le dossier salarié (avec_pj=True)."""
+    pieces = []
+    if not msg.is_multipart():
+        return pieces
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition") or "").lower()
+        if "attachment" not in disp:
+            continue
+        nom = _decoder_entete(part.get_filename())
+        if not nom:
+            continue
+        try:
+            data = part.get_payload(decode=True)
+        except Exception:
+            data = None
+        if data:
+            pieces.append({"filename": nom, "content": data,
+                           "content_type": part.get_content_type()})
+    return pieces
+
+
 def aplatir_filtres(filtres):
     """{categorie: [adresses ou @domaines]} -> [(categorie, motif)]."""
     return [(cat, m) for cat, motifs in filtres.items() for m in motifs]
@@ -110,10 +133,12 @@ def connecter(user, app_password):
     return imap
 
 
-def lire_mails_rh(user, app_password, filtres, depuis_jours=2, max_mails=25, max_chars=4000):
+def lire_mails_rh(user, app_password, filtres, depuis_jours=2, max_mails=25, max_chars=4000,
+                  avec_pj=False):
     """Lit les mails RH des `depuis_jours` derniers jours, restreints aux expéditeurs
     déclarés dans `filtres` ({categorie: [adresses/@domaines]}). Lecture seule.
-    Renvoie [{date, from, sujet, corps, pieces_jointes[], categorie}]."""
+    Renvoie [{date, from, sujet, corps, pieces_jointes[], categorie}].
+    Si avec_pj=True, ajoute aussi message_id et pj_data (contenu des PJ téléchargé)."""
     filtres_plats = aplatir_filtres(filtres)
     if not filtres_plats:
         return []
@@ -137,14 +162,18 @@ def lire_mails_rh(user, app_password, filtres, depuis_jours=2, max_mails=25, max
                     msg = email.message_from_bytes(raw[0][1])
                     frm = _decoder_entete(msg.get("From"))
                     corps, pieces = _extraire_corps(msg, max_chars)
-                    mails.append({
+                    entree = {
                         "date": _decoder_entete(msg.get("Date")),
                         "from": frm,
                         "sujet": _decoder_entete(msg.get("Subject")),
                         "corps": corps,
                         "pieces_jointes": pieces,
                         "categorie": categoriser(_adresse_de(frm), filtres_plats) or _cat,
-                    })
+                    }
+                    if avec_pj:
+                        entree["message_id"] = (msg.get("Message-ID") or "").strip()
+                        entree["pj_data"] = _extraire_pieces(msg)
+                    mails.append(entree)
                 except Exception:
                     continue
                 if len(mails) >= max_mails:
