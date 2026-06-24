@@ -3,6 +3,8 @@ import os
 import csv
 import io
 import uuid
+import copy
+import secrets
 import hashlib
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
@@ -108,25 +110,48 @@ MOIS_FR = {
 from tokens import generer_token, resoudre_employe, reponse_de, tokens_valides
 
 
+# --- Cache mémoire des fichiers JSON (invalidé par date de modification) ---
+# Le dashboard relit jusqu'à 12 mois de réponses à chaque affichage ; sur
+# PythonAnywhere gratuit (mono-thread) ces lectures disque répétées sont lentes.
+# On garde le contenu parsé en mémoire tant que le mtime du fichier ne change pas.
+# Les lecteurs reçoivent une copie isolée (le code modifie souvent la donnée
+# chargée avant de la sauvegarder) — sémantique identique à une relecture disque.
+_JSON_CACHE = {}
+
+def _lire_json(path, defaut=None):
+    defaut = {} if defaut is None else defaut
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return copy.deepcopy(defaut)
+    entree = _JSON_CACHE.get(path)
+    if not entree or entree[0] != mtime:
+        with open(path, encoding="utf-8") as fp:
+            entree = (mtime, json.load(fp))
+        _JSON_CACHE[path] = entree
+    return copy.deepcopy(entree[1])
+
+def _ecrire_json(path, data):
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(data, fp, ensure_ascii=False, indent=2)
+    try:
+        _JSON_CACHE[path] = (os.path.getmtime(path), copy.deepcopy(data))
+    except OSError:
+        _JSON_CACHE.pop(path, None)
+
+
 def charger_reponses(mois=None, annee=None):
-    f = reponses_file(mois, annee)
-    if os.path.exists(f):
-        with open(f, encoding="utf-8") as fp:
-            return json.load(fp)
-    return {}
+    return _lire_json(reponses_file(mois, annee))
 
 
 def sauvegarder_reponse(token, data):
-    f = reponses_file()
     reponses = charger_reponses()
     reponses[token] = data
-    with open(f, "w", encoding="utf-8") as fp:
-        json.dump(reponses, fp, ensure_ascii=False, indent=2)
+    _ecrire_json(reponses_file(), reponses)
 
 
 def ecrire_reponses(reponses, mois=None, annee=None):
-    with open(reponses_file(mois, annee), "w", encoding="utf-8") as fp:
-        json.dump(reponses, fp, ensure_ascii=False, indent=2)
+    _ecrire_json(reponses_file(mois, annee), reponses)
 
 
 @app.route("/releve")
@@ -289,15 +314,10 @@ def planning_file(mois=None, annee=None):
     return os.path.join(BASE_DIR, f"planning_{mois}_{annee}.json")
 
 def charger_planning(mois=None, annee=None):
-    f = planning_file(mois, annee)
-    if os.path.exists(f):
-        with open(f, encoding="utf-8") as fp:
-            return json.load(fp)
-    return {}
+    return _lire_json(planning_file(mois, annee))
 
 def sauvegarder_planning(data):
-    with open(planning_file(), "w", encoding="utf-8") as fp:
-        json.dump(data, fp, ensure_ascii=False, indent=2)
+    _ecrire_json(planning_file(), data)
 
 def hm_to_float(s):
     s = s.strip().replace("min", "").replace(" ", "")
@@ -610,14 +630,10 @@ def journal_trie(journal):
     return sorted(journal, key=lambda e: parse_date_fr(e.get("date")) or _d(1900, 1, 1), reverse=True)
 
 def charger_profils():
-    if os.path.exists(PROFILS_FILE):
-        with open(PROFILS_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    return _lire_json(PROFILS_FILE)
 
 def sauvegarder_profils(profils):
-    with open(PROFILS_FILE, "w", encoding="utf-8") as f:
-        json.dump(profils, f, ensure_ascii=False, indent=2)
+    _ecrire_json(PROFILS_FILE, profils)
 
 def profil_de(email):
     return charger_profils().get(email, {})
@@ -664,15 +680,11 @@ def grouper_docs_par_famille(docs):
     return {fam: items for fam, items in groupes.items() if items}
 
 def charger_docs_index():
-    if os.path.exists(DOCS_INDEX):
-        with open(DOCS_INDEX, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    return _lire_json(DOCS_INDEX)
 
 def sauvegarder_docs_index(idx):
     os.makedirs(DOCS_DIR, exist_ok=True)
-    with open(DOCS_INDEX, "w", encoding="utf-8") as f:
-        json.dump(idx, f, ensure_ascii=False, indent=2)
+    _ecrire_json(DOCS_INDEX, idx)
 
 def docs_de(email):
     return charger_docs_index().get(email, [])
@@ -800,8 +812,7 @@ def mon_espace():
             parts = fichier.replace("reponses_","").replace(".json","").split("_")
             if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                 m, a = int(parts[0]), int(parts[1])
-                with open(os.path.join(BASE_DIR, fichier), encoding="utf-8") as fp:
-                    reponses = json.load(fp)
+                reponses = _lire_json(os.path.join(BASE_DIR, fichier))
                 r = reponse_de(reponses, emp["prenom"], emp["email"]) if emp else reponses.get(token)
                 if r:
                     solde = round(r["heures_plus"] - r["heures_moins"], 2)
