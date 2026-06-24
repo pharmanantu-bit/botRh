@@ -38,6 +38,36 @@ app.config.update(
 )
 app.permanent_session_lifetime = timedelta(hours=8)
 
+# --- Protection CSRF (jeton par session, sans dépendance externe) ---
+# Chaque formulaire admin doit renvoyer le champ caché {{ csrf_token() }} ;
+# le jeton est lié à la session (durée 8h) et vérifié sur chaque POST.
+# Exemptions : routes publiques/machines déjà protégées par un secret
+#   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
+#   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
+CSRF_EXEMPT = {"/envoyer"}
+
+def csrf_token():
+    tok = session.get("_csrf_token")
+    if not tok:
+        tok = secrets.token_hex(16)
+        session["_csrf_token"] = tok
+    return tok
+
+@app.context_processor
+def _injecter_csrf():
+    return {"csrf_token": csrf_token}
+
+@app.before_request
+def _verifier_csrf():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return
+    if request.path in CSRF_EXEMPT:
+        return
+    attendu = session.get("_csrf_token", "")
+    envoye = request.form.get("csrf_token", "")
+    if not attendu or not secrets.compare_digest(str(envoye), str(attendu)):
+        abort(400, description="Échec de la vérification de sécurité (CSRF). Rechargez la page et réessayez.")
+
 # Anti-bruteforce login : blocage temporaire après plusieurs échecs (par IP).
 import time as _time
 _LOGIN_ECHECS = {}          # ip -> [nb, premier_ts]

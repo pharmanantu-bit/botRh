@@ -27,6 +27,7 @@
   <div class="erreur">Mot de passe incorrect.</div>
   {% endif %}
   <form method="POST" action="/admin">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Mot de passe</label>
     <input type="password" name="password" autofocus placeholder="••••••••">
     <button type="submit" class="btn">Connexion</button>

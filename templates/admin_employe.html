@@ -141,6 +141,7 @@
     <a href="/admin/employe/export?email={{ emp.email|urlencode }}" class="fa-btn fa-export">⬇️ Exporter le dossier (ZIP)</a>
     {% if statut == 'archive' %}
     <form method="POST" action="/admin/employe/statut" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="email" value="{{ emp.email }}">
       <input type="hidden" name="statut" value="actif">
       <input type="hidden" name="retour" value="/admin/employe?email={{ emp.email|urlencode }}">
@@ -149,6 +150,7 @@
     {% else %}
     <form method="POST" action="/admin/employe/statut" style="display:inline;"
           onsubmit="return confirm('Archiver {{ emp.prenom }} {{ emp.nom }} ? Son dossier est conservé mais il passe en archivés.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="email" value="{{ emp.email }}">
       <input type="hidden" name="statut" value="archive">
       <input type="hidden" name="retour" value="/admin/employe?email={{ emp.email|urlencode }}">
@@ -169,12 +171,14 @@
   <details class="dossier" {% if not profil.poste %}open{% endif %}>
     <summary>📁 Dossier salarié</summary>
     <form method="POST" action="/admin/employe/photo" enctype="multipart/form-data" class="photo-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="email" value="{{ emp.email }}">
       <label>📷 Photo de profil :</label>
       <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required>
       <button type="submit" class="btn-photo">Charger</button>
     </form>
     <form method="POST" action="/admin/employe/profil" class="profil-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="email" value="{{ emp.email }}">
       <input type="hidden" name="annee" value="{{ annee }}">
       <div class="grille">
@@ -246,6 +250,7 @@
       {% if doc_err == 'vide' %}<div class="doc-msg err">Aucun fichier sélectionné.</div>{% endif %}
 
       <form method="POST" action="/admin/employe/document" enctype="multipart/form-data" class="doc-upload">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ emp.email }}">
         <select name="type">
           {% for fam, sous in familles_docs.items() %}
@@ -278,6 +283,7 @@
               <td>
                 <form method="POST" action="/admin/employe/document/supprimer" style="display:inline"
                       onsubmit="return confirm('Supprimer définitivement ce document ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="email" value="{{ emp.email }}">
                   <input type="hidden" name="id" value="{{ d.id }}">
                   <button type="submit" class="doc-suppr" title="Supprimer">🗑</button>
@@ -300,6 +306,7 @@
     <summary>📒 Journal RH ({{ journal|length }})</summary>
     <div class="profil-form">
       <form method="POST" action="/admin/employe/journal" class="journal-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ emp.email }}">
         <input type="date" name="date" title="Date de l'événement">
         <select name="type">
@@ -319,6 +326,7 @@
           </div>
           <form method="POST" action="/admin/employe/journal/supprimer" style="display:inline;"
                 onsubmit="return confirm('Supprimer cet événement ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="email" value="{{ emp.email }}">
             <input type="hidden" name="id" value="{{ ev.id }}">
             <button type="submit" class="tl-suppr" title="Supprimer">🗑</button>
@@ -337,6 +345,7 @@
     <summary>✅ Arrivée / Départ</summary>
     <div class="profil-form chk-cols">
       <form method="POST" action="/admin/employe/checklist">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ emp.email }}">
         <input type="hidden" name="type" value="arrivee">
         <div class="chk-titre">🟢 Arrivée (onboarding)</div>
@@ -346,6 +355,7 @@
         <button type="submit" class="btn-save" style="margin-top:10px;">💾 Enregistrer</button>
       </form>
       <form method="POST" action="/admin/employe/checklist">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ emp.email }}">
         <input type="hidden" name="type" value="depart">
         <div class="chk-titre">🔴 Départ (offboarding)</div>

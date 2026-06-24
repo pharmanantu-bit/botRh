@@ -49,6 +49,7 @@
   </div>
 
   <form method="POST" action="/admin/planning" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="import-img">
       <label>Importer capture planning (.png) :</label>
