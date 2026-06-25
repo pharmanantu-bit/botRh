@@ -52,6 +52,8 @@
   {% if msg == 'analyse_ok' %}<div class="msg msg-ok">Analyse IA générée.</div>{% endif %}
   {% if msg == 'analyse_err' %}<div class="msg msg-err">Analyse IA indisponible (accès Internet sortant requis — OK en local / PA payant).</div>{% endif %}
   {% if msg == 'pas_de_cv' %}<div class="msg msg-warn">Dépose d'abord un CV (type « CV ») pour pouvoir l'analyser.</div>{% endif %}
+  {% if msg == 'embauche_email' %}<div class="msg msg-warn">Renseigne d'abord l'e-mail du candidat (c'est la clé de la fiche salarié).</div>{% endif %}
+  {% if msg == 'deja_salarie' %}<div class="msg msg-warn">Cet e-mail correspond déjà à un salarié — pas de doublon créé.</div>{% endif %}
 
   <!-- Statut -->
   <form method="POST" action="/admin/recrutement/statut" class="statut-bar">
@@ -63,6 +65,31 @@
     </select>
     <span class="meta">Ajouté le {{ c.date_ajout }}{% if c.source %} · {{ c.source }}{% endif %}</span>
   </form>
+
+  <!-- Embauche & dossier comptable -->
+  <div class="bloc">
+    <h2>🎯 Embauche</h2>
+    {% if c.embauche_email %}
+      <p>✅ Embauché(e) — <a href="/admin/employe?email={{ c.embauche_email|urlencode }}">voir la fiche salarié</a>.</p>
+    {% else %}
+      <form method="POST" action="/admin/recrutement/embaucher" style="display:inline;"
+            onsubmit="return confirm('Créer la fiche salarié à partir de ce candidat ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" value="{{ cid }}">
+        <button class="btn" type="submit">🔄 Créer la fiche salarié</button>
+      </form>
+      <span class="meta" style="margin-left:8px;">Crée la fiche Équipe & RH pré-remplie + copie les documents.</span>
+    {% endif %}
+    <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
+    <h2>📤 Dossier expert-comptable</h2>
+    <a class="btn" href="/admin/recrutement/dossier-zip?id={{ cid }}">⬇️ Télécharger le dossier (ZIP)</a>
+    {% if mail_comptable_url %}
+    <a class="btn" href="{{ mail_comptable_url }}" target="_blank" rel="noopener" style="background:#1F7A3D;">✉️ Ouvrir le mail au comptable</a>
+    <p class="meta" style="margin-top:6px;">Joins le ZIP téléchargé au mail avant d'envoyer (le mail ne peut pas attacher tout seul).</p>
+    {% else %}
+    <p class="meta">Définis <code>COMPTA_EMAILS</code> (.env) pour activer le bouton « mail au comptable ».</p>
+    {% endif %}
+  </div>
 
   <!-- Coordonnées / poste -->
   <div class="bloc">

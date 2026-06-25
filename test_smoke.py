@@ -231,6 +231,52 @@ finally:
     if os.path.exists(_tmp_cf):
         os.remove(_tmp_cf)
 
+# --- Lot A : embauche candidat -> salarié (TOTALEMENT isolé, vraies données intactes) ---
+import tempfile
+import csv as _csv
+import shutil as _shutil
+_td = tempfile.mkdtemp()
+_sv = {"CF": recrutement.CANDIDATS_FILE, "CDD": recrutement.CANDIDATS_DOCS_DIR,
+       "CDI": recrutement.CANDIDATS_DOCS_INDEX, "rDD": recrutement.DOCS_DIR,
+       "EL": A.EMPLOYEES_LIVE, "EF": A.EMPLOYEES_FILE, "PF": A.PROFILS_FILE,
+       "DD": A.DOCS_DIR, "DI": A.DOCS_INDEX}
+try:
+    recrutement.CANDIDATS_FILE = os.path.join(_td, "cand.json")
+    recrutement.CANDIDATS_DOCS_DIR = os.path.join(_td, "cdocs"); os.makedirs(recrutement.CANDIDATS_DOCS_DIR)
+    recrutement.CANDIDATS_DOCS_INDEX = os.path.join(recrutement.CANDIDATS_DOCS_DIR, "index.json")
+    _docs = os.path.join(_td, "docs"); os.makedirs(_docs)
+    recrutement.DOCS_DIR = _docs; A.DOCS_DIR = _docs; A.DOCS_INDEX = os.path.join(_docs, "index.json")
+    A.EMPLOYEES_LIVE = os.path.join(_td, "emp_live.csv"); A.EMPLOYEES_FILE = A.EMPLOYEES_LIVE
+    with open(A.EMPLOYEES_LIVE, "w", newline="", encoding="utf-8") as f:
+        _csv.DictWriter(f, fieldnames=["nom", "prenom", "email"]).writeheader()
+    A.PROFILS_FILE = os.path.join(_td, "profils.json")
+    with open(os.path.join(recrutement.CANDIDATS_DOCS_DIR, "d1_cv.pdf"), "wb") as f:
+        f.write(b"%PDF cv test")
+    recrutement.sauvegarder_candidats_docs_index({"cE": [{"id": "d1", "fichier": "d1_cv.pdf",
+        "nom_original": "cv.pdf", "type": "CV", "libelle": "CV", "taille": "1 Ko", "date_ajout": ""}]})
+    recrutement.sauvegarder_candidats({"cE": {"prenom": "Eva", "nom": "Test", "email": "eva.test@ex.fr",
+        "telephone": "0102030405", "poste_vise": "Préparateur", "source": "", "statut": "Retenu",
+        "date_ajout": "", "notes_libres": "", "journal": [], "cv_texte": "", "analyse_ia": None}})
+    with client.session_transaction() as s:
+        s["admin"] = True; s["_csrf_token"] = "t"
+    client.post("/admin/recrutement/embaucher", data={"id": "cE", "csrf_token": "t"})
+    emp_ok = any(e["email"] == "eva.test@ex.fr" for e in A.charger_employes())
+    prof_ok = A.profil_de("eva.test@ex.fr").get("poste") == "Préparateur"
+    doc_ok = len(A.charger_docs_index().get("eva.test@ex.fr", [])) == 1
+    zcode = client.get("/admin/recrutement/dossier-zip?id=cE").status_code
+    ok_emb = emp_ok and prof_ok and doc_ok and zcode == 200
+    print(("OK " if ok_emb else "KO ") + f"[--] embauche (salarié={emp_ok} profil={prof_ok} doc copié={doc_ok} zip={zcode})")
+    if not ok_emb:
+        echecs.append("embauche candidat->salarié KO")
+finally:
+    recrutement.CANDIDATS_FILE, recrutement.CANDIDATS_DOCS_DIR = _sv["CF"], _sv["CDD"]
+    recrutement.CANDIDATS_DOCS_INDEX, recrutement.DOCS_DIR = _sv["CDI"], _sv["rDD"]
+    A.EMPLOYEES_LIVE, A.EMPLOYEES_FILE, A.PROFILS_FILE = _sv["EL"], _sv["EF"], _sv["PF"]
+    A.DOCS_DIR, A.DOCS_INDEX = _sv["DD"], _sv["DI"]
+    for _p in [k for k in A._JSON_CACHE if _td.replace("\\", "/") in k.replace("\\", "/")]:
+        A._JSON_CACHE.pop(_p, None)
+    _shutil.rmtree(_td, ignore_errors=True)
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

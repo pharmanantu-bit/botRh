@@ -15,7 +15,9 @@ from flask import (Blueprint, request, render_template, redirect, url_for,
 from werkzeug.utils import secure_filename
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, EXT_DOCS_OK, humaniser_taille,
-                 deviner_type_doc)
+                 deviner_type_doc, charger_employes, sauvegarder_employes,
+                 charger_profils, sauvegarder_profils, DOCS_DIR,
+                 charger_docs_index, sauvegarder_docs_index)
 import extraction_pj
 import recrutement_ia
 
@@ -113,10 +115,23 @@ def candidat():
     if not c:
         abort(404)
     journal = sorted(c.get("journal", []), key=lambda e: e.get("date", ""), reverse=True)
+    # Lien Gmail pré-rempli vers l'expert-comptable (pour le dossier du nouvel embauché).
+    import urllib.parse
+    comptable = os.getenv("COMPTA_EMAILS", "").split(",")[0].strip()
+    mail_comptable_url = ""
+    if comptable:
+        su = f"Dossier nouvel embauché — {c.get('prenom', '')} {c.get('nom', '')}".strip()
+        body = (f"Bonjour,\n\nVeuillez trouver le dossier de {c.get('prenom', '')} {c.get('nom', '')} "
+                f"({c.get('poste_vise') or 'poste'}), recruté(e) dans notre officine.\n\n"
+                "Documents en pièce jointe (ZIP à joindre depuis le téléchargement).\n\nCordialement")
+        mail_comptable_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
+                              + urllib.parse.quote(comptable) + "&su=" + urllib.parse.quote(su)
+                              + "&body=" + urllib.parse.quote(body))
     return render_template("admin_candidat.html", c=c, cid=cid,
                            docs=candidat_docs_de(cid), statuts=STATUTS_RECRUTEMENT,
                            types_doc=TYPES_DOC_CANDIDAT, types_note=TYPES_NOTE_ENTRETIEN,
-                           journal=journal, msg=request.args.get("msg", ""))
+                           journal=journal, msg=request.args.get("msg", ""),
+                           mail_comptable_url=mail_comptable_url)
 
 
 @bp.route("/admin/recrutement/fiche", methods=["POST"])
@@ -494,3 +509,94 @@ def supprimer():
         candidats.pop(cid, None)
         sauvegarder_candidats(candidats)
     return redirect(url_for(".liste"))
+
+
+@bp.route("/admin/recrutement/embaucher", methods=["POST"])
+def embaucher():
+    """Crée la fiche salarié (Équipe & RH) pré-remplie depuis le candidat + copie ses
+    documents. Anti-doublon. Marque le candidat « Embauché »."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.form.get("id", "")
+    candidats = charger_candidats()
+    c = candidats.get(cid)
+    if not c:
+        abort(404)
+    email = (c.get("email") or "").strip()
+    if not email:
+        return redirect(url_for(".candidat", id=cid, msg="embauche_email"))
+    employes = charger_employes()
+    if any((e.get("email") or "").lower() == email.lower() for e in employes):
+        return redirect(url_for(".candidat", id=cid, msg="deja_salarie"))
+    # 1) Salarié (employees_live.csv)
+    employes.append({"nom": c.get("nom", ""), "prenom": c.get("prenom", ""), "email": email})
+    sauvegarder_employes(employes)
+    # 2) Profil pré-rempli
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    prof.setdefault("statut", "actif")
+    if c.get("poste_vise"):
+        prof.setdefault("poste", c["poste_vise"])
+    if c.get("telephone"):
+        prof.setdefault("telephone", c["telephone"])
+    prof.setdefault("date_entree", datetime.now().strftime("%d/%m/%Y"))
+    if not prof.get("notes"):
+        prof["notes"] = "Ancien candidat (issu du recrutement)."
+    profils[email] = prof
+    sauvegarder_profils(profils)
+    # 3) Copie des documents candidat -> salarié
+    import shutil
+    idx = charger_docs_index()
+    for d in candidat_docs_de(cid):
+        src = os.path.join(CANDIDATS_DOCS_DIR, d["fichier"])
+        if not os.path.exists(src):
+            continue
+        new_id = uuid.uuid4().hex[:12]
+        nom_orig = d.get("nom_original", d["fichier"])
+        stored = f"{new_id}_{secure_filename(nom_orig)}"
+        os.makedirs(DOCS_DIR, exist_ok=True)
+        try:
+            shutil.copyfile(src, os.path.join(DOCS_DIR, stored))
+        except OSError:
+            continue
+        idx.setdefault(email, []).append({
+            "id": new_id, "fichier": stored, "nom_original": nom_orig,
+            "type": d.get("type", "Autre / divers"), "libelle": d.get("libelle", nom_orig),
+            "taille": d.get("taille", ""), "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source": "recrutement",
+        })
+    sauvegarder_docs_index(idx)
+    # 4) Marque le candidat
+    c["statut"] = "Embauché"
+    c["embauche_email"] = email
+    candidats[cid] = c
+    sauvegarder_candidats(candidats)
+    return redirect(url_for("admin_employe", email=email, msg="embauche"))
+
+
+@bp.route("/admin/recrutement/dossier-zip")
+def dossier_zip():
+    """ZIP des documents du candidat + un récap — pour l'expert-comptable."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.args.get("id", "")
+    c = charger_candidats().get(cid)
+    if not c:
+        abort(404)
+    import io
+    import zipfile
+    recap = "\r\n".join([
+        f"DOSSIER CANDIDAT — {c.get('prenom')} {c.get('nom')}",
+        f"Poste visé : {c.get('poste_vise') or '—'}",
+        f"E-mail : {c.get('email') or '—'}",
+        f"Téléphone : {c.get('telephone') or '—'}", ""])
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("dossier.txt", recap)
+        for d in candidat_docs_de(cid):
+            chemin = os.path.join(CANDIDATS_DOCS_DIR, d["fichier"])
+            if os.path.exists(chemin):
+                zf.write(chemin, d.get("nom_original", d["fichier"]))
+    buf.seek(0)
+    nom = secure_filename(f"dossier_{c.get('prenom', '')}_{c.get('nom', '')}") or "dossier"
+    return send_file(buf, as_attachment=True, download_name=f"{nom}.zip", mimetype="application/zip")
