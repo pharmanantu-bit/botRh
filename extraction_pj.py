@@ -118,6 +118,21 @@ def _trouver_iban(texte):
             return brut
     return None
 
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_TEL_RE = re.compile(r"(?:(?:\+33|0033)\s?|0)[1-9](?:[ .\-]?\d{2}){4}")
+
+def extraire_contact(texte):
+    """Extrait e-mail + téléphone (FR) d'un texte de CV -> {email, telephone}.
+    Sert à pré-remplir la fiche candidat. Vide si rien trouvé."""
+    texte = texte or ""
+    em = _EMAIL_RE.search(texte)
+    tel = _TEL_RE.search(texte)
+    return {
+        "email": em.group(0) if em else "",
+        "telephone": re.sub(r"\s+", " ", tel.group(0)).strip() if tel else "",
+    }
+
+
 def extraire_champs(type_doc, texte):
     """Renvoie une liste de propositions {cible, valeur, apercu, libelle, chiffre}.
     cible : 'iban' (sensible -> chiffré côté serveur) ou 'profil:<champ>' (date en clair).

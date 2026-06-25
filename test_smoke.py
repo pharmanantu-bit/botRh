@@ -54,6 +54,7 @@ routes_admin = [
     "/admin/historique", f"/admin/historique/{mois}/{annee}",
     "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
     "/admin/sauvegarde", "/admin/sauvegarde/telecharger", "/admin/assistant", "/admin/securite",
+    "/admin/recrutement",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")
@@ -185,6 +186,35 @@ if employes:
         A._JSON_CACHE.pop(_tmp_pf, None)
         if os.path.exists(_tmp_pf):
             os.remove(_tmp_pf)
+
+# --- Module Recrutement (hors-ligne + fiche candidat isolée) ---
+import recrutement
+import recrutement_ia
+ct = extraction_pj.extraire_contact("Contact : 06 12 34 56 78 — a.b@exemple.fr")
+an = recrutement_ia.analyser_cv("CV de test, préparateur 5 ans.", "Préparateur", moteur="fake")
+ok_rec = (ct.get("email") == "a.b@exemple.fr" and ct.get("telephone")
+          and isinstance(an.get("score"), int) and "resume" in an)
+print(("OK " if ok_rec else "KO ") + "[--] recrutement (extraire_contact + analyse IA fake)")
+if not ok_rec:
+    echecs.append("recrutement : contact/analyse KO")
+
+_orig_cf = recrutement.CANDIDATS_FILE
+_tmp_cf = os.path.join(A.BASE_DIR, "_smoke_candidats_tmp.json")
+recrutement.CANDIDATS_FILE = _tmp_cf
+try:
+    recrutement.sauvegarder_candidats({"cTEST": {
+        "prenom": "Test", "nom": "Smoke", "email": "", "telephone": "", "poste_vise": "",
+        "source": "", "statut": "Reçu", "date_ajout": "01/01/2026", "notes_libres": "",
+        "journal": [], "cv_texte": "", "analyse_ia": None}})
+    code = client.get("/admin/recrutement/candidat?id=cTEST").status_code
+    print(("OK " if code == 200 else "KO ") + f"[{code}] /admin/recrutement/candidat (fiche)")
+    if code != 200:
+        echecs.append(f"fiche candidat (reçu {code})")
+finally:
+    recrutement.CANDIDATS_FILE = _orig_cf
+    A._JSON_CACHE.pop(_tmp_cf, None)
+    if os.path.exists(_tmp_cf):
+        os.remove(_tmp_cf)
 
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ c.prenom }} {{ c.nom }} — Candidat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 26px; max-width: 920px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    h1 { color: #1F4E79; font-size: 1.35em; }
+    h2 { color: #1F4E79; font-size: 1em; margin: 0 0 10px; }
+    .retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .msg { padding: 9px 14px; border-radius: 8px; font-size: 0.86em; margin-bottom: 14px; }
+    .msg-ok { background: #C6EFCE; color: #276221; } .msg-err { background: #FFCCCC; color: #9C0006; } .msg-warn { background: #fff3cd; color: #856404; }
+    .statut-bar { display: flex; align-items: center; gap: 8px; margin: 8px 0 18px; flex-wrap: wrap; }
+    .statut-bar select, select, input, textarea { font-family: inherit; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    label { font-size: 0.8em; color: #555; display: block; margin-bottom: 4px; }
+    input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+    .btn-ia { background: #1F7A3D; } .btn-ia:hover { background: #176030; }
+    .btn-sm { font-size: 0.8em; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; }
+    .transp { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; font-size: 0.8em; padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+    td, th { padding: 7px 8px; border: 1px solid #eee; text-align: left; }
+    th { background: #1F4E79; color: white; }
+    .voir { background: #1F4E79; color: white; border-radius: 5px; padding: 4px 9px; text-decoration: none; font-size: 0.82em; }
+    .suppr { background: #fff; border: 1px solid #f0c0c0; color: #9C0006; border-radius: 5px; padding: 4px 8px; cursor: pointer; }
+    .score { font-size: 1.6em; font-weight: bold; }
+    .score.bon { color: #1F7A3D; } .score.moy { color: #9C6500; } .score.bas { color: #9C0006; }
+    .puces { margin: 6px 0 0 18px; font-size: 0.88em; } .puces li { margin-bottom: 3px; }
+    .cv-texte { background: #f9fbfd; border: 1px solid #dde3ed; border-radius: 8px; padding: 12px; font-size: 0.82em; white-space: pre-wrap; max-height: 240px; overflow-y: auto; color: #444; }
+    .inline { display: inline; margin: 0; }
+    .meta { color: #9aa7b5; font-size: 0.8em; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>{{ c.prenom }} {{ c.nom|upper }}</h1>
+    <a class="retour" href="/admin/recrutement">← Recrutement</a>
+  </div>
+
+  {% if msg == 'doc_ok' %}<div class="msg msg-ok">Document ajouté.</div>{% endif %}
+  {% if msg == 'doc_type' %}<div class="msg msg-err">Format non accepté (PDF, images, Word).</div>{% endif %}
+  {% if msg == 'doc_vide' %}<div class="msg msg-err">Aucun fichier sélectionné.</div>{% endif %}
+  {% if msg == 'analyse_ok' %}<div class="msg msg-ok">Analyse IA générée.</div>{% endif %}
+  {% if msg == 'analyse_err' %}<div class="msg msg-err">Analyse IA indisponible (accès Internet sortant requis — OK en local / PA payant).</div>{% endif %}
+  {% if msg == 'pas_de_cv' %}<div class="msg msg-warn">Dépose d'abord un CV (type « CV ») pour pouvoir l'analyser.</div>{% endif %}
+
+  <!-- Statut -->
+  <form method="POST" action="/admin/recrutement/statut" class="statut-bar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="id" value="{{ cid }}">
+    <label style="margin:0;">Statut :</label>
+    <select name="statut" onchange="this.form.submit()" style="width:auto;">
+      {% for s in statuts %}<option value="{{ s }}" {% if s == c.statut %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <span class="meta">Ajouté le {{ c.date_ajout }}{% if c.source %} · {{ c.source }}{% endif %}</span>
+  </form>
+
+  <!-- Coordonnées / poste -->
+  <div class="bloc">
+    <h2>📇 Coordonnées</h2>
+    <form method="POST" action="/admin/recrutement/fiche">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <div class="grid">
+        <div><label>Prénom</label><input name="prenom" value="{{ c.prenom }}"></div>
+        <div><label>Nom</label><input name="nom" value="{{ c.nom }}"></div>
+        <div><label>E-mail</label><input name="email" type="email" value="{{ c.email }}"></div>
+        <div><label>Téléphone</label><input name="telephone" value="{{ c.telephone }}"></div>
+        <div><label>Poste visé</label><input name="poste_vise" value="{{ c.poste_vise }}"></div>
+        <div><label>Source</label><input name="source" value="{{ c.source }}"></div>
+        <div style="grid-column:1/-1;"><label>Notes libres</label><textarea name="notes_libres" rows="2">{{ c.notes_libres }}</textarea></div>
+      </div>
+      <button class="btn" type="submit" style="margin-top:10px;">💾 Enregistrer</button>
+    </form>
+  </div>
+
+  <!-- Analyse IA -->
+  <div class="bloc">
+    <h2>🤖 Analyse IA du CV</h2>
+    <div class="transp">⚠️ « Analyser » envoie le texte du CV à l'IA (Mistral, hébergé UE) pour le résumé/score. Rien n'est envoyé tant que tu ne cliques pas.</div>
+    {% if c.analyse_ia %}
+      {% set a = c.analyse_ia %}
+      {% set cls = 'bon' if a.score >= 70 else ('moy' if a.score >= 45 else 'bas') %}
+      <p><span class="score {{ cls }}">{{ a.score }}/100</span> — {{ a.adequation }}</p>
+      <p style="margin-top:8px;">{{ a.resume }}</p>
+      {% if a.points_forts %}<p style="margin-top:8px;"><strong>Points forts</strong></p><ul class="puces">{% for p in a.points_forts %}<li>✅ {{ p }}</li>{% endfor %}</ul>{% endif %}
+      {% if a.points_attention %}<p style="margin-top:8px;"><strong>Points d'attention</strong></p><ul class="puces">{% for p in a.points_attention %}<li>⚠️ {{ p }}</li>{% endfor %}</ul>{% endif %}
+      <p class="meta" style="margin-top:8px;">Généré le {{ a.genere_le }}</p>
+    {% else %}
+      <p class="meta">Pas encore d'analyse.</p>
+    {% endif %}
+    <form method="POST" action="/admin/recrutement/analyser" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <button class="btn btn-ia" type="submit">{% if c.analyse_ia %}🔄 Ré-analyser{% else %}🤖 Analyser le CV{% endif %}</button>
+    </form>
+  </div>
+
+  <!-- Documents -->
+  <div class="bloc">
+    <h2>📎 Documents</h2>
+    <form method="POST" action="/admin/recrutement/document" enctype="multipart/form-data" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <select name="type" style="width:auto;">
+        <option value="__auto__">🪄 Type auto</option>
+        {% for t in types_doc %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+      <input type="file" name="fichier" required style="width:auto;">
+      <button class="btn" type="submit">⬆️ Déposer</button>
+    </form>
+    {% if docs %}
+    <table>
+      <tbody>
+        {% for d in docs %}
+        <tr>
+          <td><strong>{{ d.type }}</strong></td>
+          <td>{{ d.libelle }}</td>
+          <td class="meta">{{ d.taille }} · {{ d.date_ajout }}</td>
+          <td>
+            <a class="voir" href="/admin/recrutement/document/{{ d.id }}?voir=1" target="_blank" rel="noopener">👁 Voir</a>
+            <form method="POST" action="/admin/recrutement/document/supprimer" class="inline" onsubmit="return confirm('Supprimer ce document ?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="id" value="{{ cid }}">
+              <input type="hidden" name="doc_id" value="{{ d.id }}">
+              <button class="suppr" type="submit">🗑</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="meta">Aucun document. Dépose un CV (type « CV ») pour activer l'analyse + pré-remplir le contact.</p>
+    {% endif %}
+    {% if c.cv_texte %}
+    <details style="margin-top:12px;">
+      <summary style="cursor:pointer; color:#1F4E79; font-size:0.88em;">📄 Voir le texte extrait du CV</summary>
+      <div class="cv-texte">{{ c.cv_texte }}</div>
+    </details>
+    {% endif %}
+  </div>
+
+  <!-- Notes d'entretien -->
+  <div class="bloc">
+    <h2>📝 Notes d'entretien</h2>
+    <form method="POST" action="/admin/recrutement/journal" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <div><label>Date</label><input type="date" name="date" style="width:auto;"></div>
+      <div><label>Type</label><select name="type" style="width:auto;">{% for t in types_note %}<option>{{ t }}</option>{% endfor %}</select></div>
+      <div style="flex:1; min-width:200px;"><label>Note</label><input name="note" placeholder="Impression, points abordés…"></div>
+      <button class="btn" type="submit">Ajouter</button>
+    </form>
+    {% for e in journal %}
+    <div style="border-top:1px solid #eef2f7; padding:8px 0; display:flex; justify-content:space-between; gap:10px;">
+      <div><strong>{{ e.date }}</strong> <span class="meta">· {{ e.type }}</span><br>{{ e.note }}</div>
+      <form method="POST" action="/admin/recrutement/journal/supprimer" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" value="{{ cid }}">
+        <input type="hidden" name="ev_id" value="{{ e.id }}">
+        <button class="suppr" type="submit" title="Supprimer">🗑</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="meta">Aucune note pour l'instant.</p>
+    {% endfor %}
+  </div>
+
+  <!-- Suppression candidat -->
+  <form method="POST" action="/admin/recrutement/supprimer" onsubmit="return confirm('Supprimer définitivement ce candidat et ses documents ?');" style="text-align:right;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="id" value="{{ cid }}">
+    <button class="btn-sm suppr" type="submit">🗑 Supprimer ce candidat</button>
+  </form>
+</div>
+</body>
+</html>

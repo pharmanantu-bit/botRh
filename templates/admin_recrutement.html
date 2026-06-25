@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recrutement — botRh</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 26px; max-width: 1200px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .compteur { color: #888; font-size: 0.85em; }
+    details.ajout { border: 1px solid #dde3ed; border-radius: 10px; margin-bottom: 22px; }
+    details.ajout summary { padding: 12px 16px; cursor: pointer; font-weight: bold; color: #1F4E79; background: #f5f8fc; border-radius: 10px; }
+    .form-ajout { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; padding: 16px; }
+    .form-ajout label { font-size: 0.8em; color: #555; display: block; margin-bottom: 4px; }
+    .form-ajout input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
+    .form-ajout .actions { grid-column: 1 / -1; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+
+    .pipeline { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+    .colonne { flex: 0 0 230px; background: #f5f8fc; border-radius: 10px; padding: 10px; }
+    .col-titre { font-size: 0.85em; font-weight: bold; color: #1F4E79; padding: 4px 6px 10px; display: flex; justify-content: space-between; }
+    .col-titre .n { background: #1F4E79; color: white; border-radius: 10px; padding: 1px 8px; font-size: 0.85em; }
+    .candidat-c { display: block; background: white; border: 1px solid #e3e9f2; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; text-decoration: none; color: #333; transition: box-shadow 0.15s; }
+    .candidat-c:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.12); }
+    .candidat-c .nom { font-weight: bold; color: #1F4E79; }
+    .candidat-c .poste { font-size: 0.82em; color: #555; margin-top: 2px; }
+    .candidat-c .meta { font-size: 0.74em; color: #9aa7b5; margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .col-vide { color: #aab4c0; font-size: 0.8em; font-style: italic; padding: 6px; }
+    .badge-ia { background: #eaf3ff; color: #1F4E79; border-radius: 8px; padding: 0 6px; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>🧲 Recrutement <span class="compteur">· {{ total }} candidat(s)</span></h1>
+  </div>
+
+  <details class="ajout">
+    <summary>➕ Ajouter un candidat</summary>
+    <form method="POST" action="/admin/recrutement/ajouter" class="form-ajout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div><label>Prénom</label><input name="prenom"></div>
+      <div><label>Nom</label><input name="nom"></div>
+      <div><label>E-mail</label><input name="email" type="email"></div>
+      <div><label>Téléphone</label><input name="telephone"></div>
+      <div><label>Poste visé</label><input name="poste_vise" placeholder="ex: Préparateur"></div>
+      <div><label>Source</label><input name="source" placeholder="ex: spontané, Indeed…"></div>
+      <div class="actions"><button class="btn" type="submit">Créer la fiche</button></div>
+    </form>
+  </details>
+
+  <div class="pipeline">
+    {% for s in statuts %}
+    <div class="colonne">
+      <div class="col-titre"><span>{{ s }}</span><span class="n">{{ parstatut[s]|length }}</span></div>
+      {% for c in parstatut[s] %}
+      <a class="candidat-c" href="/admin/recrutement/candidat?id={{ c.id }}">
+        <div class="nom">{{ c.prenom }} {{ c.nom|upper }}</div>
+        {% if c.poste_vise %}<div class="poste">{{ c.poste_vise }}</div>{% endif %}
+        <div class="meta">
+          {% if c.nb_docs %}<span>📎 {{ c.nb_docs }}</span>{% endif %}
+          {% if c.a_analyse %}<span class="badge-ia">🤖 analysé</span>{% endif %}
+          {% if c.source %}<span>· {{ c.source }}</span>{% endif %}
+        </div>
+      </a>
+      {% else %}
+      <div class="col-vide">—</div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+</body>
+</html>

@@ -2406,6 +2406,11 @@ def construire_sauvegarde():
     # Fichiers binaires (sinon non sauvegardés = perdus si le disque serveur tombe).
     data["documents_fichiers"] = _lire_fichiers_dossier(DOCS_DIR, ignore={"index.json"})
     data["photos_fichiers"] = _lire_fichiers_dossier(PHOTOS_DIR)
+    # Module recrutement (chemins en dur pour éviter d'importer recrutement.py ici).
+    _cand_docs = os.path.join(BASE_DIR, "candidats_docs")
+    data["candidats"] = _lire_json(os.path.join(BASE_DIR, "candidats.json"))
+    data["candidats_docs_index"] = _lire_json(os.path.join(_cand_docs, "index.json"))
+    data["candidats_fichiers"] = _lire_fichiers_dossier(_cand_docs, ignore={"index.json"})
     return data
 
 
@@ -2413,7 +2418,8 @@ def restaurer_sauvegarde(data):
     """Restaure les données depuis un dict de sauvegarde. N'efface rien d'autre :
     écrase uniquement les éléments présents dans la sauvegarde. Renvoie un résumé."""
     resume = {"employes": 0, "reponses": 0, "planning": 0, "profils": 0,
-              "documents_index": 0, "documents_fichiers": 0, "photos_fichiers": 0}
+              "documents_index": 0, "documents_fichiers": 0, "photos_fichiers": 0,
+              "candidats": 0, "candidats_fichiers": 0}
     if isinstance(data.get("employes"), list) and data["employes"]:
         sauvegarder_employes(data["employes"])
         resume["employes"] = len(data["employes"])
@@ -2435,6 +2441,15 @@ def restaurer_sauvegarde(data):
         resume["documents_index"] = len(data["documents_index"])
     resume["documents_fichiers"] = _ecrire_fichiers_dossier(DOCS_DIR, data.get("documents_fichiers"))
     resume["photos_fichiers"] = _ecrire_fichiers_dossier(PHOTOS_DIR, data.get("photos_fichiers"))
+    # Module recrutement
+    _cand_docs = os.path.join(BASE_DIR, "candidats_docs")
+    if isinstance(data.get("candidats"), dict):
+        _ecrire_json(os.path.join(BASE_DIR, "candidats.json"), data["candidats"])
+        resume["candidats"] = len(data["candidats"])
+    if isinstance(data.get("candidats_docs_index"), dict):
+        os.makedirs(_cand_docs, exist_ok=True)
+        _ecrire_json(os.path.join(_cand_docs, "index.json"), data["candidats_docs_index"])
+    resume["candidats_fichiers"] = _ecrire_fichiers_dossier(_cand_docs, data.get("candidats_fichiers"))
     return resume
 
 
@@ -2589,6 +2604,12 @@ def healthcheck():
 
     return app.response_class(_json.dumps(info, ensure_ascii=False, indent=2),
                               mimetype="application/json")
+
+
+# Module Recrutement (Blueprint) — importé EN BAS, après définition des helpers
+# d'app.py (évite tout cycle d'import : recrutement.py fait `from app import ...`).
+from recrutement import bp as recrutement_bp  # noqa: E402
+app.register_blueprint(recrutement_bp)
 
 
 if __name__ == "__main__":
