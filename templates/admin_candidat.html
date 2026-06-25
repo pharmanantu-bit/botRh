@@ -54,6 +54,7 @@
   {% if msg == 'pas_de_cv' %}<div class="msg msg-warn">Dépose d'abord un CV (type « CV ») pour pouvoir l'analyser.</div>{% endif %}
   {% if msg == 'embauche_email' %}<div class="msg msg-warn">Renseigne d'abord l'e-mail du candidat (c'est la clé de la fiche salarié).</div>{% endif %}
   {% if msg == 'deja_salarie' %}<div class="msg msg-warn">Cet e-mail correspond déjà à un salarié — pas de doublon créé.</div>{% endif %}
+  {% if msg == 'grille_ok' %}<div class="msg msg-ok">Grille d'entretien enregistrée.</div>{% endif %}
 
   <!-- Statut -->
   <form method="POST" action="/admin/recrutement/statut" class="statut-bar">
@@ -201,6 +202,27 @@
     {% else %}
     <p class="meta">Aucune note pour l'instant.</p>
     {% endfor %}
+  </div>
+
+  <!-- Grille d'entretien -->
+  <div class="bloc">
+    <h2>📝 Grille d'entretien{% if moyenne %} — <span style="color:#1F7A3D;">{{ moyenne }}/5</span>{% endif %}</h2>
+    <form method="POST" action="/admin/recrutement/grille">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <div class="grid">
+        {% for key, label in criteres %}
+        <div>
+          <label>{{ label }}</label>
+          <select name="crit_{{ key }}" style="width:auto;">
+            <option value="0">—</option>
+            {% for n in [1,2,3,4,5] %}<option value="{{ n }}" {% if grille.get(key) == n %}selected{% endif %}>{{ n }}/5</option>{% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      <button class="btn" type="submit" style="margin-top:10px;">💾 Enregistrer la grille</button>
+    </form>
   </div>
 
   <!-- Suppression candidat -->

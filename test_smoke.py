@@ -225,6 +225,16 @@ try:
     print(("OK " if ok_ag else "KO ") + "[--] agent recrutement (classement + convocation mailto)")
     if not ok_ag:
         echecs.append("agent recrutement : outil/action KO")
+    # Lot C : grille d'entretien
+    with client.session_transaction() as s:
+        s["admin"] = True; s["_csrf_token"] = "tok"
+    client.post("/admin/recrutement/grille",
+                data={"id": "cTEST", "csrf_token": "tok", "crit_experience": "4", "crit_motivation": "5"})
+    g = recrutement.charger_candidats()["cTEST"].get("grille", {})
+    ok_g = g.get("experience") == 4 and g.get("motivation") == 5
+    print(("OK " if ok_g else "KO ") + "[--] grille d'entretien (enregistrement)")
+    if not ok_g:
+        echecs.append("grille d'entretien KO")
 finally:
     recrutement.CANDIDATS_FILE = _orig_cf
     A._JSON_CACHE.pop(_tmp_cf, None)

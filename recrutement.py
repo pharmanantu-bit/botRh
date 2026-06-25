@@ -31,6 +31,19 @@ STATUTS_RECRUTEMENT = ["Reçu", "À contacter", "Entretien", "Retenu", "Refusé"
 TYPES_DOC_CANDIDAT = ["CV", "Lettre de motivation", "Diplôme", "Pièce d'identité", "Autre"]
 TYPES_NOTE_ENTRETIEN = ["Entretien téléphonique", "Entretien physique", "Test/essai",
                         "Échange e-mail", "Autre"]
+# Grille d'entretien : critères notés /5 (même grille pour tous les candidats).
+CRITERES_EVALUATION = [
+    ("experience", "Expérience en officine"),
+    ("qualification", "Qualification / diplôme"),
+    ("logiciel", "Maîtrise logiciel (LGPI…)"),
+    ("savoir_etre", "Savoir-être / relationnel"),
+    ("disponibilite", "Disponibilité"),
+    ("motivation", "Motivation"),
+]
+
+def _moyenne_grille(grille):
+    notes = [v for v in (grille or {}).values() if isinstance(v, int) and v > 0]
+    return round(sum(notes) / len(notes), 1) if notes else None
 
 
 def charger_candidats():
@@ -131,7 +144,9 @@ def candidat():
                            docs=candidat_docs_de(cid), statuts=STATUTS_RECRUTEMENT,
                            types_doc=TYPES_DOC_CANDIDAT, types_note=TYPES_NOTE_ENTRETIEN,
                            journal=journal, msg=request.args.get("msg", ""),
-                           mail_comptable_url=mail_comptable_url)
+                           mail_comptable_url=mail_comptable_url,
+                           criteres=CRITERES_EVALUATION, grille=c.get("grille") or {},
+                           moyenne=_moyenne_grille(c.get("grille")))
 
 
 @bp.route("/admin/recrutement/fiche", methods=["POST"])
@@ -288,6 +303,30 @@ def journal_suppr():
         candidats[cid] = c
         sauvegarder_candidats(candidats)
     return redirect(url_for(".candidat", id=cid))
+
+
+@bp.route("/admin/recrutement/grille", methods=["POST"])
+def grille():
+    """Enregistre la grille d'entretien (critères notés /5) d'un candidat."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.form.get("id", "")
+    candidats = charger_candidats()
+    c = candidats.get(cid)
+    if not c:
+        abort(404)
+    g = {}
+    for key, _ in CRITERES_EVALUATION:
+        try:
+            v = int(request.form.get("crit_" + key, "0") or 0)
+        except ValueError:
+            v = 0
+        if 1 <= v <= 5:
+            g[key] = v
+    c["grille"] = g
+    candidats[cid] = c
+    sauvegarder_candidats(candidats)
+    return redirect(url_for(".candidat", id=cid, msg="grille_ok"))
 
 
 @bp.route("/admin/recrutement/analyser", methods=["POST"])
