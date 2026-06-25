@@ -107,6 +107,9 @@ app.logger.setLevel(logging.INFO)
 
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
+# 2FA (TOTP, application d'authentification). 2FA ACTIVE uniquement si cette clé est
+# définie dans le .env (anti-lock-out : la retirer = retour au mot de passe seul).
+ADMIN_TOTP_SECRET = (os.getenv("ADMIN_TOTP_SECRET", "") or "").strip()
 API_CLE = os.getenv("API_CLE") or "botRh-trigger-2026"  # .env vide -> défaut (évite un blocage total)
 # Jour de clôture RÉELLE de la saisie (côté interne) : au-delà, le formulaire
 # est fermé. On communique le 25 aux employés (mails + formulaire) mais on
@@ -425,6 +428,26 @@ def charger_employes():
     return employes
 
 
+def deuxieme_facteur_actif():
+    """True si la 2FA est réellement opérationnelle (clé définie ET pyotp installé).
+    Si la clé est posée mais pyotp absent : on N'EXIGE PAS le code (anti-lock-out)."""
+    if not ADMIN_TOTP_SECRET:
+        return False
+    try:
+        import pyotp  # noqa: F401
+        return True
+    except Exception:
+        app.logger.error("ADMIN_TOTP_SECRET défini mais pyotp non installé -> 2FA inactive (pip install pyotp).")
+        return False
+
+def _verifier_totp(code):
+    try:
+        import pyotp
+        return pyotp.TOTP(ADMIN_TOTP_SECRET).verify((code or "").strip(), valid_window=1)
+    except Exception:
+        return False
+
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     if request.method == "POST":
@@ -432,19 +455,55 @@ def admin():
         if login_bloque(ip):
             return render_template("admin_login.html", erreur=True, bloque=True), 429
         mdp = request.form.get("password", "")
-        if mdp == ADMIN_PASSWORD:
+        twofa = deuxieme_facteur_actif()
+        if mdp == ADMIN_PASSWORD and (not twofa or _verifier_totp(request.form.get("code", ""))):
             login_reset(ip)
             session.permanent = True
             session["admin"] = True
         else:
             login_echec(ip)
-            return render_template("admin_login.html", erreur=True)
+            return render_template("admin_login.html", erreur=True, twofa=twofa)
 
     if not session.get("admin"):
-        return render_template("admin_login.html", erreur=False)
+        return render_template("admin_login.html", erreur=False, twofa=deuxieme_facteur_actif())
 
     # Page d'accueil = tableau de bord
     return redirect(url_for("admin_dashboard"))
+
+
+def _qr_svg(data):
+    """Rend un QR code en SVG (stdlib, sans Pillow). None si la lib qrcode manque."""
+    try:
+        import io
+        import qrcode
+        import qrcode.image.svg
+        img = qrcode.make(data, image_factory=qrcode.image.svg.SvgPathImage)
+        buf = io.BytesIO()
+        img.save(buf)
+        return buf.getvalue().decode("utf-8")
+    except Exception:
+        app.logger.exception("2FA : génération du QR impossible (pip install qrcode ?)")
+        return None
+
+
+@app.route("/admin/securite")
+def admin_securite():
+    """Page de configuration de la double authentification (2FA / TOTP)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    actif = deuxieme_facteur_actif()
+    uri = qr_svg = None
+    if ADMIN_TOTP_SECRET and actif:
+        try:
+            import pyotp
+            uri = pyotp.TOTP(ADMIN_TOTP_SECRET).provisioning_uri(
+                name="admin", issuer_name="botRh — Pharmacie")
+            qr_svg = _qr_svg(uri)
+        except Exception:
+            app.logger.exception("2FA : URI/QR impossible")
+    return render_template("admin_securite.html", actif=actif,
+                           secret_present=bool(ADMIN_TOTP_SECRET),
+                           uri=uri, qr_svg=qr_svg, secret=ADMIN_TOTP_SECRET)
 
 
 @app.route("/admin/mois")

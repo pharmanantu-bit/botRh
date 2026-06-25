@@ -6,3 +6,5 @@ reportlab
 pdfplumber
 python-docx
 cryptography
+pyotp
+qrcode

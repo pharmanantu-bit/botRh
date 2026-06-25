@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sécurité — Double authentification</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 720px; margin: 0 auto; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 14px; }
+    h2 { color: #1F4E79; font-size: 1em; margin: 22px 0 8px; }
+    p, li { color: #444; font-size: 0.92em; line-height: 1.55; }
+    ol { margin: 8px 0 8px 22px; } li { margin-bottom: 6px; }
+    code { background: #eef2f7; padding: 2px 6px; border-radius: 5px; font-size: 0.88em; word-break: break-all; }
+    .pill { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; }
+    .pill-on { background: #C6EFCE; color: #276221; }
+    .pill-off { background: #FFEB9C; color: #9C6500; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 18px; margin-top: 14px; }
+    .qr { text-align: center; margin: 14px 0; }
+    .qr svg { width: 200px; height: 200px; }
+    .secret { background: #f5f8fc; border: 1px dashed #b6d4fe; border-radius: 8px; padding: 10px 12px; margin: 10px 0; text-align: center; }
+    .warn { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; padding: 10px 14px; border-radius: 8px; font-size: 0.86em; margin-top: 12px; }
+    .danger { background: #FFE5E5; border: 1px solid #f3c4c4; color: #9C0006; padding: 10px 14px; border-radius: 8px; font-size: 0.86em; margin-top: 12px; }
+    a.retour { color: #888; font-size: 0.85em; text-decoration: none; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <h1>🔐 Double authentification (2FA)</h1>
+  <p>Statut :
+    {% if actif %}<span class="pill pill-on">✅ Activée</span>
+    {% else %}<span class="pill pill-off">⚠️ Non activée</span>{% endif %}
+  </p>
+
+  {% if actif %}
+  <div class="bloc">
+    <h2>Ajouter ce compte à ton application d'authentification</h2>
+    <p>Ouvre <strong>Google Authenticator</strong> (ou Microsoft Authenticator, Authy…) →
+       <em>Ajouter un compte</em> → <em>Scanner un QR code</em>, et scanne ceci :</p>
+    {% if qr_svg %}<div class="qr">{{ qr_svg|safe }}</div>{% endif %}
+    <p>Ou saisis la clé manuellement (« Entrer une clé de configuration ») :</p>
+    <div class="secret"><code>{{ secret }}</code></div>
+    <p>Ensuite, à chaque connexion : mot de passe <strong>+ le code à 6 chiffres</strong> affiché par l'application.</p>
+  </div>
+  <div class="danger">🆘 <strong>Perdu ton téléphone ?</strong> Retire la ligne <code>ADMIN_TOTP_SECRET</code>
+     du fichier <code>.env</code> (onglet Files sur PythonAnywhere) puis recharge la web app →
+     retour au mot de passe seul. Aucun blocage définitif possible.</div>
+
+  {% elif secret_present %}
+  <div class="warn">⚠️ La clé <code>ADMIN_TOTP_SECRET</code> est définie, mais la librairie
+     <code>pyotp</code> n'est pas installée sur le serveur → la 2FA est <strong>inactive</strong>
+     (connexion par mot de passe seul). Installe-la en console :
+     <code>pip3 install --user pyotp qrcode</code> puis recharge la web app.</div>
+
+  {% else %}
+  <div class="bloc">
+    <h2>Activer la 2FA — 3 étapes (sur PythonAnywhere)</h2>
+    <ol>
+      <li><strong>Installer les librairies</strong> (console Bash) :
+        <br><code>pip3 install --user pyotp qrcode</code></li>
+      <li><strong>Générer une clé secrète</strong> :
+        <br><code>python3 -c "import pyotp; print(pyotp.random_base32())"</code>
+        <br>copie la valeur affichée.</li>
+      <li><strong>Ajouter au <code>.env</code></strong> (onglet Files) :
+        <br><code>ADMIN_TOTP_SECRET=&lt;la clé générée&gt;</code>
+        <br>puis onglet <em>Web</em> → <strong>Reload</strong>.</li>
+    </ol>
+    <p>Reviens ensuite sur cette page : un <strong>QR code</strong> s'affichera pour l'ajouter à ton application.</p>
+  </div>
+  <div class="warn">🛡️ Tant que <code>ADMIN_TOTP_SECRET</code> n'est pas défini, la connexion
+     reste au mot de passe seul (rien n'est cassé). La 2FA ne s'active qu'une fois la clé posée.</div>
+  {% endif %}
+
+  <p style="margin-top:18px;"><a href="/admin/dashboard" class="retour">← Retour</a></p>
+</div>
+</body>
+</html>

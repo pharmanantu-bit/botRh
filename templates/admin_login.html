@@ -11,7 +11,7 @@
     h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 6px; text-align: center; }
     p { color: #555; font-size: 0.9em; text-align: center; margin-bottom: 24px; }
     label { font-size: 0.85em; color: #555; display: block; margin-bottom: 6px; }
-    input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1em; margin-bottom: 16px; }
+    input[type="password"], input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1em; margin-bottom: 16px; }
     .erreur { background: #FFCCCC; color: #9C0006; padding: 8px; border-radius: 6px; font-size: 0.85em; text-align: center; margin-bottom: 16px; }
     .btn { width: 100%; padding: 12px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; }
     .btn:hover { background: #163d60; }
@@ -30,6 +30,10 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Mot de passe</label>
     <input type="password" name="password" autofocus placeholder="••••••••">
+    {% if twofa %}
+    <label>Code de l'application (6 chiffres)</label>
+    <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6">
+    {% endif %}
     <button type="submit" class="btn">Connexion</button>
   </form>
 </div>
