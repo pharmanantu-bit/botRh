@@ -2289,9 +2289,45 @@ def export_employes():
                               mimetype="application/json")
 
 
+def _lire_fichiers_dossier(dossier, ignore=()):
+    """Lit les fichiers d'un dossier -> {nom: contenu_base64}, pour les inclure dans
+    la sauvegarde (sinon perdus en cas de perte du disque serveur)."""
+    import base64
+    out = {}
+    if os.path.isdir(dossier):
+        for nom in os.listdir(dossier):
+            chemin = os.path.join(dossier, nom)
+            if nom in ignore or not os.path.isfile(chemin):
+                continue
+            try:
+                with open(chemin, "rb") as fp:
+                    out[nom] = base64.b64encode(fp.read()).decode("ascii")
+            except Exception:
+                app.logger.exception(f"Sauvegarde : lecture du fichier {nom} impossible")
+    return out
+
+def _ecrire_fichiers_dossier(dossier, fichiers):
+    """Réécrit sur disque les fichiers (base64) d'une sauvegarde. Renvoie le nombre écrit."""
+    import base64
+    if not isinstance(fichiers, dict):
+        return 0
+    os.makedirs(dossier, exist_ok=True)
+    n = 0
+    for nom, b64 in fichiers.items():
+        safe = secure_filename(nom)
+        if not safe:
+            continue
+        try:
+            with open(os.path.join(dossier, safe), "wb") as fp:
+                fp.write(base64.b64decode(b64))
+            n += 1
+        except Exception:
+            app.logger.exception(f"Restauration : écriture du fichier {nom} impossible")
+    return n
+
 def construire_sauvegarde():
     """Regroupe toutes les données (employés, réponses, planning, dossiers RH,
-    index des documents) en un seul dict — pour sauvegarde et restauration."""
+    index ET fichiers des documents, photos) en un seul dict — sauvegarde/restauration."""
     data = {
         "genere_le": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "employes": charger_employes(),
@@ -2308,13 +2344,17 @@ def construire_sauvegarde():
                     data[cible][fichier] = json.load(f)
             except Exception:
                 app.logger.exception(f"Sauvegarde : lecture de {fichier} impossible")
+    # Fichiers binaires (sinon non sauvegardés = perdus si le disque serveur tombe).
+    data["documents_fichiers"] = _lire_fichiers_dossier(DOCS_DIR, ignore={"index.json"})
+    data["photos_fichiers"] = _lire_fichiers_dossier(PHOTOS_DIR)
     return data
 
 
 def restaurer_sauvegarde(data):
     """Restaure les données depuis un dict de sauvegarde. N'efface rien d'autre :
     écrase uniquement les éléments présents dans la sauvegarde. Renvoie un résumé."""
-    resume = {"employes": 0, "reponses": 0, "planning": 0, "profils": 0, "documents_index": 0}
+    resume = {"employes": 0, "reponses": 0, "planning": 0, "profils": 0,
+              "documents_index": 0, "documents_fichiers": 0, "photos_fichiers": 0}
     if isinstance(data.get("employes"), list) and data["employes"]:
         sauvegarder_employes(data["employes"])
         resume["employes"] = len(data["employes"])
@@ -2334,6 +2374,8 @@ def restaurer_sauvegarde(data):
     if isinstance(data.get("documents_index"), dict):
         sauvegarder_docs_index(data["documents_index"])
         resume["documents_index"] = len(data["documents_index"])
+    resume["documents_fichiers"] = _ecrire_fichiers_dossier(DOCS_DIR, data.get("documents_fichiers"))
+    resume["photos_fichiers"] = _ecrire_fichiers_dossier(PHOTOS_DIR, data.get("photos_fichiers"))
     return resume
 
 
@@ -2387,7 +2429,9 @@ def admin_sauvegarde_restaurer():
     except Exception:
         app.logger.exception("Échec restauration sauvegarde")
         return redirect(url_for("admin_sauvegarde", err="echec"))
-    resume = f"{r['employes']} employés, {r['reponses']} mois de relevés, {r['planning']} plannings, {r['profils']} dossiers RH"
+    resume = (f"{r['employes']} employés, {r['reponses']} mois de relevés, "
+              f"{r['planning']} plannings, {r['profils']} dossiers RH, "
+              f"{r['documents_fichiers']} document(s), {r['photos_fichiers']} photo(s)")
     return redirect(url_for("admin_sauvegarde", resume=resume))
 
 
