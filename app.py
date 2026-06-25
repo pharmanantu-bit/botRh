@@ -1843,10 +1843,136 @@ def admin_employe_document_valider():
     return redirect(url_for("admin_employe", email=email))
 
 
+# --- Outils de l'agent RH (LECTURE SEULE) ---
+# Implémentations exécutées 100 % en local par agent_rh.run_agent via le callback
+# executer_outil_agent(). Elles reçoivent l'annuaire pseudonymisé {label: employe}
+# (construit par assistant_rh.annuaire_pseudo) et renvoient un texte où chaque
+# salarié est désigné par son étiquette « Employé X » — jamais par son vrai nom.
+# Réutilisent les helpers de données déjà présents (charger_*, reponse_de,
+# profil_de, alertes_completes, docs_manquants, charger_planning).
+
+def _est_actif(email, profils):
+    return profils.get(email, {}).get("statut") != "archive"
+
+def _roster_pseudo(annuaire, profils):
+    """Roster anonymisé (étiquette + poste + contrat) injecté dans le system prompt
+    pour que le modèle puisse cibler « le pharmacien » sans connaître les noms."""
+    lignes = []
+    for label, e in annuaire.items():
+        if not _est_actif(e["email"], profils):
+            continue
+        p = profils.get(e["email"], {})
+        lignes.append(f"- {label} : {p.get('poste') or '—'} ({p.get('type_contrat') or '—'})")
+    return "\n".join(lignes)
+
+def _outil_releves_manquants(args, annuaire, profils):
+    mois = int(args.get("mois") or datetime.now().month)
+    annee = int(args.get("annee") or datetime.now().year)
+    reps = charger_reponses(mois, annee)
+    actifs = [(label, e) for label, e in annuaire.items() if _est_actif(e["email"], profils)]
+    manquants = [label for label, e in actifs
+                 if not reponse_de(reps, e["prenom"], e["email"])]
+    entete = (f"Relevés de {MOIS_FR[mois]} {annee} : {len(manquants)} manquant(s) "
+              f"sur {len(actifs)} salarié(s) actif(s).")
+    if not manquants:
+        return entete + " Tout le monde a rendu son relevé. ✅"
+    return entete + "\nN'ont pas rendu : " + ", ".join(manquants)
+
+def _outil_profil_salarie(args, annuaire, profils):
+    label = (args.get("employe") or "").strip()
+    e = annuaire.get(label)
+    if not e:
+        return "Salarié introuvable (utilise une étiquette « Employé X »)."
+    profil = profils.get(e["email"], {})
+    lignes = [f"Fiche {label} :"]
+    for cle, libelle in CHAMPS_PROFIL:
+        if cle == "notes":
+            continue  # notes internes : non transmises au modèle
+        val = profil.get(cle)
+        if val:
+            lignes.append(f"- {libelle} : {val}")
+    if len(lignes) == 1:
+        lignes.append("- (aucune information de profil renseignée)")
+    alertes = alertes_completes(e["email"], profil)
+    if alertes:
+        lignes.append("Alertes : " + " ; ".join(f"[{a['niveau']}] {a['texte']}" for a in alertes))
+    manquants = docs_manquants(e["email"])
+    if manquants:
+        lignes.append("Documents obligatoires manquants : " + ", ".join(manquants))
+    return "\n".join(lignes)
+
+def _outil_echeances(args, annuaire, profils):
+    lignes = []
+    for label, e in annuaire.items():
+        if not _est_actif(e["email"], profils):
+            continue
+        for a in alertes_completes(e["email"], profils.get(e["email"], {})):
+            lignes.append(f"- {label} — {a['texte']} [{a['niveau']}]")
+    if not lignes:
+        return "Aucune échéance à venir détectée sur les salariés actifs."
+    return f"{len(lignes)} échéance(s) à venir :\n" + "\n".join(lignes)
+
+def _outil_comparer_heures(args, annuaire, profils):
+    mois = int(args.get("mois") or datetime.now().month)
+    annee = int(args.get("annee") or datetime.now().year)
+    cible = (args.get("employe") or "").strip()
+    reps = charger_reponses(mois, annee)
+    planning = charger_planning(mois, annee)
+    lignes = []
+    for label, e in annuaire.items():
+        if not _est_actif(e["email"], profils):
+            continue
+        if cible and label != cible:
+            continue
+        r = reponse_de(reps, e["prenom"], e["email"])
+        if not r:
+            lignes.append(f"- {label} : pas de relevé pour {MOIS_FR[mois]} {annee}")
+            continue
+        solde = round(r["heures_plus"] - r["heures_moins"], 2)
+        plan_total = planning.get(e["prenom"], {}).get("total")
+        if plan_total is not None:
+            ecart = round(solde - plan_total, 2)
+            statut = "OK" if abs(ecart) <= 0.5 else "À VÉRIFIER"
+            lignes.append(f"- {label} : relevé {solde}h vs planning {plan_total}h "
+                          f"(écart {ecart:+}h) → {statut}")
+        else:
+            lignes.append(f"- {label} : relevé {solde}h (pas de planning saisi)")
+    if not lignes:
+        return "Aucun salarié correspondant."
+    return f"Comparaison heures/planning — {MOIS_FR[mois]} {annee} :\n" + "\n".join(lignes)
+
+def _outil_lister_employes(args, annuaire, profils):
+    lignes = [f"- {label} : {profils.get(e['email'], {}).get('poste') or '—'} "
+              f"({profils.get(e['email'], {}).get('type_contrat') or '—'})"
+              for label, e in annuaire.items() if _est_actif(e["email"], profils)]
+    if not lignes:
+        return "Aucun salarié actif."
+    return f"{len(lignes)} salarié(s) actif(s) :\n" + "\n".join(lignes)
+
+_OUTILS_AGENT = {
+    "releves_manquants": _outil_releves_manquants,
+    "profil_salarie": _outil_profil_salarie,
+    "echeances_a_venir": _outil_echeances,
+    "comparer_heures": _outil_comparer_heures,
+    "lister_employes": _outil_lister_employes,
+}
+
+def executer_outil_agent(nom, args, annuaire):
+    """Callback passé à agent_rh.run_agent : exécute un outil en local et renvoie
+    un texte (étiquettes uniquement). Charge les profils une fois par appel."""
+    fn = _OUTILS_AGENT.get(nom)
+    if not fn:
+        return f"(outil inconnu : {nom})"
+    return fn(args or {}, annuaire, charger_profils())
+
+
 @app.route("/admin/assistant/chat", methods=["POST"])
 def admin_assistant_chat():
-    """Agent conversationnel RH/juridique. Appelle l'IA en direct (nécessite un
-    accès Internet sortant : OK en local ; en prod, PythonAnywhere payant requis)."""
+    """Agent RH outillé (function calling). Lit les données de l'officine via des
+    outils LECTURE SEULE, en préservant la pseudonymisation RGPD (le modèle ne voit
+    jamais un vrai nom). Appelle l'IA en direct (accès Internet sortant requis : OK
+    en local ; en prod, PythonAnywhere payant). En cas d'échec, repli sur le conseil
+    pur (chat sans outils)."""
     if not session.get("admin"):
         return app.response_class(json.dumps({"error": "non autorisé"}),
                                   status=403, mimetype="application/json")
@@ -1857,17 +1983,33 @@ def admin_assistant_chat():
                                   status=400, mimetype="application/json")
     messages = messages[-20:]  # borne les tokens (20 derniers tours)
     moteur = os.getenv("ASSISTANT_MOTEUR", "mistral")
+    modele = os.getenv("ASSISTANT_MODELE") or None
+
+    employes = charger_employes()
+    from assistant_rh import annuaire_pseudo
+    annuaire = annuaire_pseudo(employes)
+    roster = _roster_pseudo(annuaire, charger_profils())
+
     try:
-        from assistant_rh import chat
-        reponse = chat(messages, moteur=moteur, modele=os.getenv("ASSISTANT_MODELE") or None)
-        return app.response_class(json.dumps({"reply": reponse}, ensure_ascii=False),
+        from agent_rh import run_agent
+        res = run_agent(messages, employes, executer_outil_agent,
+                        moteur=moteur, modele=modele, roster_txt=roster)
+        return app.response_class(json.dumps(res, ensure_ascii=False),
                                   mimetype="application/json")
-    except Exception as e:
-        return app.response_class(
-            json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
-                                 f"En ligne, le chat nécessite un PythonAnywhere payant."},
-                       ensure_ascii=False),
-            status=502, mimetype="application/json")
+    except Exception:
+        app.logger.exception("Agent RH indisponible — repli sur le conseil pur")
+        try:
+            from assistant_rh import chat
+            reponse = chat(messages, moteur=moteur, modele=modele)
+            return app.response_class(
+                json.dumps({"reply": reponse, "outils_utilises": [], "degrade": True},
+                           ensure_ascii=False), mimetype="application/json")
+        except Exception as e:
+            return app.response_class(
+                json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
+                                     f"En ligne, l'assistant nécessite un PythonAnywhere payant."},
+                           ensure_ascii=False),
+                status=502, mimetype="application/json")
 
 
 @app.route("/export_reponses")

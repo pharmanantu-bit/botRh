@@ -76,6 +76,14 @@ def construire_table(employes, extra_noms=None):
     return table, inverse
 
 
+def annuaire_pseudo(employes):
+    """Renvoie {étiquette: employe} avec la MÊME indexation que construire_table
+    (enumerate sur la liste). Permet à l'exécuteur d'outils de résoudre un label
+    « Employé X » renvoyé par le modèle vers le vrai salarié (et son e-mail),
+    sans jamais exposer le nom au modèle. Labels garantis cohérents avec la table."""
+    return {f"Employé {_alpha(i)}": e for i, e in enumerate(employes or [])}
+
+
 def pseudonymiser_texte(txt, table):
     if not txt:
         return txt

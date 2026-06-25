@@ -64,6 +64,7 @@
     .chat-form textarea { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.9em; resize: vertical; min-height: 46px; font-family: inherit; }
     .chat-form button { background: #1F4E79; color: white; border: none; border-radius: 8px; padding: 0 18px; font-weight: bold; cursor: pointer; }
     .chat-form button:disabled { background: #9aa7b5; cursor: default; }
+    .outils-meta { font-size: 0.74em; color: #6b8aa3; margin: -6px 0 12px 4px; }
   </style>
 </head>
 <body>
@@ -167,10 +168,10 @@
   <!-- Agent conversationnel RH / juridique -->
   <div class="chat-wrap">
     <h2>💬 Demander à l'assistant RH</h2>
-    <div class="chat-sub">Questions RH / droit du travail (officine). Information générale — ne remplace pas un avocat ni l'expert-comptable.</div>
-    <div class="chat-warn">⚠️ Évite les données nominatives de salariés dans tes questions.</div>
+    <div class="chat-sub">Pose une question en langage naturel : l'assistant peut <strong>lire tes données</strong> (relevés, fiches, échéances, écarts d'heures) <em>et</em> répondre aux questions RH / droit du travail. Information générale — ne remplace pas un avocat ni l'expert-comptable.</div>
+    <div class="chat-warn">🔒 Tu peux citer un prénom : il est traité <strong>en local</strong> et <strong>masqué avant l'IA</strong> (pseudonymisation RGPD). Le modèle ne voit jamais les vrais noms.</div>
     <div class="chat-log" id="chatLog">
-      <div class="chat-vide" id="chatVide">Exemples : « Quel est le préavis légal pour une démission&nbsp;? » · « Comment gérer un arrêt maladie&nbsp;? » · « Qu'est-ce que la DSN et qui la fait&nbsp;? » · « Quelle est la durée de la période d'essai en officine&nbsp;? »</div>
+      <div class="chat-vide" id="chatVide">Exemples : « Qui n'a pas rendu son relevé&nbsp;? » · « Quelles visites médicales arrivent à échéance&nbsp;? » · « La fiche de &lt;prénom&gt; » · « Écart heures/planning de l'équipe ce mois&nbsp;? » · « Quel est le préavis légal pour une démission&nbsp;? »</div>
     </div>
     <form class="chat-form" id="chatForm">
       <textarea id="chatInput" placeholder="Ta question RH / juridique…" required></textarea>
@@ -183,6 +184,18 @@
   const CSRF = "{{ csrf_token() }}";
   const histo = [];
   const log = document.getElementById('chatLog');
+  const OUTILS_LBL = {
+    releves_manquants: 'relevés manquants', profil_salarie: 'fiche salarié',
+    echeances_a_venir: 'échéances', comparer_heures: 'écart heures/planning',
+    lister_employes: 'annuaire'
+  };
+  function metaOutils(noms) {
+    if (!noms || !noms.length) return;
+    const uniq = [...new Set(noms)].map(n => OUTILS_LBL[n] || n);
+    const m = document.createElement('div');
+    m.className = 'outils-meta'; m.textContent = '🔧 a consulté : ' + uniq.join(', ');
+    log.appendChild(m); log.scrollTop = log.scrollHeight;
+  }
   function ajoute(role, texte) {
     const v = document.getElementById('chatVide'); if (v) v.remove();
     const w = document.createElement('div'); w.className = 'msg-c ' + (role === 'user' ? 'user' : 'bot');
@@ -204,7 +217,10 @@
         body: JSON.stringify({ messages: histo })
       });
       const data = await r.json();
-      if (data.reply) { bulle.textContent = data.reply; histo.push({ role: 'assistant', content: data.reply }); }
+      if (data.reply) {
+        bulle.textContent = data.reply; histo.push({ role: 'assistant', content: data.reply });
+        metaOutils(data.outils_utilises);
+      }
       else { bulle.textContent = '⚠️ ' + (data.error || 'Erreur.'); }
     } catch (err) { bulle.textContent = '⚠️ Connexion impossible.'; }
     send.disabled = false; inp.focus();

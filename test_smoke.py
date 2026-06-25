@@ -5,6 +5,7 @@ attrapé les bugs dashboard/absences avant le déploiement.
 Usage : python test_smoke.py   (code de sortie non nul si une page échoue)
 """
 import os
+import re
 import sys
 import json
 import urllib.parse
@@ -12,6 +13,7 @@ from datetime import datetime
 
 import app as A
 import tokens
+import agent_rh
 
 A.app.config["TESTING"] = True
 client = A.app.test_client()
@@ -81,6 +83,39 @@ for url in routes_admin_redirect:
     print(f"{'OK ' if ok else 'KO '}[{code}] {url} (redirection attendue)")
     if not ok:
         echecs.append(f"{url} (attendu 302, reçu {code})")
+
+# --- Agent RH outillé : chaîne complète hors-ligne (moteur fake, coût nul) ---
+# Vérifie : qu'un outil est déclenché, que le prénom tapé par l'utilisateur est
+# pseudonymisé (étiquette « Employé X ») AVANT d'atteindre l'outil — donc le modèle
+# ne verrait jamais le vrai nom — et que la réponse finale est ré-identifiée.
+if employes:
+    captures = []
+    def _executer_spy(nom, args, annuaire):
+        captures.append((nom, dict(args or {})))
+        return A.executer_outil_agent(nom, args, annuaire)
+
+    res = agent_rh.run_agent(
+        [{"role": "user", "content": f"la fiche de {prenom0}"}],
+        employes, _executer_spy, moteur="fake")
+
+    if not res.get("outils_utilises"):
+        echecs.append("agent fake : aucun outil déclenché")
+        print("KO [--] agent fake : aucun outil déclenché")
+    else:
+        ok_label = True
+        for nom, args in captures:
+            if nom == "profil_salarie":
+                emp = args.get("employe", "")
+                if not re.match(r"Employé [A-Z]+$", emp) or prenom0.lower() in emp.lower():
+                    ok_label = False
+                    echecs.append(f"agent fake : nom non pseudonymisé dans l'outil ({emp!r})")
+        # La réponse doit être ré-identifiée (le prénom réel réapparaît à l'affichage).
+        ok_reid = prenom0 in res.get("reply", "")
+        if not ok_reid:
+            echecs.append("agent fake : réponse non ré-identifiée (prénom absent)")
+        statut = "OK " if (ok_label and ok_reid) else "KO "
+        print(f"{statut}[--] agent fake (pseudonymisation + ré-identification) "
+              f"· outils={res['outils_utilises']}")
 
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
