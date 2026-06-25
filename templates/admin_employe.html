@@ -69,6 +69,15 @@
     .alerte-rouge { background:#FFE5E5; color:#9C0006; border-left:4px solid #9C0006; }
     .alerte-orange { background:#FFF3D6; color:#9C6500; border-left:4px solid #e67e22; }
     .alerte-info { background:#eaf1fb; color:#1F4E79; border-left:4px solid #2E75B6; }
+    .suggestions-bloc { background:#f0f7ff; border:1px solid #b6d4fe; border-radius:10px; padding:12px 14px; margin-bottom:18px; }
+    .suggestions-titre { color:#1F4E79; font-weight:600; font-size:0.9em; margin-bottom:6px; }
+    .suggestion { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 0; border-top:1px solid #dbe8fb; flex-wrap:wrap; }
+    .suggestion:first-of-type { border-top:none; }
+    .suggestion-txt { font-size:0.86em; color:#333; }
+    .suggestion-actions { display:flex; gap:6px; }
+    .btn-appliquer { background:#1F7A3D; color:#fff; border:none; border-radius:6px; padding:5px 12px; font-size:0.8em; font-weight:bold; cursor:pointer; }
+    .btn-ignorer { background:#eee; color:#666; border:none; border-radius:6px; padding:5px 12px; font-size:0.8em; cursor:pointer; }
+    .iban-line { font-size:0.82em; color:#1F7A3D; margin:-6px 0 16px; font-weight:500; }
     .checklist { background:#f9fbfd; border:1px solid #dde3ed; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.82em; }
     .checklist strong { color:#1F4E79; margin-right:6px; }
     .chk { display:inline-block; padding:3px 10px; border-radius:12px; font-weight:bold; margin:3px 4px 0 0; }
@@ -165,6 +174,35 @@
     <div class="alerte alerte-{{ a.niveau }}">⚠️ {{ a.texte }}</div>
     {% endfor %}
   </div>
+  {% endif %}
+
+  {% if propositions %}
+  <div class="suggestions-bloc">
+    <div class="suggestions-titre">🔎 Suggestions extraites des documents (à confirmer)</div>
+    {% for p in propositions %}
+    <div class="suggestion">
+      <span class="suggestion-txt"><strong>{{ p.libelle }}</strong> — {{ p.affichage }}</span>
+      <span class="suggestion-actions">
+        <form method="POST" action="/admin/employe/proposition/appliquer" style="display:inline;margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" value="{{ emp.email }}">
+          <input type="hidden" name="prop_id" value="{{ p.id }}">
+          <button class="btn-appliquer" type="submit">✓ Appliquer</button>
+        </form>
+        <form method="POST" action="/admin/employe/proposition/ignorer" style="display:inline;margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" value="{{ emp.email }}">
+          <input type="hidden" name="prop_id" value="{{ p.id }}">
+          <button class="btn-ignorer" type="submit">Ignorer</button>
+        </form>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if iban %}
+  <div class="iban-line">💳 RIB enregistré — IBAN : {{ iban }}</div>
   {% endif %}
 
   <!-- Dossier salarié -->

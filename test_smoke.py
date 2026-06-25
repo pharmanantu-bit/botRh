@@ -14,6 +14,8 @@ from datetime import datetime
 import app as A
 import tokens
 import agent_rh
+import crypto_rh
+import extraction_pj
 
 A.app.config["TESTING"] = True
 client = A.app.test_client()
@@ -116,6 +118,59 @@ if employes:
         statut = "OK " if (ok_label and ok_reid) else "KO "
         print(f"{statut}[--] agent fake (pseudonymisation + ré-identification) "
               f"· outils={res['outils_utilises']}")
+
+# --- Phase 1 : crypto + extraction OCR + propositions (hors-ligne, données isolées) ---
+# Chiffrement au repos : round-trip (sans clé -> clair ; avec clé -> enc:).
+ok_crypto = crypto_rh.dechiffrer(crypto_rh.chiffrer("FR7630004")) == "FR7630004"
+print(("OK " if ok_crypto else "KO ") + "[--] crypto_rh round-trip")
+if not ok_crypto:
+    echecs.append("crypto_rh : round-trip KO")
+
+# Extraction : RIB -> IBAN, contrat -> dates, ARRÊT -> rien (aucune donnée de santé).
+champs_rib = extraction_pj.extraire_champs("RIB / coordonnées bancaires",
+                                           "IBAN FR76 3000 4000 0500 0012 3456 789 BIC X")
+champs_contrat = extraction_pj.extraire_champs("Contrat de travail",
+                                               "prend effet le 01/09/2026 jusqu'au 31/12/2026")
+champs_arret = extraction_pj.extraire_champs("Arrêt de travail", "repos jusqu'au 20/06/2026 maladie")
+ok_ext = (any(c["cible"] == "iban" for c in champs_rib)
+          and any(c["cible"] == "profil:date_fin" for c in champs_contrat)
+          and champs_arret == [])
+print(("OK " if ok_ext else "KO ") + "[--] extraction (RIB+contrat extraits, arrêt ignoré)")
+if not ok_ext:
+    echecs.append("extraction_pj : champs inattendus")
+
+# Propositions : ajout + appliquer, sur un fichier profils TEMPORAIRE (vraies données intactes).
+if employes:
+    email0 = employes[0]["email"]
+    _orig_pf = A.PROFILS_FILE
+    _tmp_pf = os.path.join(A.BASE_DIR, "_smoke_profils_tmp.json")
+    A.PROFILS_FILE = _tmp_pf
+    try:
+        A.sauvegarder_profils({email0: {}})
+        A._ajouter_propositions(email0, [
+            {"cible": "profil:date_fin", "valeur": "31/12/2026",
+             "apercu": "Fin : 31/12/2026", "libelle": "Fin de contrat", "chiffre": False},
+            {"cible": "iban", "valeur": "…6789", "apercu": "IBAN", "libelle": "IBAN", "chiffre": True},
+        ], "docSMOKE")
+        prof = A.profil_de(email0)
+        pid = next((p["id"] for p in prof.get("propositions", []) if p["cible"] == "profil:date_fin"), None)
+        with client.session_transaction() as s:
+            s["admin"] = True
+            s["_csrf_token"] = "tok"
+        client.post("/admin/employe/proposition/appliquer",
+                    data={"email": email0, "prop_id": pid, "csrf_token": "tok"})
+        prof2 = A.profil_de(email0)
+        ok_prop = (len(prof.get("propositions", [])) == 2
+                   and prof2.get("date_fin") == "31/12/2026"
+                   and not any(p["id"] == pid for p in prof2.get("propositions", [])))
+        print(("OK " if ok_prop else "KO ") + "[--] propositions (ajout + appliquer date_fin)")
+        if not ok_prop:
+            echecs.append("propositions : ajout/appliquer KO")
+    finally:
+        A.PROFILS_FILE = _orig_pf
+        A._JSON_CACHE.pop(_tmp_pf, None)
+        if os.path.exists(_tmp_pf):
+            os.remove(_tmp_pf)
 
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)

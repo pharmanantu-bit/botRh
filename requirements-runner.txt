@@ -1,0 +1,10 @@
+# Dépendances du RUNNER GitHub uniquement (assistant.yml) — PAS le serveur.
+# Le serveur PythonAnywhere reste léger (requirements.txt) ; l'OCR/extraction
+# des pièces jointes tourne sur le runner (qui installe aussi Tesseract via apt).
+python-dotenv
+beautifulsoup4
+pdfplumber
+python-docx
+pytesseract
+pdf2image
+pillow

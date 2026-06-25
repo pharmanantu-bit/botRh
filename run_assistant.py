@@ -80,9 +80,19 @@ def classer_pieces(mails, employes):
         return
     ajout = doublon = autre = 0
     for c in candidats:
+        # OCR + extraction LOCALE (best-effort) : champs utiles -> propositions à
+        # valider côté serveur. Aucune donnée de santé (arrêts non lus). Un échec
+        # n'empêche jamais le classement de la PJ.
+        try:
+            from extraction_pj import extraire_texte, extraire_champs
+            extraction = extraire_champs(c["type"], extraire_texte(c["filename"], c["content"]))
+        except Exception as e:
+            extraction = []
+            print(f"  (extraction ignorée pour {c['filename']} : {e})")
         payload = {"email": c["email"], "filename": c["filename"], "type": c["type"],
                    "libelle": c["filename"], "sha": c["sha"], "message_id": c["message_id"],
-                   "content_b64": base64.b64encode(c["content"]).decode()}
+                   "content_b64": base64.b64encode(c["content"]).decode(),
+                   "extraction": extraction}
         try:
             req = urllib.request.Request(
                 f"{BASE_URL}/document_push?cle={CLE}",
@@ -179,6 +189,15 @@ def main():
         print(f"DRY-RUN : {len(candidats)} pièce(s) jointe(s) de salarié seraient classée(s) :")
         for c in candidats:
             print(f"  -> {c['prenom']} : {c['filename']} (type deviné : {c['type']})")
+            try:
+                from extraction_pj import extraire_texte, extraire_champs
+                champs = extraire_champs(c["type"], extraire_texte(c["filename"], c["content"]))
+                for ch in champs:
+                    print(f"       · extrait : {ch['libelle']} = {ch['apercu']}")
+                if not champs:
+                    print("       · (aucun champ extrait / type non concerné)")
+            except Exception as e:
+                print(f"       · extraction indisponible ({e})")
         print("DRY-RUN : aucun appel IA, aucun push, aucun classement. Terminé.")
         return
 

@@ -140,6 +140,54 @@ MOIS_FR = {
 
 
 from tokens import generer_token, resoudre_employe, reponse_de, tokens_valides
+import crypto_rh  # chiffrement au repos des champs sensibles (IBAN)
+
+# Cibles d'extraction sensibles -> chiffrées au repos (Fernet) dans profils_rh.json.
+CIBLES_SENSIBLES = {"iban"}
+
+def _ajouter_propositions(email, extraction, source_doc_id):
+    """Enregistre les champs extraits d'une PJ comme PROPOSITIONS (à valider par
+    l'admin), sans rien écrire dans le profil. Chiffre les cibles sensibles (IBAN).
+    Anti-doublon par (cible, source_doc_id)."""
+    if not extraction or not isinstance(extraction, list):
+        return
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    props = prof.get("propositions", [])
+    existantes = {(p.get("cible"), p.get("source_doc_id")) for p in props}
+    ajout = False
+    for ex in extraction:
+        cible = (ex.get("cible") or "").strip()
+        valeur = (ex.get("valeur") or "").strip()
+        if not cible or not valeur or (cible, source_doc_id) in existantes:
+            continue
+        sensible = cible in CIBLES_SENSIBLES
+        props.append({
+            "id": uuid.uuid4().hex[:10],
+            "cible": cible,
+            "valeur": crypto_rh.chiffrer(valeur) if sensible else valeur,
+            "apercu": ex.get("apercu", ""),
+            "libelle": ex.get("libelle", ""),
+            "chiffre": sensible,
+            "source_doc_id": source_doc_id,
+            "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        })
+        ajout = True
+    if ajout:
+        prof["propositions"] = props
+        profils[email] = prof
+        sauvegarder_profils(profils)
+
+def _propositions_affichage(props):
+    """Prépare les propositions pour l'affichage (déchiffre les valeurs sensibles)."""
+    out = []
+    for p in props or []:
+        aff = p.get("apercu", "") or p.get("libelle", "")
+        if p.get("chiffre"):
+            aff = f"{aff} — {crypto_rh.dechiffrer(p.get('valeur', ''))}"
+        out.append({"id": p.get("id"), "cible": p.get("cible"),
+                    "libelle": p.get("libelle", ""), "affichage": aff})
+    return out
 
 
 # --- Cache mémoire des fichiers JSON (invalidé par date de modification) ---
@@ -1272,7 +1320,9 @@ def admin_employe():
                            a_photo=bool(profil_de(email).get("photo")),
                            taches_arrivee=TACHES_ARRIVEE, taches_depart=TACHES_DEPART,
                            check_arrivee=profil_de(email).get("check_arrivee", []),
-                           check_depart=profil_de(email).get("check_depart", []))
+                           check_depart=profil_de(email).get("check_depart", []),
+                           propositions=_propositions_affichage(profil_de(email).get("propositions", [])),
+                           iban=crypto_rh.dechiffrer(profil_de(email).get("iban", "")) if profil_de(email).get("iban") else "")
 
 
 @app.route("/admin/employe/document", methods=["POST"])
@@ -1823,8 +1873,56 @@ def document_push():
         "sha": sha,
     })
     sauvegarder_docs_index(idx)
+    # Champs extraits par le runner (OCR) -> propositions « à confirmer » (IBAN chiffré).
+    _ajouter_propositions(email, data.get("extraction"), doc_id)
     return app.response_class(json.dumps({"status": "ajoute", "id": doc_id}),
                               mimetype="application/json")
+
+
+@app.route("/admin/employe/proposition/appliquer", methods=["POST"])
+def admin_employe_proposition_appliquer():
+    """Applique une suggestion extraite (écrit le champ du profil), puis la retire.
+    Action explicite de l'admin — jamais d'écriture automatique."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    prop_id = request.form.get("prop_id", "")
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    prop = next((p for p in prof.get("propositions", []) if p.get("id") == prop_id), None)
+    if prop:
+        cible = prop.get("cible", "")
+        valeur = prop.get("valeur", "")  # déjà chiffré si sensible
+        if cible.startswith("profil:"):
+            champ = cible.split(":", 1)[1]
+            if champ in {c for c, _ in CHAMPS_PROFIL}:
+                prof[champ] = valeur  # date en clair -> alerte auto via alertes_employe
+        elif cible == "iban":
+            prof["iban"] = valeur  # conservé chiffré
+            ca = prof.get("check_arrivee", [])
+            if "RIB reçu" in TACHES_ARRIVEE and "RIB reçu" not in ca:
+                ca.append("RIB reçu")
+                prof["check_arrivee"] = ca
+        prof["propositions"] = [p for p in prof.get("propositions", []) if p.get("id") != prop_id]
+        profils[email] = prof
+        sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/employe/proposition/ignorer", methods=["POST"])
+def admin_employe_proposition_ignorer():
+    """Retire une suggestion extraite sans rien écrire dans le profil."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    prop_id = request.form.get("prop_id", "")
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    if prof.get("propositions"):
+        prof["propositions"] = [p for p in prof["propositions"] if p.get("id") != prop_id]
+        profils[email] = prof
+        sauvegarder_profils(profils)
+    return redirect(url_for("admin_employe", email=email))
 
 
 @app.route("/admin/employe/document/valider", methods=["POST"])
