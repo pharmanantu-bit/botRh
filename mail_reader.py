@@ -133,6 +133,45 @@ def connecter(user, app_password):
     return imap
 
 
+def lire_mails_label(user, app_password, label, depuis_jours=30, max_mails=25):
+    """Lit les mails d'un LABEL Gmail (ex. « Recrutement ») — LECTURE SEULE.
+    Renvoie [{date, from, sujet, message_id, pj_data}] avec les PJ téléchargées.
+    Sert au module recrutement (création auto de candidats à partir des CV reçus)."""
+    imap = imaplib.IMAP4_SSL(IMAP_HOST)
+    imap.login(user, app_password)
+    out = []
+    try:
+        typ, _ = imap.select('"' + label + '"', readonly=True)
+        if typ != "OK":
+            return []
+        depuis = (datetime.now() - timedelta(days=depuis_jours)).strftime("%d-%b-%Y")
+        typ, data = imap.search(None, "SINCE", depuis)
+        if typ != "OK" or not data or not data[0]:
+            return []
+        for uid in data[0].split()[-max_mails:]:
+            typ, raw = imap.fetch(uid, "(RFC822)")
+            if typ != "OK" or not raw or not raw[0]:
+                continue
+            try:
+                msg = email.message_from_bytes(raw[0][1])
+                out.append({
+                    "date": _decoder_entete(msg.get("Date")),
+                    "from": _decoder_entete(msg.get("From")),
+                    "sujet": _decoder_entete(msg.get("Subject")),
+                    "message_id": (msg.get("Message-ID") or "").strip(),
+                    "pj_data": _extraire_pieces(msg),
+                })
+            except Exception:
+                continue
+    finally:
+        try:
+            imap.close()
+            imap.logout()
+        except Exception:
+            pass
+    return out
+
+
 def lire_mails_rh(user, app_password, filtres, depuis_jours=2, max_mails=25, max_chars=4000,
                   avec_pj=False):
     """Lit les mails RH des `depuis_jours` derniers jours, restreints aux expéditeurs

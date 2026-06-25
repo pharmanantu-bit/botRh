@@ -109,6 +109,77 @@ def classer_pieces(mails, employes):
     print(f"Classement PJ : {ajout} ajout(s), {doublon} doublon(s), {autre} autre(s).")
 
 
+def _parse_nom_expediteur(from_header):
+    """« Marie Leroy <x@y> » -> ('Marie', 'Leroy'). Sinon prénom = nom affiché entier."""
+    import re
+    m = re.match(r'\s*"?([^"<]+?)"?\s*<', from_header or "")
+    complet = (m.group(1).strip() if m else "")
+    parts = complet.split()
+    if len(parts) >= 2:
+        return parts[0], " ".join(parts[1:])
+    return complet, ""
+
+
+def classer_candidatures(label="Recrutement"):
+    """Lit le LABEL Gmail « Recrutement » : chaque mail avec un CV en PJ devient un
+    candidat (POST /candidat_push, anti-doublon par e-mail côté serveur). OCR/extraction
+    du texte faits ICI (le runner a Tesseract)."""
+    import base64
+    from mail_reader import lire_mails_label, _adresse_de
+    user = os.environ.get("GMAIL_USER") or config.GMAIL_USER
+    pwd = os.environ.get("GMAIL_APP_PASSWORD") or config.GMAIL_APP_PASSWORD
+    if not user or not pwd:
+        return
+    try:
+        mails = lire_mails_label(user, pwd, label, depuis_jours=config.ASSISTANT_JOURS,
+                                 max_mails=config.ASSISTANT_MAX_MAILS)
+    except Exception as e:
+        print(f"Candidatures : lecture du label « {label} » impossible ({e}).")
+        return
+    if not mails:
+        print(f"Aucun mail dans le label « {label} ».")
+        return
+    try:
+        from extraction_pj import extraire_texte, extraire_contact
+    except Exception:
+        extraire_texte = extraire_contact = None
+    ajout = doublon = autre = 0
+    for m in mails:
+        pj = next((p for p in m.get("pj_data", [])
+                   if os.path.splitext(p["filename"])[1].lower() in EXT_DOCS_OK), None)
+        if not pj:
+            continue
+        email_exp = _adresse_de(m.get("from", ""))
+        prenom, nom = _parse_nom_expediteur(m.get("from", ""))
+        cv_texte, tel = "", ""
+        if extraire_texte:
+            try:
+                cv_texte = extraire_texte(pj["filename"], pj["content"])
+                if extraire_contact:
+                    ct = extraire_contact(cv_texte)
+                    email_exp = email_exp or ct.get("email", "")
+                    tel = ct.get("telephone", "")
+            except Exception:
+                pass
+        payload = {"prenom": prenom, "nom": nom, "email": email_exp, "telephone": tel,
+                   "sujet": m.get("sujet", ""), "filename": pj["filename"],
+                   "content_b64": base64.b64encode(pj["content"]).decode(),
+                   "cv_texte": cv_texte, "message_id": m.get("message_id", "")}
+        try:
+            req = urllib.request.Request(f"{BASE_URL}/candidat_push?cle={CLE}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "botRh"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                st = json.loads(r.read().decode("utf-8")).get("status", "?")
+        except Exception as e:
+            st = f"erreur ({e})"
+        ajout += st == "ajoute"
+        doublon += st == "doublon"
+        autre += st not in ("ajoute", "doublon")
+        print(f"  Candidature {prenom} {nom} <{email_exp}> -> {st}")
+    print(f"Candidatures : {ajout} ajout(s), {doublon} doublon(s), {autre} autre(s).")
+
+
 def charger_employes_complet():
     """Employés (prénom, nom, email) : serveur (source de vérité) sinon CSV local.
     Sert au filtrage IMAP ET à la pseudonymisation (option B)."""
@@ -213,6 +284,12 @@ def main():
 
     # Classement automatique des pièces jointes des salariés dans leur dossier.
     classer_pieces(mails, employes)
+
+    # Création auto des candidats depuis le label Gmail « Recrutement ».
+    try:
+        classer_candidatures()
+    except Exception:
+        print("Candidatures : étape ignorée (erreur).")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from werkzeug.utils import secure_filename
 from app import (_lire_json, _ecrire_json, BASE_DIR, EXT_DOCS_OK, humaniser_taille,
                  deviner_type_doc, charger_employes, sauvegarder_employes,
                  charger_profils, sauvegarder_profils, DOCS_DIR,
-                 charger_docs_index, sauvegarder_docs_index)
+                 charger_docs_index, sauvegarder_docs_index, API_CLE)
 import extraction_pj
 import recrutement_ia
 
@@ -509,6 +509,51 @@ def supprimer():
         candidats.pop(cid, None)
         sauvegarder_candidats(candidats)
     return redirect(url_for(".liste"))
+
+
+@bp.route("/candidat_push", methods=["POST"])
+def candidat_push():
+    """Reçoit une candidature (CV) du runner GitHub (label Gmail « Recrutement ») et
+    crée un candidat. Protégé par la clé API. Anti-doublon par e-mail."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip()
+    candidats = charger_candidats()
+    if email and any((c.get("email") or "").lower() == email.lower() for c in candidats.values()):
+        return current_app.response_class(json.dumps({"status": "doublon"}), mimetype="application/json")
+    cid = uuid.uuid4().hex[:10]
+    sujet = (data.get("sujet") or "").strip()
+    candidats[cid] = {
+        "prenom": (data.get("prenom") or "").strip(), "nom": (data.get("nom") or "").strip(),
+        "email": email, "telephone": (data.get("telephone") or "").strip(),
+        "poste_vise": "", "source": "Candidature e-mail", "statut": "Reçu",
+        "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "notes_libres": (f"Objet du mail : {sujet}" if sujet else ""),
+        "journal": [], "cv_texte": (data.get("cv_texte") or "")[:20000], "analyse_ia": None,
+    }
+    sauvegarder_candidats(candidats)
+    # CV en pièce jointe
+    import base64
+    nom_orig = data.get("filename", "cv")
+    if os.path.splitext(nom_orig)[1].lower() in EXT_DOCS_OK:
+        try:
+            contenu = base64.b64decode(data.get("content_b64", ""))
+        except Exception:
+            contenu = b""
+        if contenu:
+            os.makedirs(CANDIDATS_DOCS_DIR, exist_ok=True)
+            doc_id = uuid.uuid4().hex[:12]
+            stored = f"{doc_id}_{secure_filename(nom_orig)}"
+            with open(os.path.join(CANDIDATS_DOCS_DIR, stored), "wb") as f:
+                f.write(contenu)
+            idx = charger_candidats_docs_index()
+            idx.setdefault(cid, []).append({
+                "id": doc_id, "fichier": stored, "nom_original": nom_orig, "type": "CV",
+                "libelle": nom_orig, "taille": humaniser_taille(len(contenu)),
+                "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M")})
+            sauvegarder_candidats_docs_index(idx)
+    return current_app.response_class(json.dumps({"status": "ajoute", "id": cid}), mimetype="application/json")
 
 
 @bp.route("/admin/recrutement/embaucher", methods=["POST"])

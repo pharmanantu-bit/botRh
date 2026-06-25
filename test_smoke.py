@@ -277,6 +277,31 @@ finally:
         A._JSON_CACHE.pop(_p, None)
     _shutil.rmtree(_td, ignore_errors=True)
 
+# --- Lot B : /candidat_push (création candidat depuis le runner), isolé ---
+_cf2, _cdd2, _cdi2 = recrutement.CANDIDATS_FILE, recrutement.CANDIDATS_DOCS_DIR, recrutement.CANDIDATS_DOCS_INDEX
+_td2 = tempfile.mkdtemp()
+recrutement.CANDIDATS_FILE = os.path.join(_td2, "c.json")
+recrutement.CANDIDATS_DOCS_DIR = os.path.join(_td2, "cd")
+recrutement.CANDIDATS_DOCS_INDEX = os.path.join(recrutement.CANDIDATS_DOCS_DIR, "index.json")
+try:
+    import base64 as _b64
+    payload = {"prenom": "Léa", "nom": "Postulante", "email": "lea.p@ex.fr",
+               "sujet": "Candidature préparateur", "filename": "cv.pdf",
+               "content_b64": _b64.b64encode(b"%PDF cv test").decode(), "cv_texte": "CV de test"}
+    st1 = json.loads(client.post(f"/candidat_push?cle={A.API_CLE}", json=payload).data).get("status")
+    st2 = json.loads(client.post(f"/candidat_push?cle={A.API_CLE}", json=payload).data).get("status")
+    r403 = client.post("/candidat_push?cle=mauvaise", json=payload).status_code
+    nb = len(recrutement.charger_candidats())
+    ok_b = st1 == "ajoute" and st2 == "doublon" and nb == 1 and r403 == 403
+    print(("OK " if ok_b else "KO ") + f"[--] candidat_push (ajout={st1}, doublon={st2}, clé KO={r403})")
+    if not ok_b:
+        echecs.append("candidat_push KO")
+finally:
+    recrutement.CANDIDATS_FILE, recrutement.CANDIDATS_DOCS_DIR, recrutement.CANDIDATS_DOCS_INDEX = _cf2, _cdd2, _cdi2
+    for _p in [k for k in A._JSON_CACHE if _td2.replace("\\", "/") in k.replace("\\", "/")]:
+        A._JSON_CACHE.pop(_p, None)
+    _shutil.rmtree(_td2, ignore_errors=True)
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

@@ -45,7 +45,7 @@ app.permanent_session_lifetime = timedelta(hours=8)
 #   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
 #   - /assistant_push, /document_push : POST machine protégés par la clé API (runner)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
-CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push"}
+CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push"}
 
 def csrf_token():
     tok = session.get("_csrf_token")
