@@ -2607,7 +2607,11 @@ def healthcheck():
 
 
 # Module Recrutement (Blueprint) — importé EN BAS, après définition des helpers
-# d'app.py (évite tout cycle d'import : recrutement.py fait `from app import ...`).
+# d'app.py (recrutement.py fait `from app import ...`). On enregistre ce module
+# sous le nom "app" dans sys.modules pour que ça marche AUSSI en lancement direct
+# `python app.py` (où __name__ vaut "__main__"). En WSGI (import "app"), no-op.
+import sys as _sys
+_sys.modules.setdefault("app", _sys.modules[__name__])
 from recrutement import bp as recrutement_bp  # noqa: E402
 app.register_blueprint(recrutement_bp)
 
