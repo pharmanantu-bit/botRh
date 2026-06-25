@@ -203,13 +203,28 @@ _tmp_cf = os.path.join(A.BASE_DIR, "_smoke_candidats_tmp.json")
 recrutement.CANDIDATS_FILE = _tmp_cf
 try:
     recrutement.sauvegarder_candidats({"cTEST": {
-        "prenom": "Test", "nom": "Smoke", "email": "", "telephone": "", "poste_vise": "",
-        "source": "", "statut": "Reçu", "date_ajout": "01/01/2026", "notes_libres": "",
-        "journal": [], "cv_texte": "", "analyse_ia": None}})
+        "prenom": "Marie", "nom": "Leroy", "email": "marie.leroy@exemple.fr", "telephone": "",
+        "poste_vise": "Préparateur", "source": "", "statut": "Reçu", "date_ajout": "01/01/2026",
+        "notes_libres": "", "journal": [], "cv_texte": "Vaccination, LGPI.",
+        "analyse_ia": {"score": 80, "adequation": "ok", "resume": "r", "points_forts": [], "points_attention": []}}})
     code = client.get("/admin/recrutement/candidat?id=cTEST").status_code
     print(("OK " if code == 200 else "KO ") + f"[{code}] /admin/recrutement/candidat (fiche)")
     if code != 200:
         echecs.append(f"fiche candidat (reçu {code})")
+    # Agent recrutement (fake) : classement + action convocation (mailto vrai e-mail)
+    import agent_recrutement
+    r1 = agent_recrutement.run_agent_recrutement(
+        [{"role": "user", "content": "classe les candidats"}],
+        recrutement.executer_outil_recrutement, moteur="fake")
+    r2 = agent_recrutement.run_agent_recrutement(
+        [{"role": "user", "content": "prépare une convocation pour Marie"}],
+        recrutement.executer_outil_recrutement, moteur="fake")
+    ok_ag = ("classer_candidats" in r1.get("outils_utilises", [])
+             and any(a.get("type") == "mailto" and a.get("to") == "marie.leroy@exemple.fr"
+                     for a in r2.get("actions", [])))
+    print(("OK " if ok_ag else "KO ") + "[--] agent recrutement (classement + convocation mailto)")
+    if not ok_ag:
+        echecs.append("agent recrutement : outil/action KO")
 finally:
     recrutement.CANDIDATS_FILE = _orig_cf
     A._JSON_CACHE.pop(_tmp_cf, None)

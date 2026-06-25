@@ -6,6 +6,7 @@ type), l'OCR (extraction_pj) et l'analyse (recrutement_ia). Données 100 % sépa
 des salariés (candidats.json), aucun impact sur Équipe & RH.
 """
 import os
+import json
 import uuid
 from datetime import datetime
 
@@ -298,6 +299,179 @@ def analyser():
     except Exception:
         current_app.logger.exception("Analyse CV échouée")
         return redirect(url_for(".candidat", id=cid, msg="analyse_err"))
+
+
+# --- Agent conversationnel recrutement : outils + route chat ---
+# Les outils accèdent aux candidats et construisent les actions (mailto). Surfacés à
+# agent_recrutement.run_agent_recrutement (sans pseudonymisation : données candidats).
+
+def _resoudre_candidat(nom):
+    """Trouve un candidat par nom/prénom (insensible casse, partiel). Renvoie (cid, c)
+    ou (None, raison) : 'preciser' / 'introuvable' / 'ambigu:<liste>'."""
+    q = (nom or "").strip().lower()
+    if not q:
+        return None, "preciser"
+    matches = []
+    for cid, c in charger_candidats().items():
+        full = f"{c.get('prenom', '')} {c.get('nom', '')}".lower()
+        if q in full or q == c.get("prenom", "").lower() or q == c.get("nom", "").lower():
+            matches.append((cid, c))
+    if not matches:
+        return None, "introuvable"
+    if len(matches) > 1:
+        exact = [(i, c) for i, c in matches
+                 if q in (c.get("prenom", "").lower(), c.get("nom", "").lower())]
+        if len(exact) == 1:
+            return exact[0]
+        return None, "ambigu:" + ", ".join(f"{c.get('prenom')} {c.get('nom')}" for _, c in matches)
+    return matches[0]
+
+def _msg_resolution(raison):
+    if raison == "preciser":
+        return "Précise le nom du candidat."
+    if isinstance(raison, str) and raison.startswith("ambigu:"):
+        return "Plusieurs candidats correspondent : " + raison[7:] + ". Précise lequel."
+    return "Candidat introuvable."
+
+def _o_lister(args):
+    statut = (args.get("statut") or "").strip().lower()
+    poste = (args.get("poste") or "").strip().lower()
+    lignes = []
+    for c in charger_candidats().values():
+        if statut and c.get("statut", "").lower() != statut:
+            continue
+        if poste and poste not in c.get("poste_vise", "").lower():
+            continue
+        a = c.get("analyse_ia") or {}
+        sc = f" — score IA {a['score']}/100" if a.get("score") is not None else ""
+        lignes.append(f"- {c.get('prenom')} {c.get('nom')} — {c.get('poste_vise') or '—'} — {c.get('statut')}{sc}")
+    return f"{len(lignes)} candidat(s) :\n" + "\n".join(lignes) if lignes else "Aucun candidat correspondant."
+
+def _o_fiche(args):
+    cid, c = _resoudre_candidat(args.get("candidat"))
+    if not cid:
+        return _msg_resolution(c)
+    a = c.get("analyse_ia") or {}
+    p = [f"{c.get('prenom')} {c.get('nom')} — {c.get('poste_vise') or 'poste non précisé'} — statut « {c.get('statut')} »"]
+    if c.get("email") or c.get("telephone"):
+        p.append(f"Contact : {c.get('email', '')} {c.get('telephone', '')}".strip())
+    if c.get("source"):
+        p.append(f"Source : {c.get('source')}")
+    if a:
+        p.append(f"Analyse IA : {a.get('score')}/100 — {a.get('adequation', '')}")
+        if a.get("resume"):
+            p.append("Résumé : " + a["resume"])
+    if c.get("notes_libres"):
+        p.append("Notes : " + c["notes_libres"])
+    if c.get("cv_texte"):
+        p.append("Extrait CV : " + c["cv_texte"][:1500])
+    return "\n".join(p)
+
+def _o_rechercher(args):
+    mot = (args.get("motcle") or "").strip().lower()
+    if not mot:
+        return "Précise un mot-clé."
+    res = [f"- {c.get('prenom')} {c.get('nom')} ({c.get('poste_vise') or '—'}, {c.get('statut')})"
+           for c in charger_candidats().values()
+           if mot in (c.get("cv_texte", "") + " " + c.get("notes_libres", "")).lower()]
+    return (f"Candidats mentionnant « {args.get('motcle')} » :\n" + "\n".join(res)
+            if res else f"Aucun candidat ne mentionne « {args.get('motcle')} ».")
+
+def _o_classer(args):
+    poste = (args.get("poste") or "").strip().lower()
+    avec, sans = [], []
+    for c in charger_candidats().values():
+        if poste and poste not in c.get("poste_vise", "").lower():
+            continue
+        a = c.get("analyse_ia") or {}
+        (avec if a.get("score") is not None else sans).append((a.get("score", 0), c))
+    avec.sort(key=lambda x: x[0], reverse=True)
+    if not avec and not sans:
+        return "Aucun candidat à classer."
+    out = []
+    if avec:
+        out.append("Classement par score d'analyse IA :")
+        out += [f"{i}. {c.get('prenom')} {c.get('nom')} — {sc}/100 ({c.get('poste_vise') or '—'})"
+                for i, (sc, c) in enumerate(avec, 1)]
+    if sans:
+        out.append("Non encore analysés (bouton « Analyser le CV » sur leur fiche) : "
+                   + ", ".join(f"{c.get('prenom')} {c.get('nom')}" for _, c in sans))
+    return "\n".join(out)
+
+def _mail_action(args, refus=False):
+    cid, c = _resoudre_candidat(args.get("candidat"))
+    if not cid:
+        return {"resultat": _msg_resolution(c), "action": None}
+    if not c.get("email"):
+        return {"resultat": f"{c.get('prenom')} {c.get('nom')} n'a pas d'e-mail enregistré (ajoute-le sur sa fiche).",
+                "action": None}
+    poste = c.get("poste_vise") or "le poste"
+    if refus:
+        sujet = f"Votre candidature — {poste}"
+        corps = (f"Bonjour {c.get('prenom')},\n\nNous vous remercions pour l'intérêt porté à notre officine et "
+                 f"pour votre candidature au poste de {poste}.\n\nAprès étude attentive, nous ne donnerons pas "
+                 "suite cette fois-ci. Nous conservons votre profil et reviendrons vers vous si une opportunité "
+                 "y correspond.\n\nNous vous souhaitons une pleine réussite dans vos démarches.\n\nCordialement,\nLa pharmacie")
+        label = f"✉️ Réponse de refus à {c.get('prenom')} {c.get('nom')}"
+        quoi = "refus"
+    else:
+        details = (args.get("details") or "").strip()
+        sujet = f"Entretien de recrutement — {poste}"
+        corps = (f"Bonjour {c.get('prenom')},\n\nNous avons étudié votre candidature pour {poste} et souhaitons "
+                 "vous rencontrer lors d'un entretien.\n\n"
+                 + (f"Proposition : {details}\n\n" if details else "Pourriez-vous nous indiquer vos disponibilités ?\n\n")
+                 + "Dans l'attente de votre retour,\n\nCordialement,\nLa pharmacie")
+        label = f"✉️ Convoquer {c.get('prenom')} {c.get('nom')}"
+        quoi = "convocation"
+    return {"resultat": f"Brouillon de {quoi} préparé pour {c.get('prenom')} {c.get('nom')} (à relire et envoyer).",
+            "action": {"type": "mailto", "label": label, "to": c["email"], "subject": sujet, "body": corps}}
+
+_OUTILS_RECRUTEMENT = {
+    "lister_candidats": _o_lister,
+    "fiche_candidat": _o_fiche,
+    "rechercher_candidat": _o_rechercher,
+    "classer_candidats": _o_classer,
+    "preparer_mail_convocation": lambda a: _mail_action(a, refus=False),
+    "preparer_mail_refus": lambda a: _mail_action(a, refus=True),
+}
+
+def executer_outil_recrutement(nom, args):
+    fn = _OUTILS_RECRUTEMENT.get(nom)
+    return fn(args or {}) if fn else f"(outil inconnu : {nom})"
+
+def roster_recrutement():
+    return "\n".join(
+        f"- {c.get('prenom')} {c.get('nom')} — {c.get('poste_vise') or '—'} — {c.get('statut')}"
+        for c in list(charger_candidats().values())[:40])
+
+
+@bp.route("/admin/recrutement/chat", methods=["POST"])
+def chat():
+    """Agent conversationnel recrutement (function calling). IA en temps réel →
+    local / PA payant. Données candidats envoyées au modèle (transparence UI)."""
+    if not _admin():
+        return current_app.response_class(json.dumps({"error": "non autorisé"}),
+                                          status=403, mimetype="application/json")
+    data = request.get_json(force=True, silent=True) or {}
+    messages = data.get("messages", [])
+    if not isinstance(messages, list) or not messages:
+        return current_app.response_class(json.dumps({"error": "message vide"}),
+                                          status=400, mimetype="application/json")
+    messages = messages[-20:]
+    try:
+        import agent_recrutement
+        res = agent_recrutement.run_agent_recrutement(
+            messages, executer_outil_recrutement,
+            moteur=os.getenv("ASSISTANT_MOTEUR", "mistral"),
+            modele=os.getenv("ASSISTANT_MODELE") or None,
+            roster_txt=roster_recrutement())
+        return current_app.response_class(json.dumps(res, ensure_ascii=False), mimetype="application/json")
+    except Exception as e:
+        current_app.logger.exception("Agent recrutement indisponible")
+        return current_app.response_class(
+            json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
+                                 "En ligne, nécessite un PythonAnywhere payant."}, ensure_ascii=False),
+            status=502, mimetype="application/json")
 
 
 @bp.route("/admin/recrutement/supprimer", methods=["POST"])
