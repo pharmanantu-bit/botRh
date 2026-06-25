@@ -2050,12 +2050,83 @@ def _outil_lister_employes(args, annuaire, profils):
         return "Aucun salarié actif."
     return f"{len(lignes)} salarié(s) actif(s) :\n" + "\n".join(lignes)
 
+# --- Outils ACTION (Phase 2) : l'agent PRÉPARE, l'admin confirme d'un clic ---
+# Chacun renvoie {"resultat": <texte étiquette pour le modèle>, "action": {...}}.
+# L'objet "action" n'est JAMAIS envoyé au modèle : il est surfacé à l'UI (boutons),
+# ré-identifié en local par agent_rh. Aucune action n'est exécutée ici (ni envoi de
+# mail, ni écriture) — c'est le clic admin qui déclenche (mailto / lien / route CSRF).
+BASE_URL_PUBLIC = "https://pharmacie92000.pythonanywhere.com"
+
+def _outil_preparer_relance(args, annuaire, profils):
+    label = (args.get("employe") or "").strip()
+    e = annuaire.get(label)
+    if not e:
+        return {"resultat": "Salarié introuvable (utilise une étiquette « Employé X »).", "action": None}
+    token = generer_token(e["prenom"], e["email"])
+    lien = f"{BASE_URL_PUBLIC}/releve?token={token}&prenom={e['prenom']}"
+    mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
+    jr = max(0, 25 - datetime.now().day)
+    if jr <= 0:
+        urgence, delai = "C'est le dernier jour : la saisie est clôturée le 25.", "dernier jour"
+    elif jr == 1:
+        urgence, delai = "⏰ Plus qu'un jour : à remplir avant le 25 (clôture demain).", "plus qu'1 jour"
+    else:
+        urgence, delai = f"⏰ Il vous reste {jr} jours : à remplir avant le 25.", f"plus que {jr} jours"
+    sujet = f"Rappel ({delai}) — Feuille d'heures {mois_annee}"
+    corps = (f"Bonjour {label},\n\nSauf erreur de notre part, nous n'avons pas encore reçu votre "
+             f"feuille d'heures du mois de {mois_annee}.\n\n{urgence}\n\n"
+             f"Remplissez-la en quelques minutes en ligne via ce lien :\n{lien}\n\n"
+             f"Merci d'avance,\nLa direction")
+    return {"resultat": f"Brouillon de relance préparé pour {label} (à relire et envoyer).",
+            "action": {"type": "mailto", "label": f"✉️ Ouvrir la relance pour {label}",
+                       "to": e["email"], "subject": sujet, "body": corps}}
+
+def _outil_preparer_attestation(args, annuaire, profils):
+    label = (args.get("employe") or "").strip()
+    e = annuaire.get(label)
+    if not e:
+        return {"resultat": "Salarié introuvable.", "action": None}
+    import urllib.parse as _u
+    url = "/admin/employe/attestation?email=" + _u.quote(e["email"])
+    return {"resultat": f"Attestation de travail prête pour {label} (page imprimable).",
+            "action": {"type": "lien", "label": f"📄 Ouvrir l'attestation de {label}", "url": url}}
+
+def _outil_proposer_note_journal(args, annuaire, profils):
+    label = (args.get("employe") or "").strip()
+    e = annuaire.get(label)
+    if not e:
+        return {"resultat": "Salarié introuvable.", "action": None}
+    note = (args.get("note") or "").strip()
+    if not note:
+        return {"resultat": "Précise le texte de la note à ajouter.", "action": None}
+    type_ev = (args.get("type_evenement") or "Autre").strip()
+    return {"resultat": f"Note de journal proposée pour {label} : « {note} » (à confirmer).",
+            "action": {"type": "post", "label": f"📝 Ajouter au journal de {label}",
+                       "url": "/admin/employe/journal",
+                       "fields": {"email": e["email"], "type": type_ev, "note": note}}}
+
+def _outil_preparer_mail(args, annuaire, profils):
+    label = (args.get("employe") or "").strip()
+    e = annuaire.get(label)
+    if not e:
+        return {"resultat": "Salarié introuvable.", "action": None}
+    corps = (args.get("corps") or "").strip()
+    if not corps:
+        return {"resultat": "Précise le contenu du mail à rédiger.", "action": None}
+    return {"resultat": f"Brouillon de mail préparé pour {label} (à relire et envoyer).",
+            "action": {"type": "mailto", "label": f"📧 Ouvrir le mail pour {label}",
+                       "to": e["email"], "subject": (args.get("sujet") or "").strip(), "body": corps}}
+
 _OUTILS_AGENT = {
     "releves_manquants": _outil_releves_manquants,
     "profil_salarie": _outil_profil_salarie,
     "echeances_a_venir": _outil_echeances,
     "comparer_heures": _outil_comparer_heures,
     "lister_employes": _outil_lister_employes,
+    "preparer_relance": _outil_preparer_relance,
+    "preparer_attestation": _outil_preparer_attestation,
+    "proposer_note_journal": _outil_proposer_note_journal,
+    "preparer_mail": _outil_preparer_mail,
 }
 
 def executer_outil_agent(nom, args, annuaire):

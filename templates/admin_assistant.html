@@ -65,6 +65,10 @@
     .chat-form button { background: #1F4E79; color: white; border: none; border-radius: 8px; padding: 0 18px; font-weight: bold; cursor: pointer; }
     .chat-form button:disabled { background: #9aa7b5; cursor: default; }
     .outils-meta { font-size: 0.74em; color: #6b8aa3; margin: -6px 0 12px 4px; }
+    .actions-bloc { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: -2px 0 14px 4px; }
+    .action-btn { background: #1F7A3D; color: #fff; border: none; border-radius: 7px; padding: 7px 13px; font-size: 0.84em; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; }
+    .action-btn:hover { background: #176030; }
+    .action-btn.done { background: #9aa7b5; cursor: default; }
   </style>
 </head>
 <body>
@@ -196,6 +200,41 @@
     m.className = 'outils-meta'; m.textContent = '🔧 a consulté : ' + uniq.join(', ');
     log.appendChild(m); log.scrollTop = log.scrollHeight;
   }
+  // Boutons d'action proposés par l'agent (l'humain confirme — jamais d'envoi/écriture auto).
+  function renderActions(actions) {
+    if (!actions || !actions.length) return;
+    const wrap = document.createElement('div'); wrap.className = 'actions-bloc';
+    actions.forEach(a => {
+      if (!a || !a.type) return;
+      if (a.type === 'lien') {
+        const el = document.createElement('a');
+        el.className = 'action-btn'; el.href = a.url; el.target = '_blank'; el.rel = 'noopener';
+        el.textContent = a.label || 'Ouvrir'; wrap.appendChild(el);
+      } else if (a.type === 'mailto') {
+        const el = document.createElement('a'); el.className = 'action-btn';
+        el.href = 'https://mail.google.com/mail/?view=cm&fs=1'
+          + '&to=' + encodeURIComponent(a.to || '')
+          + '&su=' + encodeURIComponent(a.subject || '')
+          + '&body=' + encodeURIComponent(a.body || '');
+        el.target = '_blank'; el.rel = 'noopener';
+        el.textContent = a.label || 'Ouvrir le mail'; wrap.appendChild(el);
+      } else if (a.type === 'post') {
+        const el = document.createElement('button'); el.className = 'action-btn';
+        el.textContent = a.label || 'Confirmer';
+        el.addEventListener('click', async () => {
+          el.disabled = true;
+          try {
+            await fetch(a.url, { method: 'POST',
+              headers: { 'X-CSRF-Token': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams(a.fields || {}) });
+            el.textContent = '✓ Ajouté'; el.classList.add('done');
+          } catch (e) { el.textContent = '⚠️ Échec'; el.disabled = false; }
+        });
+        wrap.appendChild(el);
+      }
+    });
+    log.appendChild(wrap); log.scrollTop = log.scrollHeight;
+  }
   function ajoute(role, texte) {
     const v = document.getElementById('chatVide'); if (v) v.remove();
     const w = document.createElement('div'); w.className = 'msg-c ' + (role === 'user' ? 'user' : 'bot');
@@ -220,6 +259,7 @@
       if (data.reply) {
         bulle.textContent = data.reply; histo.push({ role: 'assistant', content: data.reply });
         metaOutils(data.outils_utilises);
+        renderActions(data.actions);
       }
       else { bulle.textContent = '⚠️ ' + (data.error || 'Erreur.'); }
     } catch (err) { bulle.textContent = '⚠️ Connexion impossible.'; }

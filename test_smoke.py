@@ -119,6 +119,20 @@ if employes:
         print(f"{statut}[--] agent fake (pseudonymisation + ré-identification) "
               f"· outils={res['outils_utilises']}")
 
+# --- Agent Phase 2 : action « préparer une relance » (fake, hors-ligne) ---
+# Vérifie qu'une ACTION est proposée et RÉ-IDENTIFIÉE (vrai prénom, plus d'étiquette),
+# sans aucun envoi réel (le fake ne fait qu'assembler l'objet action).
+if employes:
+    resA = agent_rh.run_agent([{"role": "user", "content": f"prépare une relance pour {prenom0}"}],
+                              employes, A.executer_outil_agent, moteur="fake")
+    acts = resA.get("actions", [])
+    txt = " ".join(str(a) for a in acts)
+    ok_act = bool(acts) and any(a.get("type") == "mailto" for a in acts)
+    ok_reid = (prenom0 in txt) and ("Employé" not in txt)
+    print(("OK " if (ok_act and ok_reid) else "KO ") + "[--] agent action relance (proposée + ré-identifiée)")
+    if not (ok_act and ok_reid):
+        echecs.append("agent action : relance non proposée/ré-identifiée")
+
 # --- Phase 1 : crypto + extraction OCR + propositions (hors-ligne, données isolées) ---
 # Chiffrement au repos : round-trip (sans clé -> clair ; avec clé -> enc:).
 ok_crypto = crypto_rh.dechiffrer(crypto_rh.chiffrer("FR7630004")) == "FR7630004"
