@@ -1362,15 +1362,18 @@ def admin_employe_document():
 
 @app.route("/admin/document/<doc_id>")
 def admin_document(doc_id):
-    """Télécharge un document RH (admin uniquement)."""
+    """Document RH (admin uniquement) : téléchargé par défaut, ou AFFICHÉ dans le
+    navigateur avec ?voir=1 (aperçu inline des PDF/images)."""
     if not session.get("admin"):
         return redirect(url_for("admin"))
+    voir = request.args.get("voir") == "1"
     for docs in charger_docs_index().values():
         for d in docs:
             if d["id"] == doc_id:
                 chemin = os.path.join(DOCS_DIR, d["fichier"])
                 if os.path.exists(chemin):
-                    return send_file(chemin, as_attachment=True, download_name=d["nom_original"])
+                    return send_file(chemin, as_attachment=not voir,
+                                     download_name=d["nom_original"])
     abort(404)
 
 

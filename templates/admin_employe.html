@@ -320,6 +320,9 @@
               <td>{{ d.taille }}</td>
               <td>{{ d.date_ajout }}</td>
               <td>
+                <a href="/admin/document/{{ d.id }}?voir=1" target="_blank" rel="noopener"
+                   title="Visualiser le document dans le navigateur"
+                   style="display:inline-block; background:#1F4E79; color:white; border-radius:5px; padding:4px 9px; cursor:pointer; text-decoration:none; font-size:0.82em;">👁 Voir</a>
                 {% if d.a_valider %}
                 <form method="POST" action="/admin/employe/document/valider" style="display:inline">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
