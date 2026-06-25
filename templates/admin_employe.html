@@ -47,6 +47,7 @@
     .doc-table th { background:#1F4E79; color:white; padding:8px 6px; }
     .doc-table td { padding:7px 8px; border:1px solid #eee; text-align:left; vertical-align:middle; }
     .doc-type { background:#eaf1fb; color:#1F4E79; padding:2px 8px; border-radius:10px; font-size:0.85em; font-weight:bold; white-space:nowrap; }
+    .doc-type-sel { font-size:0.82em; padding:3px 5px; border:1px solid #cdd9ea; border-radius:6px; background:#eaf1fb; color:#1F4E79; font-weight:bold; max-width:190px; cursor:pointer; }
     .doc-lien { color:#2E75B6; text-decoration:none; font-weight:500; }
     .doc-lien:hover { text-decoration:underline; }
     .doc-suppr { background:none; border:none; cursor:pointer; font-size:1em; opacity:0.6; }
@@ -290,7 +291,8 @@
       <form method="POST" action="/admin/employe/document" enctype="multipart/form-data" class="doc-upload">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ emp.email }}">
-        <select name="type">
+        <select name="type" title="Le type peut être détecté automatiquement">
+          <option value="__auto__" selected>🪄 Détection automatique</option>
           {% for fam, sous in familles_docs.items() %}
           <optgroup label="{{ fam }}">
             {% for t in sous %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
@@ -312,7 +314,21 @@
           <tbody>
             {% for d in items %}
             <tr>
-              <td><span class="doc-type">{{ d.type }}</span></td>
+              <td>
+                <form method="POST" action="/admin/employe/document/retype" style="margin:0;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="email" value="{{ emp.email }}">
+                  <input type="hidden" name="doc_id" value="{{ d.id }}">
+                  <select name="type" class="doc-type-sel" title="Corriger le type" onchange="this.form.submit()">
+                    <option value="__auto__">🪄 Re-détecter</option>
+                    {% for fam, sous in familles_docs.items() %}
+                    <optgroup label="{{ fam }}">
+                      {% for t in sous %}<option value="{{ t }}" {% if t == d.type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
               <td><a href="/admin/document/{{ d.id }}" class="doc-lien">{{ d.libelle }}</a>
                 {% if d.expiration %}<span class="doc-exp">⏳ expire le {{ d.expiration|date_fr }}</span>{% endif %}
                 {% if d.a_valider %}<span title="Ajouté automatiquement par l'assistant RH — à vérifier" style="display:inline-block; background:#fff3cd; color:#856404; font-size:0.72em; font-weight:bold; padding:2px 8px; border-radius:10px; margin-left:6px;">🤖 à valider</span>{% endif %}

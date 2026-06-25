@@ -141,6 +141,7 @@ MOIS_FR = {
 
 from tokens import generer_token, resoudre_employe, reponse_de, tokens_valides
 import crypto_rh  # chiffrement au repos des champs sensibles (IBAN)
+import extraction_pj  # lecture texte d'un document (pdfplumber, OCR si dispo) — imports paresseux
 
 # Cibles d'extraction sensibles -> chiffrées au repos (Fernet) dans profils_rh.json.
 CIBLES_SENSIBLES = {"iban"}
@@ -1325,6 +1326,55 @@ def admin_employe():
                            iban=crypto_rh.dechiffrer(profil_de(email).get("iban", "")) if profil_de(email).get("iban") else "")
 
 
+# --- Classification automatique du TYPE d'un document (nom de fichier + texte) ---
+# Utilisée au dépôt manuel (option « Détection automatique ») et au re-typage.
+# Sur le serveur gratuit, le texte est lu via pdfplumber (PDF) ; les photos/scans
+# (OCR) ne sont lisibles qu'avec Tesseract (PA payant) -> détection alors basée sur
+# le seul nom de fichier.
+_CLASSIF_DOC = [
+    (("avenant",), "Avenant"),
+    (("bulletin", "fiche de paie", "fiche de paye", "bulletin de salaire"), "Bulletin de paie"),
+    (("solde de tout compte", "reçu pour solde", "recu pour solde"), "Solde de tout compte"),
+    (("rib", "iban", "coordonnées bancaires", "coordonnees bancaires", "relevé d'identité bancaire"), "RIB / coordonnées bancaires"),
+    (("titre de séjour", "titre de sejour"), "Titre de séjour"),
+    (("carte vitale", "vitale"), "Carte vitale"),
+    (("justificatif de domicile", "domicile"), "Justificatif de domicile"),
+    (("sécurité sociale", "securite sociale", "attestation de droits", "ameli"), "N° de Sécurité sociale"),
+    (("carte d'identité", "carte nationale", "cni", "passeport", "passport", "pièce d'identité", "piece d'identite"), "Pièce d'identité"),
+    (("visite médicale", "visite medicale", "médecine du travail", "medecine du travail", "aptitude"), "Visite médicale"),
+    (("arrêt de travail", "arret de travail", "arrêt maladie", "arret maladie", "avis d'arrêt", "prolongation", "cpam"), "Arrêt de travail"),
+    (("diplôme", "diplome", "brevet professionnel", "brevet de préparateur", "licence", "master", "baccalauréat", "baccalaureat", "bts"), "Diplôme"),
+    (("certificat de travail",), "Attestation employeur"),
+    (("attestation employeur", "attestation pôle emploi", "attestation pole emploi", "attestation france travail"), "Attestation employeur"),
+    (("certification", "habilitation"), "Certification / habilitation"),
+    (("attestation de formation", "formation", "dpc"), "Attestation de formation"),
+    (("entretien annuel", "entretien professionnel"), "Entretien annuel / professionnel"),
+    (("avertissement", "mise en demeure", "sanction disciplinaire"), "Avertissement"),
+    (("contrat de travail", "contrat à durée", "contrat a duree", "cdi", "cdd"), "Contrat de travail"),
+    (("courrier", "lettre"), "Courrier"),
+]
+
+def deviner_type_doc(filename, texte=""):
+    """Devine le type (parmi les sous-types FAMILLES_DOCS) depuis le nom de fichier
+    et, si disponible, le texte extrait. 'Autre / divers' par défaut."""
+    base = ((filename or "") + " " + (texte or "")).lower()
+    for mots, typ in _CLASSIF_DOC:
+        if any(m in base for m in mots):
+            return typ
+    return "Autre / divers"
+
+def _detecter_type_fichier(chemin, nom_original):
+    """Best-effort : lit le contenu (PDF via pdfplumber ; image -> '' sans OCR) puis
+    devine le type. Sans texte exploitable, retombe sur le nom de fichier."""
+    texte = ""
+    try:
+        with open(chemin, "rb") as fp:
+            texte = extraction_pj.extraire_texte(nom_original or os.path.basename(chemin), fp.read())
+    except Exception:
+        texte = ""
+    return deviner_type_doc(nom_original, texte)
+
+
 @app.route("/admin/employe/document", methods=["POST"])
 def admin_employe_document():
     """Dépose un document RH (privé admin) rattaché à un employé."""
@@ -1345,12 +1395,15 @@ def admin_employe_document():
     stored = f"{doc_id}_{secure_filename(f.filename)}"
     chemin = os.path.join(DOCS_DIR, stored)
     f.save(chemin)
+    # Type choisi par l'admin, ou détecté automatiquement (option « 🪄 Détection »).
+    type_choisi = request.form.get("type", "")
+    type_final = _detecter_type_fichier(chemin, f.filename) if type_choisi in ("", "__auto__") else type_choisi
     idx = charger_docs_index()
     idx.setdefault(email, []).append({
         "id": doc_id,
         "fichier": stored,
         "nom_original": f.filename,
-        "type": request.form.get("type", "Autre / divers"),
+        "type": type_final,
         "libelle": request.form.get("libelle", "").strip() or f.filename,
         "expiration": request.form.get("expiration", "").strip(),
         "taille": humaniser_taille(os.path.getsize(chemin)),
@@ -1396,6 +1449,28 @@ def admin_employe_document_supprimer():
             app.logger.exception("Échec suppression fichier document RH")
         idx[email] = [d for d in docs if d["id"] != doc_id]
         sauvegarder_docs_index(idx)
+    return redirect(url_for("admin_employe", email=email))
+
+
+@app.route("/admin/employe/document/retype", methods=["POST"])
+def admin_employe_document_retype():
+    """Corrige le type d'un document déjà déposé (sans re-déposer). Valeur « __auto__ »
+    = re-détection automatique depuis le contenu/nom du fichier."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    doc_id = request.form.get("doc_id", "")
+    nouveau = request.form.get("type", "")
+    idx = charger_docs_index()
+    for d in idx.get(email, []):
+        if d.get("id") == doc_id:
+            if nouveau == "__auto__":
+                d["type"] = _detecter_type_fichier(os.path.join(DOCS_DIR, d["fichier"]),
+                                                   d.get("nom_original", ""))
+            elif nouveau:
+                d["type"] = nouveau
+            break
+    sauvegarder_docs_index(idx)
     return redirect(url_for("admin_employe", email=email))
 
 
