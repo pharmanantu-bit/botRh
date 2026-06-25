@@ -20,7 +20,7 @@ import config
 EXT_DOCS_OK = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".doc"}
 
 BASE_URL = os.environ.get("ASSISTANT_BASE_URL", "https://pharmacie92000.pythonanywhere.com")
-CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
+CLE = os.environ.get("API_CLE") or "botRh-trigger-2026"  # vide (secret absent) -> défaut
 
 
 def _liste(val):

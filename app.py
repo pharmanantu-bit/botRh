@@ -107,7 +107,7 @@ app.logger.setLevel(logging.INFO)
 
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
-API_CLE = os.getenv("API_CLE", "botRh-trigger-2026")
+API_CLE = os.getenv("API_CLE") or "botRh-trigger-2026"  # .env vide -> défaut (évite un blocage total)
 # Jour de clôture RÉELLE de la saisie (côté interne) : au-delà, le formulaire
 # est fermé. On communique le 25 aux employés (mails + formulaire) mais on
 # accepte en réalité jusqu'au 28, pour garder une marge. Surchargeable par env.
@@ -2177,6 +2177,19 @@ def healthcheck():
     )
 
     info["github_token_set"] = bool(os.getenv("GITHUB_TOKEN"))
+
+    # Détecteur de secrets restés à leur valeur PAR DÉFAUT (aucune valeur révélée,
+    # uniquement des booléens). True = secret encore par défaut -> à changer.
+    _defauts = {
+        "ADMIN_PASSWORD": "pharma92",
+        "FLASK_SECRET_KEY": "botRh-admin-2026",
+        "API_CLE": "botRh-trigger-2026",
+        "TOKEN_SECRET": "pharmacie-nanterre-2026",
+    }
+    info["secrets_par_defaut"] = {k: (os.getenv(k) in (None, "", v)) for k, v in _defauts.items()}
+    info["crypto_au_repos"] = bool((os.getenv("BOTRH_CRYPTO_KEY") or "").strip())
+    info["securite_ok"] = not any(info["secrets_par_defaut"].values())
+
     if request.args.get("github") == "1":
         import urllib.request
         try:

@@ -20,4 +20,6 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # Clé API serveur (vide si secret absent -> défaut côté script).
+          API_CLE: ${{ secrets.API_CLE }}
         run: python backup_data.py

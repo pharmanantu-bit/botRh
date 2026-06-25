@@ -27,9 +27,10 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          # API_CLE : non défini ici -> valeur par défaut « botRh-trigger-2026 »,
-          # identique au serveur (comme run_send.py). Ajouter le secret seulement
-          # si tu as personnalisé API_CLE côté serveur.
+          # Clé API partagée avec le serveur. Si le secret GitHub API_CLE n'existe
+          # pas encore, la valeur est vide -> les scripts retombent sur le défaut
+          # « botRh-trigger-2026 » (cohérent avec un serveur encore par défaut).
+          API_CLE: ${{ secrets.API_CLE }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           ASSISTANT_MOTEUR: mistral
           COMPTA_EMAILS: ${{ secrets.COMPTA_EMAILS }}

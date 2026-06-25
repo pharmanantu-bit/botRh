@@ -16,7 +16,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
-CLE = os.environ.get("API_CLE", "botRh-trigger-2026")
+CLE = os.environ.get("API_CLE") or "botRh-trigger-2026"  # vide (secret absent) -> défaut
 ADMIN_EMAIL = "pharmanantu@gmail.com"
 
 horodatage = datetime.now().strftime("%Y-%m-%d")

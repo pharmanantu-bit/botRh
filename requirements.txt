@@ -5,3 +5,4 @@ openpyxl
 reportlab
 pdfplumber
 python-docx
+cryptography
