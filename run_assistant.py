@@ -165,19 +165,45 @@ def classer_candidatures(label="Recrutement"):
                    "sujet": m.get("sujet", ""), "filename": pj["filename"],
                    "content_b64": base64.b64encode(pj["content"]).decode(),
                    "cv_texte": cv_texte, "message_id": m.get("message_id", "")}
+        new_id = ""
         try:
             req = urllib.request.Request(f"{BASE_URL}/candidat_push?cle={CLE}",
                 data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json", "User-Agent": "botRh"})
             with urllib.request.urlopen(req, timeout=60) as r:
-                st = json.loads(r.read().decode("utf-8")).get("status", "?")
+                rep = json.loads(r.read().decode("utf-8"))
+            st = rep.get("status", "?")
+            new_id = rep.get("id", "")
         except Exception as e:
             st = f"erreur ({e})"
+        # RGPD : accusé de réception + mention d'information envoyé automatiquement à
+        # toute NOUVELLE candidature (le serveur ne peut pas envoyer de mail lui-même).
+        if st == "ajoute" and email_exp:
+            try:
+                import email_sender
+                if email_sender.send_accuse_candidature(prenom, email_exp, ""):
+                    _confirmer_accuse(new_id)
+                    print(f"    ↳ accusé RGPD envoyé à {email_exp}")
+            except Exception as e:
+                print(f"    ↳ accusé RGPD NON envoyé ({e})")
         ajout += st == "ajoute"
         doublon += st == "doublon"
         autre += st not in ("ajoute", "doublon")
         print(f"  Candidature {prenom} {nom} <{email_exp}> -> {st}")
     print(f"Candidatures : {ajout} ajout(s), {doublon} doublon(s), {autre} autre(s).")
+
+
+def _confirmer_accuse(cid):
+    """Informe le serveur que l'accusé RGPD a été envoyé (horodatage de la fiche)."""
+    if not cid:
+        return
+    try:
+        req = urllib.request.Request(f"{BASE_URL}/candidat_accuse_push?cle={CLE}",
+            data=json.dumps({"id": cid}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "botRh"})
+        urllib.request.urlopen(req, timeout=30).read()
+    except Exception:
+        pass
 
 
 def charger_employes_complet():
@@ -290,6 +316,14 @@ def main():
         classer_candidatures()
     except Exception:
         print("Candidatures : étape ignorée (erreur).")
+
+    # Purge RGPD : anonymise les candidatures de +2 ans (le serveur déclenche, mais
+    # on le sollicite ici pour que la purge tourne même sans visite de la liste).
+    try:
+        with urllib.request.urlopen(f"{BASE_URL}/candidat_purge?cle={CLE}", timeout=30) as r:
+            print("Purge RGPD :", json.loads(r.read().decode("utf-8")))
+    except Exception as e:
+        print(f"Purge RGPD : non déclenchée ({e}).")
 
 
 if __name__ == "__main__":

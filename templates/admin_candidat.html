@@ -25,6 +25,8 @@
     .btn-ia { background: #1F7A3D; } .btn-ia:hover { background: #176030; }
     .btn-sm { font-size: 0.8em; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; }
     .transp { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; font-size: 0.8em; padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; }
+    .ia-legal { background: #eef3fb; border: 1px solid #c6d6ef; color: #214a86; font-size: 0.8em; padding: 9px 12px; border-radius: 8px; margin-bottom: 8px; }
+    .rgpd { background: #f3f0fb; border: 1px solid #d9cef0; color: #4a3a78; font-size: 0.82em; padding: 9px 12px; border-radius: 8px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
     td, th { padding: 7px 8px; border: 1px solid #eee; text-align: left; }
     th { background: #1F4E79; color: white; }
@@ -55,6 +57,12 @@
   {% if msg == 'embauche_email' %}<div class="msg msg-warn">Renseigne d'abord l'e-mail du candidat (c'est la clé de la fiche salarié).</div>{% endif %}
   {% if msg == 'deja_salarie' %}<div class="msg msg-warn">Cet e-mail correspond déjà à un salarié — pas de doublon créé.</div>{% endif %}
   {% if msg == 'grille_ok' %}<div class="msg msg-ok">Grille d'entretien enregistrée.</div>{% endif %}
+  {% if msg == 'anonymise' %}<div class="msg msg-ok">Candidat anonymisé : données personnelles et documents effacés.</div>{% endif %}
+  {% if msg == 'accuse_ok' %}<div class="msg msg-ok">Accusé d'information RGPD marqué comme envoyé.</div>{% endif %}
+
+  {% if c.anonymise %}
+  <div class="msg msg-warn">🕵️ Dossier <strong>anonymisé</strong> le {{ c.anonymise }}{% if c.anonymise_motif %} ({{ c.anonymise_motif }}){% endif %} — les données personnelles et les documents ont été effacés (conservation limitée RGPD). Seules des données anonymes subsistent pour les statistiques.</div>
+  {% endif %}
 
   <!-- Statut -->
   <form method="POST" action="/admin/recrutement/statut" class="statut-bar">
@@ -114,6 +122,7 @@
   <!-- Analyse IA -->
   <div class="bloc">
     <h2>🤖 Analyse IA du CV</h2>
+    <div class="ia-legal">⚖️ {{ disclaimer_ia }}</div>
     <div class="transp">⚠️ « Analyser » envoie le texte du CV à l'IA (Mistral, hébergé UE) pour le résumé/score. Rien n'est envoyé tant que tu ne cliques pas.</div>
     {% if c.analyse_ia %}
       {% set a = c.analyse_ia %}
@@ -170,10 +179,10 @@
     {% else %}
     <p class="meta">Aucun document. Dépose un CV (type « CV ») pour activer l'analyse + pré-remplir le contact.</p>
     {% endif %}
-    {% if c.cv_texte %}
+    {% if cv_texte %}
     <details style="margin-top:12px;">
-      <summary style="cursor:pointer; color:#1F4E79; font-size:0.88em;">📄 Voir le texte extrait du CV</summary>
-      <div class="cv-texte">{{ c.cv_texte }}</div>
+      <summary style="cursor:pointer; color:#1F4E79; font-size:0.88em;">📄 Voir le texte extrait du CV <span class="meta">· 🔒 chiffré au repos</span></summary>
+      <div class="cv-texte">{{ cv_texte }}</div>
     </details>
     {% endif %}
   </div>
@@ -223,6 +232,47 @@
       </div>
       <button class="btn" type="submit" style="margin-top:10px;">💾 Enregistrer la grille</button>
     </form>
+  </div>
+
+  <!-- RGPD / Conformité -->
+  <div class="bloc">
+    <h2>🛡️ RGPD &amp; conformité</h2>
+    <div class="rgpd" style="margin-bottom:12px;">
+      Conservation limitée à <strong>{{ duree_conservation }}</strong> après le dernier contact (CNIL).
+      Au-delà, le dossier est automatiquement anonymisé. Le texte du CV est chiffré au repos.
+    </div>
+
+    <h2 style="font-size:0.92em;">ℹ️ Mention d'information au candidat</h2>
+    {% if c.accuse_info %}
+      <p style="margin:4px 0 8px;">✅ Accusé de réception + information RGPD envoyé le <strong>{{ c.accuse_info }}</strong>.</p>
+    {% else %}
+      <p class="meta" style="margin:4px 0 8px;">Pas encore tracé. L'accusé est envoyé automatiquement pour les candidatures reçues par e-mail ; pour une saisie manuelle, envoie-le ci-dessous.</p>
+    {% endif %}
+    {% if not c.anonymise %}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      {% if mail_accuse_url %}
+      <a class="btn" href="{{ mail_accuse_url }}" target="_blank" rel="noopener" style="background:#5b4a9e;">✉️ Envoyer l'accusé RGPD (Gmail)</a>
+      {% else %}
+      <span class="meta">Renseigne l'e-mail du candidat pour activer l'envoi de l'accusé.</span>
+      {% endif %}
+      <form method="POST" action="/admin/recrutement/accuse-marque" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" value="{{ cid }}">
+        <button class="btn-sm" type="submit" style="background:#eef; border:1px solid #ccd; color:#33408a;">✅ Marquer comme envoyé</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if not c.anonymise %}
+    <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
+    <h2 style="font-size:0.92em;">🕵️ Anonymiser ce dossier</h2>
+    <p class="meta" style="margin:4px 0 8px;">Efface définitivement nom, contact, CV et documents, mais conserve une ligne anonyme (poste, statut, dates) pour tes statistiques. Action irréversible.</p>
+    <form method="POST" action="/admin/recrutement/anonymiser" onsubmit="return confirm('Anonymiser ce candidat ? Les données personnelles et les documents seront effacés définitivement.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="id" value="{{ cid }}">
+      <button class="btn-sm suppr" type="submit">🕵️ Anonymiser (effacer les données perso)</button>
+    </form>
+    {% endif %}
   </div>
 
   <!-- Suppression candidat -->

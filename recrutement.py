@@ -8,7 +8,7 @@ des salariés (candidats.json), aucun impact sur Équipe & RH.
 import os
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import (Blueprint, request, render_template, redirect, url_for,
                    session, abort, send_file, current_app)
@@ -20,6 +20,8 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, EXT_DOCS_OK, humaniser_tail
                  charger_docs_index, sauvegarder_docs_index, API_CLE)
 import extraction_pj
 import recrutement_ia
+import crypto_rh          # chiffrement au repos du cv_texte (même traitement que l'IBAN)
+import rgpd_recrutement   # durée de conservation, anonymisation, mention d'information
 
 bp = Blueprint("recrutement", __name__)
 
@@ -65,6 +67,96 @@ def candidat_docs_de(cid):
 def _admin():
     return session.get("admin")
 
+
+# --- RGPD : chiffrement au repos du CV, conservation limitée, anonymisation ---
+
+def _cv_clair(c):
+    """Texte du CV en clair (déchiffre si stocké « enc:… »). Les anciens CV stockés
+    en clair sont renvoyés tels quels (dégradation propre de crypto_rh)."""
+    return crypto_rh.dechiffrer(c.get("cv_texte", "") or "")
+
+
+def _parse_dt(s):
+    """Parse une date « JJ/MM/AAAA HH:MM » ou « JJ/MM/AAAA » -> datetime, sinon None."""
+    s = (s or "").strip()
+    for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _dernier_contact(c):
+    """Date du dernier contact connu avec le candidat (ajout, note d'entretien,
+    analyse). Sert de point de départ du délai de conservation (logique CNIL)."""
+    dates = [_parse_dt(c.get("date_ajout"))]
+    for e in c.get("journal", []) or []:
+        dates.append(_parse_dt(e.get("date")))
+    a = c.get("analyse_ia") or {}
+    dates.append(_parse_dt(a.get("genere_le")))
+    dates = [d for d in dates if d]
+    return max(dates) if dates else None
+
+
+def _supprimer_docs_candidat(cid, idx):
+    """Efface les fichiers physiques d'un candidat et vide son entrée d'index."""
+    for d in idx.get(cid, []):
+        try:
+            p = os.path.join(CANDIDATS_DOCS_DIR, d.get("fichier", ""))
+            if d.get("fichier") and os.path.exists(p):
+                os.remove(p)
+        except OSError:
+            current_app.logger.exception("Échec suppression document candidat (anonymisation)")
+    idx.pop(cid, None)
+
+
+def anonymiser_candidat(cid, candidats, idx, motif="manuel"):
+    """Efface les données personnelles d'un candidat (PII + documents) mais conserve
+    une ligne anonyme (poste, statut, dates, notes numériques) pour les statistiques.
+    Mute `candidats` et `idx` en place ; l'appelant sauvegarde. Renvoie True si fait."""
+    c = candidats.get(cid)
+    if not c or c.get("anonymise"):
+        return False
+    _supprimer_docs_candidat(cid, idx)
+    for champ in rgpd_recrutement.CHAMPS_PII_CANDIDAT:
+        c[champ] = ""
+    c["nom"] = "(anonymisé)"
+    c["journal"] = []            # les notes libres peuvent contenir des données perso
+    # On garde un score agrégé sans le texte libre (qui peut nommer la personne).
+    a = c.get("analyse_ia") or {}
+    if a:
+        c["analyse_ia"] = {"score": a.get("score"), "aide_decision": True,
+                           "genere_le": a.get("genere_le"), "anonymise": True}
+    c["anonymise"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    c["anonymise_motif"] = motif
+    candidats[cid] = c
+    return True
+
+
+def purger_candidatures_expirees(seuil_jours=None):
+    """Anonymise les candidatures dont le dernier contact dépasse le délai de
+    conservation (CNIL : 2 ans), hors candidats embauchés. Idempotent. Renvoie le
+    nombre de dossiers anonymisés. Appelée paresseusement (ouverture de la liste)
+    et via l'API /candidat_purge (déclenchée par le runner)."""
+    seuil_jours = seuil_jours or rgpd_recrutement.DUREE_CONSERVATION_JOURS
+    limite = datetime.now() - timedelta(days=seuil_jours)
+    candidats = charger_candidats()
+    idx = charger_candidats_docs_index()
+    faits = 0
+    for cid, c in list(candidats.items()):
+        if c.get("anonymise") or c.get("statut") in rgpd_recrutement.STATUTS_HORS_PURGE:
+            continue
+        dc = _dernier_contact(c)
+        if dc and dc < limite:
+            if anonymiser_candidat(cid, candidats, idx, motif="purge auto +%dj" % seuil_jours):
+                faits += 1
+    if faits:
+        sauvegarder_candidats(candidats)
+        sauvegarder_candidats_docs_index(idx)
+        current_app.logger.info("Purge RGPD recrutement : %d candidature(s) anonymisée(s).", faits)
+    return faits
+
 def _deviner_type_candidat(filename, texte):
     """Type d'un document de recrutement (CV par défaut)."""
     base = ((filename or "") + " " + (texte or "")).lower()
@@ -82,6 +174,11 @@ def _deviner_type_candidat(filename, texte):
 def liste():
     if not _admin():
         return redirect(url_for("admin"))
+    # Conservation limitée (CNIL) : anonymise au passage les dossiers de +2 ans.
+    try:
+        purger_candidatures_expirees()
+    except Exception:
+        current_app.logger.exception("Purge RGPD recrutement échouée (non bloquant)")
     candidats = charger_candidats()
     idx = charger_candidats_docs_index()
     parstatut = {s: [] for s in STATUTS_RECRUTEMENT}
@@ -140,11 +237,22 @@ def candidat():
         mail_comptable_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                               + urllib.parse.quote(comptable) + "&su=" + urllib.parse.quote(su)
                               + "&body=" + urllib.parse.quote(body))
+    # Lien Gmail pré-rempli pour la mention d'information RGPD (accusé de réception).
+    mail_accuse_url = ""
+    if c.get("email"):
+        su = rgpd_recrutement.objet_information(c.get("poste_vise", ""))
+        body = rgpd_recrutement.texte_information(c.get("prenom", ""), c.get("poste_vise", ""))
+        mail_accuse_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
+                           + urllib.parse.quote(c["email"]) + "&su=" + urllib.parse.quote(su)
+                           + "&body=" + urllib.parse.quote(body))
     return render_template("admin_candidat.html", c=c, cid=cid,
                            docs=candidat_docs_de(cid), statuts=STATUTS_RECRUTEMENT,
                            types_doc=TYPES_DOC_CANDIDAT, types_note=TYPES_NOTE_ENTRETIEN,
                            journal=journal, msg=request.args.get("msg", ""),
                            mail_comptable_url=mail_comptable_url,
+                           mail_accuse_url=mail_accuse_url,
+                           cv_texte=_cv_clair(c), disclaimer_ia=rgpd_recrutement.DISCLAIMER_IA,
+                           duree_conservation=rgpd_recrutement.DUREE_CONSERVATION_LIBELLE,
                            criteres=CRITERES_EVALUATION, grille=c.get("grille") or {},
                            moyenne=_moyenne_grille(c.get("grille")))
 
@@ -173,7 +281,19 @@ def statut():
     nouveau = request.form.get("statut", "")
     candidats = charger_candidats()
     if cid in candidats and nouveau in STATUTS_RECRUTEMENT:
+        ancien = candidats[cid].get("statut")
         candidats[cid]["statut"] = nouveau
+        # AI Act : trace que la décision est HUMAINE (l'IA n'est qu'une aide). On
+        # journalise les changements vers un statut décisif (sélection / rejet).
+        if nouveau != ancien and nouveau in ("Entretien", "Retenu", "Refusé", "Embauché"):
+            jr = candidats[cid].setdefault("journal", [])
+            jr.append({
+                "id": uuid.uuid4().hex[:8],
+                "date": datetime.now().strftime("%d/%m/%Y"),
+                "type": "Décision RH",
+                "note": f"⚖️ Décision humaine : statut « {nouveau} » "
+                        "(analyse IA consultative, sans valeur décisionnelle).",
+            })
         sauvegarder_candidats(candidats)
     # depuis la liste (kanban) on revient à la liste ; depuis la fiche, à la fiche
     if request.form.get("origine") == "liste":
@@ -218,9 +338,9 @@ def document():
         "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
     })
     sauvegarder_candidats_docs_index(idx)
-    # Si c'est un CV : mémorise le texte (pour l'analyse) + pré-remplit le contact si vide.
+    # Si c'est un CV : mémorise le texte (CHIFFRÉ au repos) + pré-remplit le contact si vide.
     if type_final == "CV" and texte.strip():
-        c["cv_texte"] = texte
+        c["cv_texte"] = crypto_rh.chiffrer(texte)
         contact = extraction_pj.extraire_contact(texte)
         if contact.get("email") and not c.get("email"):
             c["email"] = contact["email"]
@@ -338,7 +458,7 @@ def analyser():
     c = candidats.get(cid)
     if not c:
         abort(404)
-    texte = (c.get("cv_texte") or "").strip()
+    texte = _cv_clair(c).strip()
     if not texte:
         return redirect(url_for(".candidat", id=cid, msg="pas_de_cv"))
     moteur = os.getenv("ASSISTANT_MOTEUR", "mistral")
@@ -417,8 +537,9 @@ def _o_fiche(args):
             p.append("Résumé : " + a["resume"])
     if c.get("notes_libres"):
         p.append("Notes : " + c["notes_libres"])
-    if c.get("cv_texte"):
-        p.append("Extrait CV : " + c["cv_texte"][:1500])
+    cv = _cv_clair(c)
+    if cv:
+        p.append("Extrait CV : " + cv[:1500])
     return "\n".join(p)
 
 def _o_rechercher(args):
@@ -427,7 +548,7 @@ def _o_rechercher(args):
         return "Précise un mot-clé."
     res = [f"- {c.get('prenom')} {c.get('nom')} ({c.get('poste_vise') or '—'}, {c.get('statut')})"
            for c in charger_candidats().values()
-           if mot in (c.get("cv_texte", "") + " " + c.get("notes_libres", "")).lower()]
+           if mot in (_cv_clair(c) + " " + c.get("notes_libres", "")).lower()]
     return (f"Candidats mentionnant « {args.get('motcle')} » :\n" + "\n".join(res)
             if res else f"Aucun candidat ne mentionne « {args.get('motcle')} ».")
 
@@ -550,6 +671,37 @@ def supprimer():
     return redirect(url_for(".liste"))
 
 
+@bp.route("/admin/recrutement/anonymiser", methods=["POST"])
+def anonymiser():
+    """Anonymise un candidat (RGPD : droit à l'effacement / minimisation). Efface
+    les données personnelles + documents, conserve une ligne anonyme pour les stats."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.form.get("id", "")
+    candidats = charger_candidats()
+    idx = charger_candidats_docs_index()
+    if anonymiser_candidat(cid, candidats, idx, motif="manuel"):
+        sauvegarder_candidats(candidats)
+        sauvegarder_candidats_docs_index(idx)
+    return redirect(url_for(".candidat", id=cid, msg="anonymise"))
+
+
+@bp.route("/admin/recrutement/accuse-marque", methods=["POST"])
+def accuse_marque():
+    """Marque manuellement que la mention d'information RGPD a été envoyée au candidat
+    (pour les dossiers saisis à la main / accusé renvoyé depuis Gmail)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.form.get("id", "")
+    candidats = charger_candidats()
+    c = candidats.get(cid)
+    if c:
+        c["accuse_info"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+        candidats[cid] = c
+        sauvegarder_candidats(candidats)
+    return redirect(url_for(".candidat", id=cid, msg="accuse_ok"))
+
+
 @bp.route("/candidat_push", methods=["POST"])
 def candidat_push():
     """Reçoit une candidature (CV) du runner GitHub (label Gmail « Recrutement ») et
@@ -569,7 +721,8 @@ def candidat_push():
         "poste_vise": "", "source": "Candidature e-mail", "statut": "Reçu",
         "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "notes_libres": (f"Objet du mail : {sujet}" if sujet else ""),
-        "journal": [], "cv_texte": (data.get("cv_texte") or "")[:20000], "analyse_ia": None,
+        "journal": [], "cv_texte": crypto_rh.chiffrer((data.get("cv_texte") or "")[:20000]),
+        "analyse_ia": None,
     }
     sauvegarder_candidats(candidats)
     # CV en pièce jointe
@@ -593,6 +746,35 @@ def candidat_push():
                 "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M")})
             sauvegarder_candidats_docs_index(idx)
     return current_app.response_class(json.dumps({"status": "ajoute", "id": cid}), mimetype="application/json")
+
+
+@bp.route("/candidat_accuse_push", methods=["POST"])
+def candidat_accuse_push():
+    """Le runner confirme l'envoi de l'accusé de réception RGPD à un candidat ->
+    on horodate `accuse_info` sur sa fiche (traçabilité de l'information délivrée)."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    data = request.get_json(force=True, silent=True) or {}
+    cid = (data.get("id") or "").strip()
+    candidats = charger_candidats()
+    if cid in candidats:
+        candidats[cid]["accuse_info"] = (data.get("date")
+                                         or datetime.now().strftime("%d/%m/%Y %H:%M"))
+        sauvegarder_candidats(candidats)
+        return current_app.response_class(json.dumps({"status": "ok"}), mimetype="application/json")
+    return current_app.response_class(json.dumps({"status": "introuvable"}),
+                                      status=404, mimetype="application/json")
+
+
+@bp.route("/candidat_purge", methods=["GET", "POST"])
+def candidat_purge():
+    """Purge RGPD déclenchable par le runner (cron GitHub) : anonymise les
+    candidatures de plus de 2 ans. Protégée par la clé API."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    n = purger_candidatures_expirees()
+    return current_app.response_class(json.dumps({"status": "ok", "anonymises": n}),
+                                      mimetype="application/json")
 
 
 @bp.route("/admin/recrutement/embaucher", methods=["POST"])

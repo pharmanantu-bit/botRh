@@ -88,4 +88,7 @@ def analyser_cv(texte, poste, moteur="mistral", modele=None):
         "adequation": str(brut.get("adequation", "")).strip(),
         "points_forts": [str(x).strip() for x in (brut.get("points_forts") or []) if str(x).strip()],
         "points_attention": [str(x).strip() for x in (brut.get("points_attention") or []) if str(x).strip()],
+        # AI Act / RGPD art. 22 : ce résultat est une AIDE à la décision, jamais une
+        # décision automatisée. Marqueur tracé et affiché dans l'UI.
+        "aide_decision": True,
     }

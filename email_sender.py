@@ -99,6 +99,25 @@ La direction
     return msg
 
 
+def send_accuse_candidature(prenom, email, poste=""):
+    """Envoie au candidat l'accusé de réception + la mention d'information RGPD
+    (finalité, base légale, durée de conservation, droits). Exécuté côté RUNNER
+    (le serveur PythonAnywhere gratuit n'a pas d'Internet sortant). Renvoie True si
+    l'envoi a réussi. Idempotence/traçabilité gérées par l'appelant."""
+    email = (email or "").strip()
+    if not email:
+        return False
+    import rgpd_recrutement
+    msg = MIMEText(rgpd_recrutement.texte_information(prenom, poste), "plain", "utf-8")
+    msg["From"] = GMAIL_USER
+    msg["To"] = email
+    msg["Subject"] = rgpd_recrutement.objet_information(poste)
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, email, msg.as_string())
+    return True
+
+
 def send_emails(only_to=None, intro=None):
     """Envoie les relevés à tous les employés.
     only_to : si fourni (adresse e-mail), envoie un seul mail de test à cette
