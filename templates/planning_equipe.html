@@ -23,10 +23,20 @@
     .ongs-sec a:not(.actif):hover { background: #eef2f8; }
     .swatch span { display: inline-block; }
     .swatch:hover > span { transform: scale(1.18); }
+    /* Toggle segmenté (options) */
+    .toggle { display: inline-flex; border: 1px solid #ccd4e0; border-radius: 8px; overflow: hidden; }
+    .toggle label { margin: 0; cursor: pointer; }
+    .toggle label input { display: none; }
+    .toggle label span { display: inline-block; padding: 6px 15px; font-size: 0.82em; color: #557; background: #fff; border-left: 1px solid #e3e9f1; }
+    .toggle label:first-child span { border-left: none; }
+    .toggle label input:checked + span { background: #2C3E50; color: #fff; }
     /* Sélecteur semaine A/B */
     .semsel { display: inline-flex; gap: 6px; margin-bottom: 14px; }
     .semsel a { padding: 7px 16px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9em; border: 1px solid #d4deeb; color: #1F4E79; }
     .semsel a.actif { background: #1F4E79; color: white; border-color: #1F4E79; }
+    .navitem { padding: 5px 11px; border-radius: 7px; text-decoration: none; font-size: 0.78em; font-weight: bold; border: 1px solid #d4deeb; color: #1F4E79; background: #fff; text-align: center; line-height: 1.2; white-space: nowrap; }
+    .navitem.actif { background: #D68910; color: #fff; border-color: #D68910; }
+    .navitem:not(.actif):hover { background: #eef2f8; }
     .meta { color: #9aa7b5; font-size: 0.8em; }
     .btn { background: #1F4E79; color: white; border: none; padding: 9px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9em; }
     .btn:hover { background: #163d60; }
@@ -99,21 +109,94 @@
   </div>
   {% endif %}
 
-  {% if onglet == 'planning' and trame %}
-  <div class="semsel">
-    {% for s in semaines %}
-    <a href="{{ url_for('.vue', onglet=onglet, sem=s, trame=tid) }}" class="{{ 'actif' if s == sem else '' }}">Semaine {{ s }}</a>
-    {% endfor %}
-    <span class="meta" style="align-self:center; margin-left:8px;">{{ trame.nb_semaines }} semaines tournantes{% if trame.date_demarrage %} · démarrage {{ trame.date_demarrage }}{% endif %} · <strong style="color:#1F7A3D;">trame active</strong></span>
+  {% if onglet == 'planning' and trame and nav %}
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+    <a href="{{ nav.aujourdhui }}" class="btn-mini" style="background:#1F4E79;">Aujourd'hui</a>
+    <div style="display:flex; gap:4px; flex-wrap:wrap;">
+      {% for it in nav.boutons %}
+      <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
+      {% endfor %}
+    </div>
   </div>
   {% endif %}
 
-  {# ===================== ONGLET PLANNING : LA FRISE ===================== #}
+  {# ===================== ONGLET PLANNING : multi-vues (grille / texte / tableau) ===================== #}
   {% if onglet == 'planning' %}
-    {% if frise %}
-    <div style="text-align:right; margin-bottom:6px;"><a href="{{ url_for('.imprimer_frise', tid=tid, sem=sem) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer la frise</a></div>
-    {% include '_frise.html' %}
-    <p class="meta" style="margin-top:8px;">Frise de la <strong>semaine {{ sem }}</strong> (trame active). Zone crème = heures d'ouverture. Pour modifier, va dans l'onglet <strong>Trame</strong>.</p>
+    {% if trame %}
+    {% for v in vues %}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
+        {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', tid=tid, sem=v.sem) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
+      </div>
+      {% if mode == 'grille' %}
+        {% set frise = v.frise %}{% include '_frise.html' %}
+      {% elif mode == 'texte' %}
+        <div style="font-size:0.88em; line-height:1.7;">
+          {% for c in v.texte %}
+          <div><span style="color:{{ c.couleur }};">●</span> <strong>{{ c.prenom }}</strong> — {% for j in c.jours %}{{ j.nom }} : {{ j.txt }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="grille-wrap">
+          <table class="saisie">
+            <thead><tr><th style="text-align:left;">Collaborateur</th>{% for col in v.cols %}<th>{{ col }}</th>{% endfor %}<th>Sem.</th></tr></thead>
+            <tbody>
+              {% for l in v.lignes %}
+              <tr><td class="collab"><span class="dot" style="background:{{ l.couleur }};"></span>{{ l.prenom }}</td>
+                {% for cell in l.cells %}<td style="font-size:0.92em;">{{ cell }}</td>{% endfor %}
+                <td>{{ "%g"|format(l.total) }}h</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    {% if recap_chg or recap_changements %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-top:16px;">
+      <h2 style="margin:0 0 8px;">📋 Récapitulatif des changements <span class="meta" style="font-weight:normal;">— {{ recap_chg|length }} sur la période</span></h2>
+      {% if recap_chg %}
+      <table class="saisie" style="max-width:620px;">
+        <thead><tr><th style="text-align:left;">Jour</th><th style="text-align:left;">Collaborateur</th><th style="text-align:left;">Horaires ajustés</th><th style="text-align:left;">Motif</th></tr></thead>
+        <tbody>
+          {% for r in recap_chg %}
+          <tr>
+            <td style="white-space:nowrap; font-size:0.88em; color:#1F4E79;">{{ r.date_label }}</td>
+            <td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}</td>
+            <td style="font-size:0.88em;">
+              {% if r.absent %}<span style="color:#9C0006; font-weight:bold;">🚫 Non travaillé</span>
+              {% else %}<span style="color:#276221;">{{ r.creneaux_txt }}</span>{% endif %}
+            </td>
+            <td><span style="display:inline-block; background:#eef2f8; color:#1F4E79; border-radius:5px; padding:2px 8px; font-size:0.78em;">{{ r.motif }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="meta" style="margin-top:8px; font-size:0.76em;">Clique une ligne sur la frise pour ajouter ou modifier un changement.</p>
+      {% else %}
+      <p class="meta">Aucun changement ponctuel sur la période affichée. Clique une ligne sur la frise pour en ajouter un (retard, absence, heures sup…).</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if heures_reel %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-top:16px;">
+      <h2 style="margin:0 0 8px;">⏱️ Heures réellement travaillées <span class="meta" style="font-weight:normal;">— relevés {{ heures_reel.mois }}</span></h2>
+      {% if heures_reel.lignes %}
+      <table class="saisie" style="max-width:460px;">
+        <thead><tr><th style="text-align:left;">Collaborateur</th><th>H+</th><th>H−</th><th>Solde</th></tr></thead>
+        <tbody>
+          {% for r in heures_reel.lignes %}
+          <tr><td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}</td>
+            <td style="color:#276221;">+{{ "%g"|format(r.plus) }}</td>
+            <td style="color:#9C0006;">−{{ "%g"|format(r.moins) }}</td>
+            <td><strong>{{ "%+g"|format(r.solde) }}h</strong></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="meta">Aucun relevé reçu pour {{ heures_reel.mois }}.</p>{% endif %}
+    </div>
+    {% endif %}
     {% else %}
     <div class="stub">
       <p style="font-size:1.05em;">Aucune trame active.</p>
@@ -407,6 +490,55 @@
     <p class="meta">↑ Crée une trame ci-dessus pour pouvoir saisir ses horaires.</p>
     {% endif %}
 
+  {# ===================== SOUS-ONGLET OPTIONS ===================== #}
+  {% elif onglet == 'options' %}
+    {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
+    <form method="POST" action="{{ url_for('.enregistrer_options') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <h2 style="font-size:0.95em;">Collaborateurs à afficher
+        <button type="button" class="btn-mini" onclick="document.querySelectorAll('.collab-chk').forEach(function(c){c.checked=true;})">Tout cocher</button>
+        <button type="button" class="btn-mini" style="background:#889;" onclick="document.querySelectorAll('.collab-chk').forEach(function(c){c.checked=false;})">Tout décocher</button>
+      </h2>
+      <div style="display:flex; flex-wrap:wrap; gap:5px 16px; margin-bottom:18px;">
+        {% for c in collabs_opt %}
+        <label style="font-size:0.85em; display:flex; align-items:center; gap:5px; cursor:pointer; min-width:150px;">
+          <input type="checkbox" class="collab-chk" name="collab" value="{{ c.email }}" {% if c.affiche %}checked{% endif %}> {{ c.prenom }} {{ c.nom }}
+        </label>
+        {% endfor %}
+      </div>
+
+      <h2 style="font-size:0.95em;">Jours à afficher</h2>
+      <div style="display:flex; flex-wrap:wrap; gap:5px 16px; margin-bottom:18px;">
+        {% for j in range(1,8) %}
+        <label style="font-size:0.85em; display:flex; align-items:center; gap:5px; cursor:pointer;">
+          <input type="checkbox" name="jour" value="{{ j }}" {% if (j|string) in options.jours %}checked{% endif %}> {{ jours_noms[j] }}
+        </label>
+        {% endfor %}
+      </div>
+
+      {% macro toggle(label, name, opts, current) %}
+      <div style="margin-bottom:14px;">
+        <div style="font-size:0.82em; color:#555; margin-bottom:5px;">{{ label }}</div>
+        <span class="toggle">
+          {% for val, lib in opts %}
+          <label><input type="radio" name="{{ name }}" value="{{ val }}" {% if current == val %}checked{% endif %}><span>{{ lib }}</span></label>
+          {% endfor %}
+        </span>
+      </div>
+      {% endmacro %}
+
+      {{ toggle("Période d'affichage", "periode", [("hebdo","Hebdo"),("mensuel","Mensuel"),("periode","Période")], options.periode) }}
+      {{ toggle("Mode d'affichage", "mode", [("grille","Grille"),("texte","Texte"),("tableau","Tableau")], options.mode) }}
+      {{ toggle("Lignes vides (collaborateurs sans horaire)", "lignes_vides", [("masquer","Masquer"),("afficher","Afficher")], options.lignes_vides) }}
+      {{ toggle("Afficher les horaires sur la grille", "horaires_grille", [("masquer","Masquer"),("afficher","Afficher")], options.horaires_grille) }}
+      {{ toggle("Afficher le récapitulatif des changements", "recap_changements", [("masquer","Masquer"),("afficher","Afficher")], options.recap_changements) }}
+      {{ toggle("Afficher les heures travaillées sous le planning", "heures_travaillees", [("aucun","Aucun"),("non_admin","Non admin"),("tous","Tous")], options.heures_travaillees) }}
+
+      <button class="btn" type="submit" style="margin-top:8px;">💾 Valider les options</button>
+    </form>
+    <p class="meta" style="margin-top:8px;">✅ Appliqués à la frise : <strong>collaborateurs</strong>, <strong>jours</strong>, <strong>lignes vides</strong>, <strong>horaires sur la grille</strong>. ⏳ À venir (avec leurs fonctions) : Mensuel/Période, Texte/Tableau, récap des changements, heures travaillées (relevés).</p>
+
   {# ===================== SOUS-ONGLETS À VENIR ===================== #}
   {% else %}
     <div class="stub">
@@ -419,6 +551,93 @@
     </div>
   {% endif %}
 </div>
+
+{# ===================== MODALE : changement ponctuel (clic sur une ligne de la frise) ===================== #}
+{% if onglet == 'planning' %}
+<div id="chgModal" style="display:none; position:fixed; inset:0; background:rgba(15,30,50,.45); z-index:2000; align-items:center; justify-content:center; padding:14px;">
+  <div style="background:#fff; border-radius:14px; padding:20px 22px; max-width:380px; width:100%; box-shadow:0 14px 50px rgba(0,0,0,.32);" onclick="event.stopPropagation();">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+      <div>
+        <div id="chgJour" style="color:#1F4E79; font-weight:bold; font-size:1.02em;"></div>
+        <div id="chgNom" style="color:#778; font-size:0.84em; margin-top:1px;"></div>
+      </div>
+      <button type="button" onclick="fermerChg()" style="border:none; background:#eef2f8; color:#1F4E79; border-radius:7px; cursor:pointer; padding:4px 9px; font-size:0.95em;">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('.enregistrer_changement') }}" style="margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" id="chgEmail">
+      <input type="hidden" name="date" id="chgDate">
+      <input type="hidden" name="non_travaille" id="chgNonTrav" value="">
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1d" id="chgH1d" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+          <span style="color:#889;">–</span>
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1f" id="chgH1f" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+          <span style="color:#aab; font-size:0.78em; margin-left:4px;">créneau&nbsp;1</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2d" id="chgH2d" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+          <span style="color:#889;">–</span>
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2f" id="chgH2f" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+          <span style="color:#aab; font-size:0.78em; margin-left:4px;">créneau&nbsp;2</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+        <button type="button" class="btn-mini" style="background:#9C0006;" onclick="chgNonTravaille()">🚫 Non travaillé</button>
+        <button type="button" class="btn-mini" style="background:#eef2f8; color:#1F4E79; border:1px solid #d4deeb;" onclick="chgRetablir()">↺ Rétablir les horaires</button>
+      </div>
+      <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">Motif</label>
+      <select name="motif" id="chgMotif" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; margin-bottom:16px;">
+        {% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <button class="btn" type="submit">💾 Valider</button>
+        <button type="submit" formaction="{{ url_for('.supprimer_changement') }}" id="chgSuppr" class="btn-mini" style="background:#888; display:none;">🗑 Annuler ce changement</button>
+      </div>
+    </form>
+    <p class="meta" style="margin-top:10px; font-size:0.74em;">Ajuste le réel du jour (retard, départ anticipé, absence). Vide = rien saisi ; « Non travaillé » force l'absence. « Rétablir » remet les horaires de la trame.</p>
+  </div>
+</div>
+<script>
+  (function () {
+    var modal = document.getElementById('chgModal');
+    if (!modal) return;
+    var trameCur = [{debut:'',fin:''},{debut:'',fin:''}];
+    function set(id, v) { document.getElementById(id).value = v || ''; }
+    window.fermerChg = function () { modal.style.display = 'none'; };
+    window.chgNonTravaille = function () {
+      ['chgH1d','chgH1f','chgH2d','chgH2f'].forEach(function (i) { set(i, ''); });
+      document.getElementById('chgNonTrav').value = '1';
+    };
+    window.chgRetablir = function () {
+      set('chgH1d', trameCur[0].debut); set('chgH1f', trameCur[0].fin);
+      set('chgH2d', trameCur[1].debut); set('chgH2f', trameCur[1].fin);
+      document.getElementById('chgNonTrav').value = '';
+    };
+    modal.addEventListener('click', window.fermerChg);
+    document.querySelectorAll('.fr-clic').forEach(function (row) {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function () {
+        var cr = JSON.parse(row.dataset.creneaux), tr = JSON.parse(row.dataset.trame);
+        trameCur = tr;
+        set('chgEmail', row.dataset.email); set('chgDate', row.dataset.date);
+        document.getElementById('chgJour').textContent = row.dataset.jour;
+        document.getElementById('chgNom').textContent = row.dataset.prenom;
+        set('chgH1d', cr[0].debut); set('chgH1f', cr[0].fin);
+        set('chgH2d', cr[1].debut); set('chgH2f', cr[1].fin);
+        document.getElementById('chgNonTrav').value = '';
+        var mot = document.getElementById('chgMotif');
+        mot.value = row.dataset.motif || 'Non catégorisé';
+        if (!mot.value) mot.value = 'Non catégorisé';
+        // bouton « Annuler ce changement » seulement si la ligne est déjà modifiée
+        document.getElementById('chgSuppr').style.display =
+          row.querySelector('.fr-label span[title^="Modifié"]') ? 'inline-block' : 'none';
+        modal.style.display = 'flex';
+      });
+    });
+  })();
+</script>
+{% endif %}
 <script>
   // Masque heure HH:MM + passage auto à la case suivante (horaires d'ouverture).
   (function () {

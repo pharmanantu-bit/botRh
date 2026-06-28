@@ -10,7 +10,8 @@ Cf. docs/planning_specs.md pour le modèle complet.
 """
 import os
 import uuid
-from datetime import datetime
+import calendar
+from datetime import date, datetime, timedelta
 
 from flask import (Blueprint, request, render_template, redirect, url_for,
                    session, abort, current_app)
@@ -25,6 +26,8 @@ TRAME_FILE = os.path.join(BASE_DIR, "planning_trame.json")
 
 JOURS_NOMS = {1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi",
               5: "Vendredi", 6: "Samedi", 7: "Dimanche"}
+MOIS_ABBR = {1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Juin",
+             7: "Juil", 8: "Août", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc"}
 SEMAINES = ["A", "B"]  # rotation par défaut (2 semaines tournantes)
 
 HORAIRES_DEFAUT = {
@@ -39,6 +42,54 @@ TRAME_DEFAUT = {
 
 def _admin():
     return session.get("admin")
+
+
+# --- Options d'affichage du planning (globales) -----------------------------
+OPTIONS_FILE = os.path.join(BASE_DIR, "planning_options.json")
+OPTIONS_DEFAUT = {
+    "collaborateurs_masques": [],                       # e-mails masqués
+    "jours": ["1", "2", "3", "4", "5", "6", "7"],       # jours affichés (ISO str)
+    "periode": "hebdo",                                  # hebdo / mensuel / periode
+    "mode": "grille",                                    # grille / texte / tableau
+    "lignes_vides": "afficher",                          # afficher / masquer
+    "horaires_grille": "afficher",                       # afficher / masquer (libellés sur barres)
+    "recap_changements": "masquer",                      # afficher / masquer
+    "heures_travaillees": "aucun",                       # aucun / non_admin / tous
+}
+
+
+def charger_options():
+    o = dict(OPTIONS_DEFAUT)
+    saved = _lire_json(OPTIONS_FILE)
+    if isinstance(saved, dict):
+        o.update({k: v for k, v in saved.items() if v is not None})
+    return o
+
+
+def sauvegarder_options(o):
+    _ecrire_json(OPTIONS_FILE, o)
+
+
+# --- Changements ponctuels (surcharge de la trame pour une date réelle) ------
+CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
+MOTIFS = ["Non catégorisé", "Heures sup/récup/échanges", "Contrat ponctuel",
+          "Repos compensatoire", "Garde", "Congés payés", "Arrêt maladie",
+          "Accident du travail", "Congé maternité", "Congé parental",
+          "Formation", "Autre"]
+
+
+def charger_changements():
+    """{date_iso: {email: {motif, creneaux:[...]}}}."""
+    d = _lire_json(CHANGEMENTS_FILE)
+    return d if isinstance(d, dict) else {}
+
+
+def sauvegarder_changements(d):
+    _ecrire_json(CHANGEMENTS_FILE, d)
+
+
+def changement_de(changements, date_iso, email):
+    return (changements.get(date_iso, {}) or {}).get(email)
 
 
 def _nouvelle_trame(commentaire=""):
@@ -194,6 +245,40 @@ def _jours_sem(trame, email, sem):
     return (trame.get("employes", {}).get(email, {}) or {}).get(sem, {}) or {}
 
 
+def _creneaux_txt(trame, email, sem, j):
+    """Horaires d'un jour en texte : « 09:00–13:00, 14:00–19:00 » (ou « repos »)."""
+    cr = [c for c in _jours_sem(trame, email, sem).get(str(j), []) if creneau_valide(c)]
+    return ", ".join(f"{c['debut']}–{c['fin']}" for c in cr) or "repos"
+
+
+def _lundi(d):
+    """Lundi de la semaine contenant la date d."""
+    return d - timedelta(days=d.weekday())
+
+
+def _ajoute_mois(d, k):
+    """Premier jour du mois décalé de k mois par rapport à d."""
+    m = d.month - 1 + k
+    return date(d.year + m // 12, m % 12 + 1, 1)
+
+
+def semaine_rotation(trame, lundi):
+    """Lettre de rotation (A/B/…) de la semaine `lundi`, selon la trame active
+    (date de démarrage + nombre de semaines tournantes + semaine de démarrage)."""
+    if not trame:
+        return SEMAINES[0]
+    try:
+        dem = datetime.strptime(trame.get("date_demarrage", ""), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        sd = trame.get("semaine_demarrage", SEMAINES[0])
+        return sd if sd in SEMAINES else SEMAINES[0]
+    nb = max(1, int(trame.get("nb_semaines") or len(SEMAINES)))
+    start = SEMAINES.index(trame["semaine_demarrage"]) if trame.get("semaine_demarrage") in SEMAINES else 0
+    semaines_ecoulees = (_lundi(lundi) - _lundi(dem)).days // 7
+    idx = (start + semaines_ecoulees) % nb
+    return SEMAINES[idx] if 0 <= idx < len(SEMAINES) else SEMAINES[0]
+
+
 # --- Amplitude / frise ------------------------------------------------------
 
 def _amplitude(horaires):
@@ -223,7 +308,16 @@ def _pos(deb, fin, amp_min, span):
     return round(left, 2), round(min(width, 100 - left), 2)
 
 
-def _frise(trame, sem, employes, couleurs):
+def _pad2(creneaux):
+    """Liste de 2 créneaux (paddée vide) pour les champs de la modale."""
+    cr = [{"debut": c.get("debut", ""), "fin": c.get("fin", "")} for c in (creneaux or [])]
+    while len(cr) < 2:
+        cr.append({"debut": "", "fin": ""})
+    return cr[:2]
+
+
+def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
+           lundi_date=None, changements=None):
     horaires = trame.get("horaires_ouverture", HORAIRES_DEFAUT)
     amp_min, amp_max = _amplitude(horaires)
     span = amp_max - amp_min
@@ -231,7 +325,9 @@ def _frise(trame, sem, employes, couleurs):
              for h in range(amp_min // 60, amp_max // 60 + 1)]
     jours = []
     for j in range(1, 8):
-        # plages d'ouverture (ombrage)
+        if jours_affiches is not None and j not in jours_affiches:
+            continue
+        date_iso = (lundi_date + timedelta(days=j - 1)).isoformat() if lundi_date else ""
         ouv = []
         for p in horaires.get(str(j), []) or []:
             d, f = _minutes(p[0]), _minutes(p[1])
@@ -241,17 +337,31 @@ def _frise(trame, sem, employes, couleurs):
         lignes = []
         for e in employes:
             couleur = couleurs.get(e["email"], "#888")
+            cr_trame = _jours_sem(trame, e["email"], sem).get(str(j), []) or []
+            # Changement ponctuel pour cette date réelle ? -> surcharge la trame.
+            chg = changement_de(changements or {}, date_iso, e["email"]) if date_iso else None
+            if chg is not None:
+                cr_eff = chg.get("creneaux", []) or []
+                motif = chg.get("motif", "")
+                modifie = True
+            else:
+                cr_eff, motif, modifie = cr_trame, "", False
             barres = []
-            for c in _jours_sem(trame, e["email"], sem).get(str(j), []) or []:
+            for c in cr_eff:
                 if creneau_valide(c):
                     d, f = _minutes(c["debut"]), _minutes(c["fin"])
                     left, width = _pos(d, f, amp_min, span)
                     barres.append({"left": left, "width": width, "couleur": couleur,
-                                   "label": f"{c['debut']}–{c['fin']}"})
-            lignes.append({"prenom": e["prenom"], "couleur": couleur, "barres": barres,
-                           "total": total_jour(_jours_sem(trame, e["email"], sem).get(str(j), []))})
-        jours.append({"iso": j, "nom": JOURS_NOMS[j], "ouverture": ouv, "lignes": lignes,
-                      "ferme": not horaires.get(str(j))})
+                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
+            lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
+                           "barres": barres, "total": total_jour(cr_eff),
+                           "modifie": modifie, "motif": motif,
+                           "creneaux": _pad2(cr_eff), "creneaux_trame": _pad2(cr_trame)})
+        nom = JOURS_NOMS[j]
+        if lundi_date:
+            nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
+        jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
+                      "lignes": lignes, "ferme": not horaires.get(str(j))})
     return {"ticks": ticks, "jours": jours}
 
 
@@ -382,12 +492,107 @@ def vue():
     if onglet == "planning":
         # Le planning suit TOUJOURS la trame ACTIVE (pas la trame éditée dans l'onglet Trame).
         act = next((t for t in data.get("trames", []) if t.get("activee")), None)
-        memb = membres_ordonnes(act, employes_base)
-        emp_frise = [emap[em] for em in memb]
-        ctx["trame"] = act
-        ctx["tid"] = act.get("id") if act else None
-        ctx["frise"] = _frise(act, sem, emp_frise, couleurs) if (act and memb) else None
-        ctx["pas_active"] = act is None
+        opts = charger_options()
+        changements = charger_changements()
+        masques = set(opts.get("collaborateurs_masques", []))
+        emp_base = [emap[em] for em in membres_ordonnes(act, employes_base) if em not in masques]
+        jours_aff = [j for j in range(1, 8)
+                     if str(j) in opts.get("jours", []) or not opts.get("jours")]
+        montrer_h = opts.get("horaires_grille") != "masquer"
+        mode = opts.get("mode", "grille")
+        periode = opts.get("periode", "hebdo")
+        # Date de référence pour la navigation réelle.
+        try:
+            ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            ref = date.today()
+        # Lundis à afficher selon la période.
+        if periode == "hebdo":
+            lundis = [_lundi(ref)]
+        else:                                            # mensuel / période = semaines du mois
+            dernier = ref.replace(day=calendar.monthrange(ref.year, ref.month)[1])
+            L, lundis = _lundi(ref.replace(day=1)), []
+            while L <= dernier:
+                lundis.append(L)
+                L += timedelta(days=7)
+        # Barre de navigation (semaines cliquables en Hebdo, mois en Mensuel).
+        nav = {"type": "semaine" if periode == "hebdo" else "mois", "boutons": [],
+               "aujourdhui": url_for(".vue", onglet="planning", date=date.today().isoformat())}
+        if periode == "hebdo":
+            cur = _lundi(ref)
+            for k in range(-2, 7):
+                L = cur + timedelta(days=7 * k)
+                nav["boutons"].append({"url": url_for(".vue", onglet="planning", date=L.isoformat()),
+                                     "label": L.strftime("%d/%m"),
+                                     "sub": ("Sem. " + semaine_rotation(act, L)) if act else "",
+                                     "actif": L == cur})
+        else:
+            prem = ref.replace(day=1)
+            for k in range(-3, 12):
+                m = _ajoute_mois(prem, k)
+                nav["boutons"].append({"url": url_for(".vue", onglet="planning", date=m.isoformat()),
+                                     "label": f"{MOIS_ABBR[m.month]} {m.year % 100:02d}", "sub": "",
+                                     "actif": (m.year, m.month) == (ref.year, ref.month)})
+        # Vues (1 par semaine), rotation A/B calculée depuis la date.
+        vues = []
+        if act:
+            for lundi in lundis:
+                rot = semaine_rotation(act, lundi)
+                emp_sm = emp_base
+                if opts.get("lignes_vides") == "masquer":
+                    emp_sm = [e for e in emp_base if total_semaine(_jours_sem(act, e["email"], rot)) > 0]
+                fin = lundi + timedelta(days=6)
+                titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
+                v = {"sem": rot, "titre": titre}
+                if mode == "grille":
+                    v["frise"] = _frise(act, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
+                                        lundi, changements)
+                elif mode == "texte":
+                    v["texte"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
+                                   "jours": [{"nom": JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m"),
+                                              "txt": _creneaux_txt(act, e["email"], rot, j)} for j in jours_aff]}
+                                  for e in emp_sm]
+                else:  # tableau
+                    v["cols"] = [JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m") for j in jours_aff]
+                    v["lignes"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
+                                    "cells": [_creneaux_txt(act, e["email"], rot, j) for j in jours_aff],
+                                    "total": total_semaine(_jours_sem(act, e["email"], rot))} for e in emp_sm]
+                vues.append(v)
+        # Récapitulatif des changements ponctuels sur la période affichée.
+        recap_chg = []
+        if act:
+            for lundi in lundis:
+                for k in range(7):
+                    dt = lundi + timedelta(days=k)
+                    for em, ch in (changements.get(dt.isoformat(), {}) or {}).items():
+                        if em not in emap:
+                            continue
+                        crs = ch.get("creneaux", []) or []
+                        txt = " · ".join(f'{c["debut"]}–{c["fin"]}' for c in crs) if crs else "Non travaillé"
+                        recap_chg.append({
+                            "date": dt, "date_iso": dt.isoformat(),
+                            "date_label": f'{JOURS_NOMS[dt.isoweekday()]} {dt.strftime("%d/%m")}',
+                            "prenom": emap[em]["prenom"], "couleur": couleurs.get(em, "#888"),
+                            "motif": ch.get("motif", "Non catégorisé"),
+                            "creneaux_txt": txt, "absent": not crs})
+            recap_chg.sort(key=lambda r: (r["date"], r["prenom"]))
+        # Heures réellement travaillées (depuis les relevés botRh) — le pont.
+        heures_reel = None
+        if act and opts.get("heures_travaillees", "aucun") != "aucun":
+            from app import charger_reponses, reponse_de, MOIS_FR
+            reps = charger_reponses(ref.month, ref.year)
+            heures_reel = {"mois": f"{MOIS_FR[ref.month]} {ref.year}", "lignes": []}
+            for e in emp_base:
+                r = reponse_de(reps, e["prenom"], e["email"])
+                if r:
+                    plus, moins = r.get("heures_plus", 0), r.get("heures_moins", 0)
+                    heures_reel["lignes"].append({"prenom": e["prenom"], "couleur": couleurs[e["email"]],
+                                                  "plus": plus, "moins": moins,
+                                                  "solde": round(plus - moins, 2)})
+        ctx.update(trame=act, tid=act.get("id") if act else None, pas_active=act is None,
+                   vues=vues, mode=mode, periode=periode, nav=nav, heures_reel=heures_reel,
+                   motifs=MOTIFS, recap_chg=recap_chg,
+                   recap_changements=(opts.get("recap_changements") == "afficher"))
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "equipe":
@@ -417,6 +622,14 @@ def vue():
                                       + "&body=" + urllib.parse.quote(body))
         ctx.update(membres=membres, fonctions=FONCTIONS, palette=PALETTE_PLANNING,
                    permissions=PERMISSIONS, vues=VUES_PLANNING, selected=selected)
+        return render_template("planning_equipe.html", **ctx)
+
+    if onglet == "options":
+        o = charger_options()
+        masques = set(o.get("collaborateurs_masques", []))
+        collabs = [{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"],
+                    "affiche": e["email"] not in masques} for e in employes_base]
+        ctx.update(options=o, collabs_opt=collabs, jours_noms=JOURS_NOMS)
         return render_template("planning_equipe.html", **ctx)
 
     # sous-onglets à venir
@@ -512,6 +725,70 @@ def enregistrer_trame():
     trame["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     sauvegarder_trames(data)
     return redirect(url_for(".vue", onglet="trame", sem=sem, trame=tid, msg="trame_ok"))
+
+
+@bp.route("/admin/planning-equipe/options", methods=["POST"])
+def enregistrer_options():
+    """Enregistre les options d'affichage du planning."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    base = [e["email"] for e in charger_employes()]
+    affiches = request.form.getlist("collab")
+    jours = [d for d in request.form.getlist("jour") if d in ("1", "2", "3", "4", "5", "6", "7")]
+    o = charger_options()
+    o["collaborateurs_masques"] = [em for em in base if em not in affiches]
+    o["jours"] = jours or ["1", "2", "3", "4", "5", "6", "7"]
+    o["periode"] = request.form.get("periode", "hebdo")
+    o["mode"] = request.form.get("mode", "grille")
+    o["lignes_vides"] = request.form.get("lignes_vides", "afficher")
+    o["horaires_grille"] = request.form.get("horaires_grille", "afficher")
+    o["recap_changements"] = request.form.get("recap_changements", "masquer")
+    o["heures_travaillees"] = request.form.get("heures_travaillees", "aucun")
+    sauvegarder_options(o)
+    return redirect(url_for(".vue", onglet="options", msg="options_ok"))
+
+
+@bp.route("/admin/planning-equipe/changement", methods=["POST"])
+def enregistrer_changement():
+    """Changement ponctuel des heures d'un collaborateur pour une date réelle
+    (retard, absence, heures sup…). Surcharge la trame pour ce jour-là."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    date_iso = request.form.get("date", "")
+    motif = request.form.get("motif", "")
+    creneaux = []
+    if not request.form.get("non_travaille"):
+        for s in (1, 2):
+            deb = _norm_hhmm(request.form.get(f"h{s}d"))
+            fin = _norm_hhmm(request.form.get(f"h{s}f"))
+            if deb and fin:
+                creneaux.append({"debut": deb, "fin": fin})
+        creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
+    if email and date_iso:
+        data = charger_changements()
+        data.setdefault(date_iso, {})[email] = {
+            "motif": motif if motif in MOTIFS else "Non catégorisé",
+            "creneaux": creneaux,
+            "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+        sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="planning", date=date_iso))
+
+
+@bp.route("/admin/planning-equipe/changement/supprimer", methods=["POST"])
+def supprimer_changement():
+    """Annule un changement ponctuel : le jour reprend les horaires de la trame."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    date_iso = request.form.get("date", "")
+    data = charger_changements()
+    if date_iso in data and email in data[date_iso]:
+        del data[date_iso][email]
+        if not data[date_iso]:
+            del data[date_iso]
+        sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="planning", date=date_iso))
 
 
 @bp.route("/admin/planning-equipe/permission", methods=["POST"])

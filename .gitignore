@@ -20,3 +20,5 @@ IDENTIFIANTS.txt
 candidats.json
 candidats_docs/
 planning_trame.json
+planning_options.json
+planning_changements.json

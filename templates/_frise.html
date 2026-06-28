@@ -10,12 +10,14 @@
   <div class="fr-jour">
     <div class="fr-jour-tt">{{ j.nom }}{% if j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
     {% for l in j.lignes %}
-    <div class="fr-row">
-      <div class="fr-label"><span class="fr-dot" style="background:{{ l.couleur }};"></span>{{ l.prenom }}</div>
+    <div class="fr-row{% if j.date_iso %} fr-clic{% endif %}"
+      {% if j.date_iso %}data-email="{{ l.email }}" data-date="{{ j.date_iso }}" data-jour="{{ j.nom }}" data-prenom="{{ l.prenom }}" data-creneaux='{{ l.creneaux|tojson }}' data-trame='{{ l.creneaux_trame|tojson }}' data-motif="{{ l.motif }}"{% endif %}>
+      <div class="fr-label">{% if l.modifie %}<span title="Modifié : {{ l.motif }}" style="color:#9C6500; font-size:0.9em;">◆</span> {% endif %}<span class="fr-dot" style="background:{{ l.couleur }};"></span>{{ l.prenom }}</div>
       <div class="fr-track">
         {% for o in j.ouverture %}<div class="fr-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
         {% for t in frise.ticks %}<div class="fr-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
         {% for b in l.barres %}<div class="fr-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};">{{ b.label }}</div>{% endfor %}
+        {% if not l.barres and j.date_iso %}<span style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:0.68em; color:#b0b8c4;">— absent —</span>{% endif %}
       </div>
     </div>
     {% endfor %}
