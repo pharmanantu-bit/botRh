@@ -100,6 +100,7 @@
     {% for cle, lib in onglets %}
     <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet_principal == cle else '' }}">{{ lib }}</a>
     {% endfor %}
+    <a href="/admin/mois">🏠 Relevés du mois</a>
   </div>
   {% if onglet_principal == 'planning' %}
   <div class="ongs-sec">
@@ -110,7 +111,7 @@
   {% endif %}
 
   {% if onglet == 'planning' and trame and nav %}
-  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
     <a href="{{ nav.aujourdhui }}" class="btn-mini" style="background:#1F4E79;">Aujourd'hui</a>
     <div style="display:flex; gap:4px; flex-wrap:wrap;">
       {% for it in nav.boutons %}
@@ -118,11 +119,164 @@
       {% endfor %}
     </div>
   </div>
+  <div style="margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap;">
+    {% if ponctuel or abs_view %}
+    <a href="{{ url_for('.vue', onglet='planning', date=ref_date) }}" class="btn-mini" style="background:#888;">← Retour au planning</a>
+    {% else %}
+    <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Horaires ponctuels</a>
+    <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absence prolongée</a>
+    {% endif %}
+  </div>
   {% endif %}
 
   {# ===================== ONGLET PLANNING : multi-vues (grille / texte / tableau) ===================== #}
   {% if onglet == 'planning' %}
     {% if trame %}
+    {% if ponctuel and saisie %}
+    {# ===== Saisie « Horaires ponctuels » : grille éditable du jour ===== #}
+    <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px;">
+      {% for d in ponctuel_jours %}
+      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=d.iso) }}"
+         class="navitem {{ 'actif' if d.actif else '' }}" style="font-size:0.8em;">{{ d.label }}{% if d.ferme %} <span style="opacity:.7;">·fermé</span>{% endif %}</a>
+      {% endfor %}
+    </div>
+    <form method="POST" action="{{ url_for('.saisie_ponctuelle') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date" value="{{ saisie.date_iso }}">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        <h2 style="margin:0; font-size:1em;">⊕ Horaires ponctuels — {{ saisie.date_label }}</h2>
+        <button class="btn" type="submit">💾 Enregistrer ce jour</button>
+      </div>
+      <p class="meta" style="margin:0 0 10px; font-size:0.78em;">Modifie les heures réelles du jour (retard, départ, absence, heures sup). Vide = non travaillé. <strong>↺ trame</strong> remet les horaires habituels. Les horaires identiques à la trame ne sont pas comptés comme une modif.</p>
+      <div class="grille-wrap">
+        <table class="saisie" style="min-width:620px;">
+          <thead><tr>
+            <th style="text-align:left;">Collaborateur</th><th>Créneau 1</th><th>Créneau 2</th><th>Motif</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for r in saisie.rows %}
+            <tr data-email="{{ r.email }}" data-t1d="{{ r.t1d }}" data-t1f="{{ r.t1f }}" data-t2d="{{ r.t2d }}" data-t2f="{{ r.t2f }}">
+              <td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}{% if r.modifie %} <span title="Modifié" style="color:#9C6500;">◆</span>{% endif %}
+                <input type="hidden" name="email" value="{{ r.email }}">
+                <div class="meta" style="font-size:0.7em;">trame : {{ r.trame_txt }}</div></td>
+              <td>
+                <span class="cre" style="align-items:center;">
+                  <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1d_{{ r.email }}" value="{{ r.c1d }}">
+                  <span>–</span>
+                  <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1f_{{ r.email }}" value="{{ r.c1f }}">
+                </span>
+              </td>
+              <td>
+                <span class="cre" style="align-items:center;">
+                  <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2d_{{ r.email }}" value="{{ r.c2d }}">
+                  <span>–</span>
+                  <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2f_{{ r.email }}" value="{{ r.c2f }}">
+                </span>
+              </td>
+              <td>
+                <select name="motif_{{ r.email }}" style="padding:4px; border:1px solid #ccd4e0; border-radius:5px; font-size:0.82em; max-width:150px;">
+                  {% for m in motifs %}<option value="{{ m }}" {% if r.motif == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+                </select>
+              </td>
+              <td style="white-space:nowrap;">
+                <button type="button" class="btn-mini" style="background:#eef2f8; color:#1F4E79; border:1px solid #d4deeb;" onclick="ponctTrame(this)" title="Remettre les horaires de la trame">↺ trame</button>
+                <button type="button" class="btn-mini rouge" onclick="ponctVider(this)" title="Marquer non travaillé">🚫</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;"><button class="btn" type="submit">💾 Enregistrer ce jour</button></div>
+    </form>
+    <script>
+      function _row(btn){ return btn.closest('tr'); }
+      function ponctTrame(btn){ var r=_row(btn);
+        r.querySelector('[name^="h1d_"]').value=r.dataset.t1d; r.querySelector('[name^="h1f_"]').value=r.dataset.t1f;
+        r.querySelector('[name^="h2d_"]').value=r.dataset.t2d; r.querySelector('[name^="h2f_"]').value=r.dataset.t2f; }
+      function ponctVider(btn){ var r=_row(btn);
+        ['h1d_','h1f_','h2d_','h2f_'].forEach(function(p){ r.querySelector('[name^="'+p+'"]').value=''; }); }
+    </script>
+    {% elif abs_view %}
+    {# ===== Absence prolongée : formulaire + liste ===== #}
+    <h2 style="margin:0 0 10px;">⊕ Absence prolongée</h2>
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:16px; margin-bottom:18px; max-width:560px;">
+      <h2 style="margin:0 0 12px; font-size:0.95em;">Ajouter une absence</h2>
+      <form method="POST" action="{{ url_for('.ajouter_absence') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:120px; flex:none;">Collaborateur</span>
+            <select name="email" required style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <option value="">— Collaborateur —</option>
+              {% for c in collabs_abs %}<option value="{{ c.email }}">{{ c.prenom }} {{ c.nom }}</option>{% endfor %}
+            </select>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:120px; flex:none;">Date de début</span>
+            <input type="date" name="debut" required style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:120px; flex:none;">Date de fin</span>
+            <input type="date" name="fin" required style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:120px; flex:none;">Type</span>
+            <select name="motif" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              {% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+            </select>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:120px; flex:none;">Commentaire</span>
+            <input type="text" name="commentaire" placeholder="ex: fin de contrat" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+        </div>
+        <button class="btn" type="submit" style="margin-top:14px;">Ajouter la nouvelle absence</button>
+      </form>
+    </div>
+
+    <h2 style="font-size:0.95em; margin:0 0 8px;">Absences enregistrées <span class="meta" style="font-weight:normal;">— {{ absences_list|length }}</span></h2>
+    {% if absences_list %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:720px;">
+      {% for a in absences_list %}
+      <div style="display:flex; align-items:center; gap:12px; padding:9px 12px;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">
+        <span style="display:inline-block; width:13px; height:13px; border-radius:50%; background:{{ a.couleur }}; flex:none;"></span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:0.9em;"><strong style="color:#1F4E79;">{{ a.prenom }}</strong>
+            <span style="display:inline-block; background:#eef2f8; color:#1F4E79; border-radius:5px; padding:1px 7px; font-size:0.74em; margin-left:4px;">{{ a.motif }}</span></div>
+          <div style="font-size:0.84em; color:#445;">Du <strong>{{ a.debut }}</strong> au <strong>{{ a.fin }}</strong>{% if a.commentaire %} <span class="meta">— {{ a.commentaire }}</span>{% endif %}</div>
+        </div>
+        <form method="POST" action="{{ url_for('.supprimer_absence') }}" style="margin:0;" onsubmit="return confirm('Supprimer cette absence ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="id" value="{{ a.id }}">
+          <button type="submit" class="btn-mini rouge">Supprimer</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="meta">Aucune absence prolongée enregistrée. Renseigne le formulaire ci-dessus pour en ajouter une.</p>
+    {% endif %}
+    {% else %}
+    {% if recap_collab or recap_changements %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin:0 0 16px;">
+      <h2 style="margin:0 0 8px;">📋 Modifications apportées</h2>
+      {% if recap_collab %}
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        {% for c in recap_collab %}
+        <div style="font-size:0.9em;">
+          <span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{{ c.couleur }}; margin-right:6px; vertical-align:middle;"></span>
+          <strong style="color:#1F4E79;">{{ c.prenom }}</strong>
+          <span style="color:#889;">[</span>{% for j in c.jours %}<button type="button" class="jchip" data-detail="{{ j.detail }}" style="background:#eef2f8; color:#1F4E79; border:1px solid #d4deeb; border-radius:6px; padding:2px 8px; font-size:0.82em; cursor:pointer; margin:1px 2px;" title="Cliquer pour voir le détail">{{ j.label }}</button>{% if not loop.last %}<span style="color:#cbd3df;"> · </span>{% endif %}{% endfor %}<span style="color:#889;">]</span>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="meta" style="margin-top:10px; font-size:0.76em;">Clique un jour pour voir le détail · clique une ligne sur la frise pour ajouter ou modifier un changement.</p>
+      {% else %}
+      <p class="meta">Aucun changement ponctuel sur la période affichée. Clique une ligne sur la frise pour en ajouter un (retard, absence, heures sup…).</p>
+      {% endif %}
+    </div>
+    {% endif %}
     {% for v in vues %}
       <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
@@ -152,33 +306,6 @@
       {% endif %}
     {% endfor %}
 
-    {% if recap_chg or recap_changements %}
-    <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-top:16px;">
-      <h2 style="margin:0 0 8px;">📋 Récapitulatif des changements <span class="meta" style="font-weight:normal;">— {{ recap_chg|length }} sur la période</span></h2>
-      {% if recap_chg %}
-      <table class="saisie" style="max-width:620px;">
-        <thead><tr><th style="text-align:left;">Jour</th><th style="text-align:left;">Collaborateur</th><th style="text-align:left;">Horaires ajustés</th><th style="text-align:left;">Motif</th></tr></thead>
-        <tbody>
-          {% for r in recap_chg %}
-          <tr>
-            <td style="white-space:nowrap; font-size:0.88em; color:#1F4E79;">{{ r.date_label }}</td>
-            <td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}</td>
-            <td style="font-size:0.88em;">
-              {% if r.absent %}<span style="color:#9C0006; font-weight:bold;">🚫 Non travaillé</span>
-              {% else %}<span style="color:#276221;">{{ r.creneaux_txt }}</span>{% endif %}
-            </td>
-            <td><span style="display:inline-block; background:#eef2f8; color:#1F4E79; border-radius:5px; padding:2px 8px; font-size:0.78em;">{{ r.motif }}</span></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p class="meta" style="margin-top:8px; font-size:0.76em;">Clique une ligne sur la frise pour ajouter ou modifier un changement.</p>
-      {% else %}
-      <p class="meta">Aucun changement ponctuel sur la période affichée. Clique une ligne sur la frise pour en ajouter un (retard, absence, heures sup…).</p>
-      {% endif %}
-    </div>
-    {% endif %}
-
     {% if heures_reel %}
     <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-top:16px;">
       <h2 style="margin:0 0 8px;">⏱️ Heures réellement travaillées <span class="meta" style="font-weight:normal;">— relevés {{ heures_reel.mois }}</span></h2>
@@ -197,6 +324,7 @@
       {% else %}<p class="meta">Aucun relevé reçu pour {{ heures_reel.mois }}.</p>{% endif %}
     </div>
     {% endif %}
+    {% endif %}{# fin not ponctuel #}
     {% else %}
     <div class="stub">
       <p style="font-size:1.05em;">Aucune trame active.</p>
@@ -539,6 +667,69 @@
     </form>
     <p class="meta" style="margin-top:8px;">✅ Appliqués à la frise : <strong>collaborateurs</strong>, <strong>jours</strong>, <strong>lignes vides</strong>, <strong>horaires sur la grille</strong>. ⏳ À venir (avec leurs fonctions) : Mensuel/Période, Texte/Tableau, récap des changements, heures travaillées (relevés).</p>
 
+  {# ===================== ONGLET CHANGEMENTS : journal par mois & collaborateur ===================== #}
+  {% elif onglet == 'changements' %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+      <h2 style="margin:0; font-size:1.1em;">Changements {{ chg_mois_label }}
+        <span class="meta" style="font-weight:normal;">— {{ chg_total }}</span>
+        <select onchange="location.href=this.value" style="margin-left:8px; padding:6px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.85em;">
+          {% for m in chg_mois_list %}
+          <option value="{{ url_for('.vue', onglet='changements', mois=m.val) }}" {% if m.val == chg_mois_sel %}selected{% endif %}>{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </h2>
+      <a href="{{ url_for('.vue', onglet='planning', absence=1) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.84em; padding:7px 14px;">⊕ Nouvelle absence</a>
+    </div>
+
+    {% if chg_groupes %}
+    {% for g in chg_groupes %}
+    <div style="margin-bottom:18px;">
+      <h3 style="font-size:0.98em; color:#1F4E79; margin:0 0 6px; display:flex; align-items:center; gap:7px;">
+        <span style="display:inline-block; width:13px; height:13px; border-radius:50%; background:{{ g.couleur }};"></span>{{ g.prenom }}
+      </h3>
+      <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden;">
+        {% for it in g.lignes %}
+        <div style="display:flex; align-items:center; gap:12px; padding:9px 12px;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %} flex-wrap:wrap;">
+          <span style="display:inline-block; background:#eef2f8; color:#1F4E79; border-radius:5px; padding:3px 9px; font-size:0.76em; min-width:150px; text-align:center;">{{ it.motif }}</span>
+          <div style="flex:1; min-width:240px; font-size:0.86em; color:#334;">
+            {% if it.type == 'ponctuel' %}
+              <strong>{{ it.date_label }}</strong>
+              <span style="color:#C0392B;">[ {{ it.avant }} ]</span>
+              <span style="color:#889;">→</span>
+              <span style="color:#1F7A3D;">[ {{ it.apres }} ]</span>
+            {% else %}
+              Du <strong>{{ it.debut }}</strong> au <strong>{{ it.fin }}</strong>{% if it.commentaire %}<br><span class="meta">{{ it.commentaire }}</span>{% endif %}
+            {% endif %}
+          </div>
+          {% if it.type == 'ponctuel' %}
+          <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=it.date_iso) }}" class="btn-mini">Modifier</a>
+          <form method="POST" action="{{ url_for('.supprimer_changement') }}" style="margin:0;" onsubmit="return confirm('Supprimer ce changement ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email" value="{{ it.email }}"><input type="hidden" name="date" value="{{ it.date_iso }}">
+            <input type="hidden" name="retour" value="changements"><input type="hidden" name="mois" value="{{ chg_mois_sel }}">
+            <button type="submit" class="btn-mini rouge">Supprimer</button>
+          </form>
+          {% else %}
+          <a href="{{ url_for('.vue', onglet='planning', absence=1) }}" class="btn-mini">Modifier</a>
+          <form method="POST" action="{{ url_for('.supprimer_absence') }}" style="margin:0;" onsubmit="return confirm('Supprimer cette absence ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" value="{{ it.id }}">
+            <input type="hidden" name="retour" value="changements"><input type="hidden" name="mois" value="{{ chg_mois_sel }}">
+            <button type="submit" class="btn-mini rouge">Supprimer</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="stub">
+      <p style="font-size:1.05em;">Aucun changement pour {{ chg_mois_label }}.</p>
+      <p class="meta" style="margin-top:6px;">Ajoute un horaire ponctuel ou une absence depuis l'onglet <strong>Planning</strong> ; il apparaîtra ici, classé par collaborateur.</p>
+    </div>
+    {% endif %}
+
   {# ===================== SOUS-ONGLETS À VENIR ===================== #}
   {% else %}
     <div class="stub">
@@ -635,6 +826,33 @@
         modal.style.display = 'flex';
       });
     });
+  })();
+</script>
+<script>
+  // Détail d'un jour modifié (récap « Modifications apportées ») : popover au clic.
+  (function () {
+    var chips = document.querySelectorAll('.jchip');
+    if (!chips.length) return;
+    var pop = document.createElement('div');
+    pop.style.cssText = 'position:absolute; z-index:2500; display:none; max-width:240px;'
+      + ' background:#1F4E79; color:#fff; font-size:0.8em; line-height:1.35; padding:7px 11px;'
+      + ' border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.28);';
+    document.body.appendChild(pop);
+    function fermer() { pop.style.display = 'none'; }
+    chips.forEach(function (ch) {
+      ch.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (pop.style.display === 'block' && pop._owner === ch) { fermer(); return; }
+        pop._owner = ch;
+        pop.textContent = ch.dataset.detail || '—';
+        var r = ch.getBoundingClientRect();
+        pop.style.display = 'block';
+        pop.style.left = (window.scrollX + r.left) + 'px';
+        pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+      });
+    });
+    document.addEventListener('click', fermer);
+    window.addEventListener('resize', fermer);
   })();
 </script>
 {% endif %}

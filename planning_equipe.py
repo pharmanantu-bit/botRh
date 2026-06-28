@@ -92,6 +92,49 @@ def changement_de(changements, date_iso, email):
     return (changements.get(date_iso, {}) or {}).get(email)
 
 
+# --- Absences prolongées (plage de dates : congés, arrêt, fin de contrat…) ----
+ABSENCES_FILE = os.path.join(BASE_DIR, "planning_absences.json")
+
+
+def charger_absences():
+    """Liste d'absences : [{id, email, debut, fin, motif, commentaire}]."""
+    d = _lire_json(ABSENCES_FILE, [])
+    return d if isinstance(d, list) else []
+
+
+def sauvegarder_absences(lst):
+    _ecrire_json(ABSENCES_FILE, lst)
+
+
+def absence_active(absences, email, date_obj):
+    """Absence couvrant cette date pour ce collaborateur (ou None)."""
+    iso = date_obj.isoformat()
+    for a in absences:
+        if a.get("email") == email and a.get("debut", "") <= iso <= a.get("fin", "9999"):
+            return a
+    return None
+
+
+def _cle_creneaux(creneaux):
+    """Signature normalisée d'une liste de créneaux (ordre indifférent), pour comparer."""
+    return sorted((c.get("debut", ""), c.get("fin", "")) for c in (creneaux or [])
+                  if c.get("debut") and c.get("fin"))
+
+
+def meme_que_trame(creneaux_chg, creneaux_trame):
+    """True si le changement a les mêmes horaires que la trame → pas une vraie modif
+    (cas du « ↺ Rétablir les horaires » : le jour est revenu à la normale)."""
+    return _cle_creneaux(creneaux_chg) == _cle_creneaux(creneaux_trame)
+
+
+def creneaux_trame_jour(trame, email, date_obj):
+    """Créneaux de la trame pour un collaborateur à une date réelle (gère la rotation)."""
+    if not trame:
+        return []
+    rot = semaine_rotation(trame, date_obj)
+    return _jours_sem(trame, email, rot).get(str(date_obj.isoweekday()), []) or []
+
+
 def _nouvelle_trame(commentaire=""):
     """Crée une trame vierge (non activée par défaut)."""
     t = {"id": uuid.uuid4().hex[:8], "activee": False, "commentaire": commentaire,
@@ -317,7 +360,7 @@ def _pad2(creneaux):
 
 
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
-           lundi_date=None, changements=None):
+           lundi_date=None, changements=None, absences=None):
     horaires = trame.get("horaires_ouverture", HORAIRES_DEFAUT)
     amp_min, amp_max = _amplitude(horaires)
     span = amp_max - amp_min
@@ -340,10 +383,18 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             cr_trame = _jours_sem(trame, e["email"], sem).get(str(j), []) or []
             # Changement ponctuel pour cette date réelle ? -> surcharge la trame.
             chg = changement_de(changements or {}, date_iso, e["email"]) if date_iso else None
+            # Un changement rétabli à la trame (mêmes horaires) n'est plus une modif.
+            if chg is not None and chg.get("creneaux") and meme_que_trame(chg.get("creneaux"), cr_trame):
+                chg = None
+            # Absence prolongée couvrant ce jour (le changement ponctuel reste prioritaire).
+            abs_a = absence_active(absences or [], e["email"],
+                                   lundi_date + timedelta(days=j - 1)) if (date_iso and chg is None) else None
             if chg is not None:
                 cr_eff = chg.get("creneaux", []) or []
                 motif = chg.get("motif", "")
                 modifie = True
+            elif abs_a is not None:
+                cr_eff, motif, modifie = [], abs_a.get("motif", "Absence"), True
             else:
                 cr_eff, motif, modifie = cr_trame, "", False
             barres = []
@@ -494,6 +545,7 @@ def vue():
         act = next((t for t in data.get("trames", []) if t.get("activee")), None)
         opts = charger_options()
         changements = charger_changements()
+        absences = charger_absences()
         masques = set(opts.get("collaborateurs_masques", []))
         emp_base = [emap[em] for em in membres_ordonnes(act, employes_base) if em not in masques]
         jours_aff = [j for j in range(1, 8)
@@ -546,7 +598,7 @@ def vue():
                 v = {"sem": rot, "titre": titre}
                 if mode == "grille":
                     v["frise"] = _frise(act, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
-                                        lundi, changements)
+                                        lundi, changements, absences)
                 elif mode == "texte":
                     v["texte"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
                                    "jours": [{"nom": JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m"),
@@ -568,6 +620,10 @@ def vue():
                         if em not in emap:
                             continue
                         crs = ch.get("creneaux", []) or []
+                        # Changement rétabli à la trame (horaires identiques) → pas une vraie
+                        # modif : on ne l'affiche pas dans « Modifications apportées ».
+                        if crs and meme_que_trame(crs, creneaux_trame_jour(act, em, dt)):
+                            continue
                         txt = " · ".join(f'{c["debut"]}–{c["fin"]}' for c in crs) if crs else "Non travaillé"
                         recap_chg.append({
                             "date": dt, "date_iso": dt.isoformat(),
@@ -576,6 +632,17 @@ def vue():
                             "motif": ch.get("motif", "Non catégorisé"),
                             "creneaux_txt": txt, "absent": not crs})
             recap_chg.sort(key=lambda r: (r["date"], r["prenom"]))
+        # Regroupé par collaborateur : nom + [jours modifiés] ; chaque jour porte son
+        # détail (absence / horaires ajustés + motif) pour l'affichage au clic.
+        recap_collab = []
+        for r in recap_chg:
+            g = next((x for x in recap_collab if x["prenom"] == r["prenom"]), None)
+            if g is None:
+                g = {"prenom": r["prenom"], "couleur": r["couleur"], "jours": []}
+                recap_collab.append(g)
+            etat = "🚫 Non travaillé" if r["absent"] else r["creneaux_txt"]
+            g["jours"].append({"label": r["date_label"],
+                               "detail": f'{etat} — {r["motif"]}'})
         # Heures réellement travaillées (depuis les relevés botRh) — le pont.
         heures_reel = None
         if act and opts.get("heures_travaillees", "aucun") != "aucun":
@@ -589,9 +656,63 @@ def vue():
                     heures_reel["lignes"].append({"prenom": e["prenom"], "couleur": couleurs[e["email"]],
                                                   "plus": plus, "moins": moins,
                                                   "solde": round(plus - moins, 2)})
+        # --- Saisie « Horaires ponctuels » : grille éditable du jour sélectionné ---
+        ponctuel = request.args.get("ponctuel") == "1"
+        saisie, ponctuel_jours = None, []
+        if ponctuel and act:
+            base_lundi = _lundi(ref)
+            for k in range(7):
+                d = base_lundi + timedelta(days=k)
+                ponctuel_jours.append({"iso": d.isoformat(), "actif": d == ref,
+                                       "label": f"{JOURS_NOMS[d.isoweekday()]} {d.strftime('%d/%m')}",
+                                       "ferme": not act.get("horaires_ouverture", HORAIRES_DEFAUT).get(str(d.isoweekday()))})
+            rows = []
+            for e in emp_base:
+                cr_tr = creneaux_trame_jour(act, e["email"], ref)
+                chg = changement_de(changements, ref.isoformat(), e["email"])
+                abs_a = absence_active(absences, e["email"], ref) if chg is None else None
+                if chg is not None:
+                    cr_eff, motif_r = (chg.get("creneaux", []) or []), chg.get("motif", "Non catégorisé")
+                elif abs_a is not None:
+                    cr_eff, motif_r = [], abs_a.get("motif", "Non catégorisé")
+                else:
+                    cr_eff, motif_r = cr_tr, "Non catégorisé"
+                p, pt = _pad2(cr_eff), _pad2(cr_tr)
+                rows.append({"email": e["email"], "prenom": e["prenom"],
+                             "couleur": couleurs.get(e["email"], "#888"),
+                             "modifie": chg is not None or abs_a is not None,
+                             "motif": motif_r,
+                             "c1d": p[0]["debut"], "c1f": p[0]["fin"], "c2d": p[1]["debut"], "c2f": p[1]["fin"],
+                             "t1d": pt[0]["debut"], "t1f": pt[0]["fin"], "t2d": pt[1]["debut"], "t2f": pt[1]["fin"],
+                             "trame_txt": " · ".join(f'{c["debut"]}–{c["fin"]}' for c in cr_tr) or "repos"})
+            saisie = {"date_iso": ref.isoformat(), "rows": rows,
+                      "date_label": f"{JOURS_NOMS[ref.isoweekday()]} {ref.strftime('%d/%m/%Y')}"}
+        # --- Sous-vue « Absence prolongée » : formulaire + liste des absences ---
+        abs_view = request.args.get("absence") == "1"
+        absences_list, collabs_abs = [], []
+        if abs_view:
+            collabs_abs = [{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"]} for e in emp_base]
+
+            def _fr_date(iso):
+                try:
+                    return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+                except (ValueError, TypeError):
+                    return iso
+            for a in sorted(absences, key=lambda x: (x.get("debut", ""), emap.get(x.get("email"), {}).get("prenom", ""))):
+                em = a.get("email")
+                if em not in emap:
+                    continue
+                absences_list.append({
+                    "id": a.get("id", ""), "prenom": emap[em]["prenom"],
+                    "couleur": couleurs.get(em, "#888"), "motif": a.get("motif", "Non catégorisé"),
+                    "debut": _fr_date(a.get("debut", "")), "fin": _fr_date(a.get("fin", "")),
+                    "commentaire": a.get("commentaire", "")})
         ctx.update(trame=act, tid=act.get("id") if act else None, pas_active=act is None,
                    vues=vues, mode=mode, periode=periode, nav=nav, heures_reel=heures_reel,
-                   motifs=MOTIFS, recap_chg=recap_chg,
+                   motifs=MOTIFS, recap_chg=recap_chg, recap_collab=recap_collab,
+                   ponctuel=ponctuel, saisie=saisie, ponctuel_jours=ponctuel_jours,
+                   abs_view=abs_view, absences_list=absences_list, collabs_abs=collabs_abs,
+                   ref_date=ref.isoformat(),
                    recap_changements=(opts.get("recap_changements") == "afficher"))
         return render_template("planning_equipe.html", **ctx)
 
@@ -630,6 +751,93 @@ def vue():
         collabs = [{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"],
                     "affiche": e["email"] not in masques} for e in employes_base]
         ctx.update(options=o, collabs_opt=collabs, jours_noms=JOURS_NOMS)
+        return render_template("planning_equipe.html", **ctx)
+
+    if onglet == "changements":
+        from app import MOIS_FR
+        changements = charger_changements()
+        absences = charger_absences()
+        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
+
+        def _fmt(cr):
+            cr = cr or []
+            txt = " ".join(f'{c["debut"]}–{c["fin"]}' for c in cr if c.get("debut") and c.get("fin"))
+            return txt or "Non travaillé"
+
+        def _entries(ym):
+            """Tous les changements (ponctuels + absences) d'un mois 'AAAA-MM'."""
+            y, mo = int(ym[:4]), int(ym[5:7])
+            prem = date(y, mo, 1)
+            dern = date(y, mo, calendar.monthrange(y, mo)[1])
+            out = []
+            for diso, parem in changements.items():
+                if diso[:7] != ym:
+                    continue
+                try:
+                    d = datetime.strptime(diso, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                for em, ch in (parem or {}).items():
+                    if em not in emap:
+                        continue
+                    crs = ch.get("creneaux", []) or []
+                    cr_tr = creneaux_trame_jour(act, em, d)
+                    if meme_que_trame(crs, cr_tr):           # rétabli à la trame → pas une modif
+                        continue
+                    out.append({"type": "ponctuel", "prenom": emap[em]["prenom"],
+                                "couleur": couleurs.get(em, "#888"),
+                                "motif": ch.get("motif", "Non catégorisé"),
+                                "email": em, "date_iso": diso, "date_label": d.strftime("%d/%m/%Y"),
+                                "avant": _fmt(cr_tr), "apres": _fmt(crs),
+                                "tri": (emap[em]["prenom"], diso)})
+            for a in absences:
+                em = a.get("email")
+                if em not in emap:
+                    continue
+                try:
+                    d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
+                    d2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if d2 < prem or d1 > dern:                   # ne touche pas ce mois
+                    continue
+                out.append({"type": "absence", "prenom": emap[em]["prenom"],
+                            "couleur": couleurs.get(em, "#888"),
+                            "motif": a.get("motif", "Non catégorisé"), "id": a.get("id", ""),
+                            "commentaire": a.get("commentaire", ""),
+                            "debut": d1.strftime("%d/%m/%Y"), "fin": d2.strftime("%d/%m/%Y"),
+                            "tri": (emap[em]["prenom"], a.get("debut", ""))})
+            out.sort(key=lambda x: x["tri"])
+            return out
+
+        # Mois disponibles (dates de changements + plages d'absences) + mois courant.
+        mois_set = {diso[:7] for diso in changements.keys()}
+        for a in absences:
+            try:
+                d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
+                d2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            m = d1.replace(day=1)
+            while m <= d2:
+                mois_set.add(m.strftime("%Y-%m"))
+                m = _ajoute_mois(m, 1)
+        today = date.today()
+        mois_sel = request.args.get("mois") or today.strftime("%Y-%m")
+        mois_set.add(mois_sel)
+        mois_set.add(today.strftime("%Y-%m"))
+        mois_list = [{"val": ym, "label": f"{MOIS_FR[int(ym[5:7])]} {ym[:4]} ({len(_entries(ym))})"}
+                     for ym in sorted(mois_set, reverse=True)]
+        groupes = []
+        for e in _entries(mois_sel):
+            g = next((x for x in groupes if x["prenom"] == e["prenom"]), None)
+            if g is None:
+                g = {"prenom": e["prenom"], "couleur": e["couleur"], "lignes": []}
+                groupes.append(g)
+            g["lignes"].append(e)
+        ctx.update(chg_groupes=groupes, chg_mois_list=mois_list, chg_mois_sel=mois_sel,
+                   chg_mois_label=f"{MOIS_FR[int(mois_sel[5:7])]} {mois_sel[:4]}",
+                   chg_total=sum(len(g["lignes"]) for g in groupes))
         return render_template("planning_equipe.html", **ctx)
 
     # sous-onglets à venir
@@ -767,10 +975,25 @@ def enregistrer_changement():
         creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
     if email and date_iso:
         data = charger_changements()
-        data.setdefault(date_iso, {})[email] = {
-            "motif": motif if motif in MOTIFS else "Non catégorisé",
-            "creneaux": creneaux,
-            "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+        # « ↺ Rétablir les horaires » : si les créneaux saisis sont identiques à la trame,
+        # ce n'est pas une modification → on supprime l'éventuel changement au lieu d'en créer un.
+        try:
+            d_obj = datetime.strptime(date_iso, "%Y-%m-%d").date()
+        except ValueError:
+            d_obj = None
+        act = next((t for t in charger_trames().get("trames", []) if t.get("activee")), None)
+        retour_trame = bool(creneaux) and d_obj is not None and \
+            meme_que_trame(creneaux, creneaux_trame_jour(act, email, d_obj))
+        if retour_trame:
+            if date_iso in data and email in data[date_iso]:
+                del data[date_iso][email]
+                if not data[date_iso]:
+                    del data[date_iso]
+        else:
+            data.setdefault(date_iso, {})[email] = {
+                "motif": motif if motif in MOTIFS else "Non catégorisé",
+                "creneaux": creneaux,
+                "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
         sauvegarder_changements(data)
     return redirect(url_for(".vue", onglet="planning", date=date_iso))
 
@@ -788,7 +1011,93 @@ def supprimer_changement():
         if not data[date_iso]:
             del data[date_iso]
         sauvegarder_changements(data)
+    if request.form.get("retour") == "changements":
+        return redirect(url_for(".vue", onglet="changements", mois=request.form.get("mois", "")))
     return redirect(url_for(".vue", onglet="planning", date=date_iso))
+
+
+@bp.route("/admin/planning-equipe/saisie-ponctuelle", methods=["POST"])
+def saisie_ponctuelle():
+    """Enregistre toute la grille « Horaires ponctuels » d'un jour en une fois :
+    pour chaque collaborateur, les créneaux saisis surchargent la trame (ou la
+    rétablissent si identiques / si le jour est laissé tel quel)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    date_iso = request.form.get("date", "")
+    try:
+        d_obj = datetime.strptime(date_iso, "%Y-%m-%d").date()
+    except ValueError:
+        d_obj = None
+    if not d_obj:
+        return redirect(url_for(".vue", onglet="planning"))
+    act = next((t for t in charger_trames().get("trames", []) if t.get("activee")), None)
+    data = charger_changements()
+    for em in request.form.getlist("email"):
+        creneaux = []
+        for s in (1, 2):
+            deb = _norm_hhmm(request.form.get(f"h{s}d_{em}"))
+            fin = _norm_hhmm(request.form.get(f"h{s}f_{em}"))
+            if deb and fin:
+                creneaux.append({"debut": deb, "fin": fin})
+        creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
+        motif = request.form.get(f"motif_{em}", "")
+        motif = motif if motif in MOTIFS else "Non catégorisé"
+        cr_tr = creneaux_trame_jour(act, em, d_obj)
+        present = date_iso in data and em in data.get(date_iso, {})
+        # Retour à la trame (mêmes horaires) OU jour de repos laissé vide → pas de changement.
+        if meme_que_trame(creneaux, cr_tr) or (not creneaux and not cr_tr):
+            if present:
+                del data[date_iso][em]
+        else:
+            data.setdefault(date_iso, {})[em] = {
+                "motif": motif, "creneaux": creneaux,
+                "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+    if date_iso in data and not data[date_iso]:
+        del data[date_iso]
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="planning", ponctuel=1, date=date_iso))
+
+
+@bp.route("/admin/planning-equipe/absence", methods=["POST"])
+def ajouter_absence():
+    """Déclare une absence prolongée (plage de dates) pour un collaborateur."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    debut = request.form.get("debut", "")
+    fin = request.form.get("fin", "") or debut
+    motif = request.form.get("motif", "")
+    commentaire = (request.form.get("commentaire", "") or "").strip()
+    # Validation des dates ; on remet dans l'ordre si inversées.
+    try:
+        d1 = datetime.strptime(debut, "%Y-%m-%d").date()
+        d2 = datetime.strptime(fin, "%Y-%m-%d").date()
+    except ValueError:
+        d1 = d2 = None
+    if email and d1 and d2:
+        if d2 < d1:
+            d1, d2 = d2, d1
+        absences = charger_absences()
+        absences.append({
+            "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+            "email": email, "debut": d1.isoformat(), "fin": d2.isoformat(),
+            "motif": motif if motif in MOTIFS else "Non catégorisé",
+            "commentaire": commentaire})
+        sauvegarder_absences(absences)
+    return redirect(url_for(".vue", onglet="planning", absence=1))
+
+
+@bp.route("/admin/planning-equipe/absence/supprimer", methods=["POST"])
+def supprimer_absence():
+    """Supprime une absence prolongée par son id."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    aid = request.form.get("id", "")
+    absences = [a for a in charger_absences() if a.get("id") != aid]
+    sauvegarder_absences(absences)
+    if request.form.get("retour") == "changements":
+        return redirect(url_for(".vue", onglet="changements", mois=request.form.get("mois", "")))
+    return redirect(url_for(".vue", onglet="planning", absence=1))
 
 
 @bp.route("/admin/planning-equipe/permission", methods=["POST"])
