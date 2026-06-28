@@ -224,6 +224,34 @@
         <label>Poste / fonction
           <input type="text" name="poste" value="{{ profil.poste|default('') }}" placeholder="ex: Préparatrice">
         </label>
+        <label>Fonction (planning)
+          <select name="fonction_planning">
+            {% set fp = profil.fonction_planning|default('') %}
+            <option value="" {% if not fp %}selected{% endif %}>—</option>
+            {% for opt in ['Pharmacien','Préparateur','Autre'] %}
+            <option value="{{ opt }}" {% if fp == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Heures contractuelles / semaine
+          <input type="number" step="0.5" min="0" name="heures_contractuelles_hebdo"
+                 value="{{ profil.heures_contractuelles_hebdo|default('') }}" placeholder="ex: 35">
+        </label>
+        <label>Couleur (planning)
+          <span style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding-top:4px;">
+            {% set cc = profil.couleur_planning|default('') %}
+            {% for col in PALETTE_PLANNING %}
+            <label style="cursor:pointer; margin:0;">
+              <input type="radio" name="couleur_planning" value="{{ col }}" {% if cc == col %}checked{% endif %} style="display:none;">
+              <span title="{{ col }}" style="display:inline-block; width:22px; height:22px; border-radius:50%; background:{{ col }}; border:3px solid {% if cc == col %}#1F4E79{% else %}#fff{% endif %}; box-shadow:0 0 0 1px #ccc;"></span>
+            </label>
+            {% endfor %}
+            <label style="cursor:pointer; margin:0; font-size:0.8em; color:#888;">
+              <input type="radio" name="couleur_planning" value="" {% if not cc %}checked{% endif %} style="display:none;">
+              <span style="display:inline-block; padding:2px 6px; border:1px solid {% if not cc %}#1F4E79{% else %}#ccc{% endif %}; border-radius:6px;">auto</span>
+            </label>
+          </span>
+        </label>
         <label>Code opérateur
           <input type="text" name="code_operateur" value="{{ profil.code_operateur|default('') }}" placeholder="ex: OP1234">
         </label>

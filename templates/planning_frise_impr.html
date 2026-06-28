@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Planning — Semaine {{ sem }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 18px; color: #222; }
+    h1 { color: #1F4E79; font-size: 1.2em; }
+    .sub { color: #667; font-size: 0.82em; margin-bottom: 12px; }
+    .imp { margin-bottom: 12px; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    /* Frise */
+    .frise { border: 1px solid #dde3ed; border-radius: 8px; overflow: hidden; }
+    .fr-axis { display: flex; align-items: flex-end; height: 20px; border-bottom: 1px solid #e3e9f1; background: #f7f9fc; }
+    .fr-axis .sp { width: 130px; flex: none; }
+    .fr-axis .track { position: relative; flex: 1; height: 100%; }
+    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.65em; color: #889; white-space: nowrap; }
+    .fr-jour { border-bottom: 2px solid #e3e9f1; }
+    .fr-jour-tt { background: #eef2f8; color: #1F4E79; font-weight: bold; font-size: 0.78em; padding: 3px 10px; }
+    .fr-jour-tt .ferme { color: #b0b8c4; font-weight: normal; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #f0f3f8; min-height: 22px; }
+    .fr-label { width: 130px; flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.76em; }
+    .fr-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .fr-track { position: relative; flex: 1; }
+    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #eef1f6; }
+    .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
+    .fr-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; color: white; font-size: 0.64em; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+    .fr-tot { width: 46px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.7em; color: #667; }
+    @media print {
+      .imp { display: none; } body { padding: 0; }
+      .fr-bar, .fr-ouv { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="imp"><button class="btn" onclick="window.print()">🖨️ Imprimer</button></div>
+  <h1>Planning — Semaine {{ sem }}</h1>
+  <div class="sub">Trame du {{ trame.date_demarrage or trame.cree_le or '—' }}{% if trame.commentaire %} · {{ trame.commentaire }}{% endif %}</div>
+  {% include '_frise.html' %}
+</body>
+</html>

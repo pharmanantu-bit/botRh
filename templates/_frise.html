@@ -1,0 +1,24 @@
+{# Frise (Gantt horizontal) — attend `frise` dans le contexte. Réutilisé par les onglets Planning et Trame. #}
+<div class="frise">
+  <div class="fr-axis">
+    <div class="sp"></div>
+    <div class="track">
+      {% for t in frise.ticks %}<span class="tick" style="left:{{ t.left }}%;">{{ t.label }}</span>{% endfor %}
+    </div>
+  </div>
+  {% for j in frise.jours %}
+  <div class="fr-jour">
+    <div class="fr-jour-tt">{{ j.nom }}{% if j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
+    {% for l in j.lignes %}
+    <div class="fr-row">
+      <div class="fr-label"><span class="fr-dot" style="background:{{ l.couleur }};"></span>{{ l.prenom }}</div>
+      <div class="fr-track">
+        {% for o in j.ouverture %}<div class="fr-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
+        {% for t in frise.ticks %}<div class="fr-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
+        {% for b in l.barres %}<div class="fr-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};">{{ b.label }}</div>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>

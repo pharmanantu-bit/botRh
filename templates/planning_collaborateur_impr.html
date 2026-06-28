@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Horaires — {{ emp.prenom }} {{ emp.nom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+    .tete { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    h1 { color: #1F4E79; font-size: 1.25em; }
+    .sub { color: #667; font-size: 0.85em; margin-bottom: 16px; }
+    .sem { margin-bottom: 18px; }
+    .sem h2 { color: #1F4E79; font-size: 1em; margin-bottom: 6px; border-bottom: 2px solid #1F4E79; padding-bottom: 3px; }
+    table { border-collapse: collapse; width: 100%; max-width: 480px; font-size: 0.9em; }
+    th, td { border: 1px solid #bbc; padding: 6px 10px; text-align: left; }
+    th { background: #1F4E79; color: white; width: 110px; }
+    td.vide { color: #aaa; }
+    .tot { font-weight: bold; margin-top: 4px; font-size: 0.9em; }
+    .imp { margin-bottom: 12px; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    /* Frise (Gantt) imprimable — jours en lignes */
+    .pfrise { border: 1px solid #ccd; border-radius: 6px; overflow: hidden; max-width: 680px; }
+    .pf-axis { display: flex; height: 18px; border-bottom: 1px solid #e3e9f1; background: #f7f9fc; }
+    .pf-sp { width: 92px; flex: none; }
+    .pf-track { position: relative; flex: 1; }
+    .pf-tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.62em; color: #889; }
+    .pf-row { display: flex; align-items: stretch; border-top: 1px solid #f0f3f8; min-height: 22px; }
+    .pf-day { width: 92px; flex: none; padding: 3px 8px; font-size: 0.78em; font-weight: bold; color: #1F4E79; background: #f5f8fc; }
+    .pf-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #eef1f6; }
+    .pf-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
+    .pf-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; color: white; font-size: 0.62em; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; }
+    .pf-tot { width: 42px; flex: none; text-align: right; padding: 3px 6px; font-size: 0.7em; color: #778; }
+    @media print { .imp { display: none; } body { padding: 0; } .pf-bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="imp"><button class="btn" onclick="window.print()">🖨️ Imprimer</button></div>
+  <div class="tete">
+    <span class="dot" style="background: {{ couleur }};"></span>
+    <h1>{{ emp.prenom }} {{ emp.nom }}</h1>
+  </div>
+  <div class="sub">Trame du {{ trame.date_demarrage or trame.cree_le or '—' }}{% if trame.commentaire %} · {{ trame.commentaire }}{% endif %}</div>
+
+  {% for s in semaines %}
+  <div class="sem">
+    <h2>Semaine {{ s.sem }} — {{ "%g"|format(s.total) }}h</h2>
+    {% if fmt == 'texte' %}
+      {% for j in s.jours %}
+      <div style="font-size:0.92em; margin:2px 0;"><strong>{{ j.nom }} :</strong>
+        {% for c in j.creneaux %}{{ c.debut }}–{{ c.fin }}{% if not loop.last %}, {% endif %}{% else %}repos{% endfor %}</div>
+      {% endfor %}
+    {% else %}
+    <div class="pfrise">
+      <div class="pf-axis">
+        <div class="pf-sp"></div>
+        <div class="pf-track">{% for t in s.frise.ticks %}<span class="pf-tick" style="left:{{ t.left }}%;">{{ t.label }}</span>{% endfor %}</div>
+        <div class="pf-tot"></div>
+      </div>
+      {% for j in s.frise.jours %}
+      <div class="pf-row">
+        <div class="pf-day">{{ j.nom }}</div>
+        <div class="pf-track">
+          {% for o in j.ouverture %}<div class="pf-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
+          {% for t in s.frise.ticks %}<div class="pf-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
+          {% for b in j.barres %}<div class="pf-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};">{{ b.label }}</div>{% endfor %}
+        </div>
+        <div class="pf-tot">{% if j.total %}{{ "%g"|format(j.total) }}h{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</body>
+</html>

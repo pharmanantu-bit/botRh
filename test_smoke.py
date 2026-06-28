@@ -55,6 +55,10 @@ routes_admin = [
     "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
     "/admin/sauvegarde", "/admin/sauvegarde/telecharger", "/admin/assistant", "/admin/securite",
     "/admin/recrutement",
+    "/admin/planning-equipe",
+    "/admin/planning-equipe?onglet=trame",
+    "/admin/planning-equipe?onglet=trame&sem=B",
+    "/admin/planning-equipe?onglet=effectifs",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planning équipe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 18px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 1400px; margin: 0 auto; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 12px; }
+    h2 { color: #1F4E79; font-size: 1em; margin: 0 0 10px; }
+    .msg { padding: 9px 14px; border-radius: 8px; font-size: 0.86em; margin-bottom: 14px; background: #C6EFCE; color: #276221; }
+    /* Sous-onglets */
+    .ongs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 2px solid #dde3ed; margin-bottom: 16px; }
+    .ongs a { padding: 9px 16px; text-decoration: none; color: #557; font-size: 0.9em; border-radius: 8px 8px 0 0; font-weight: bold; }
+    .ongs a.actif { background: #1F4E79; color: white; }
+    .ongs a:not(.actif):hover { background: #eef2f8; }
+    /* Sous-onglets de Planning (Effectifs / Options) */
+    .ongs-sec { display: flex; gap: 4px; flex-wrap: wrap; margin: -8px 0 16px; padding-left: 6px; }
+    .ongs-sec a { padding: 5px 13px; text-decoration: none; color: #667; font-size: 0.82em; border-radius: 6px; border: 1px solid #dde3ed; }
+    .ongs-sec a.actif { background: #2E75B6; color: white; border-color: #2E75B6; }
+    .ongs-sec a:not(.actif):hover { background: #eef2f8; }
+    .swatch span { display: inline-block; }
+    .swatch:hover > span { transform: scale(1.18); }
+    /* Sélecteur semaine A/B */
+    .semsel { display: inline-flex; gap: 6px; margin-bottom: 14px; }
+    .semsel a { padding: 7px 16px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.9em; border: 1px solid #d4deeb; color: #1F4E79; }
+    .semsel a.actif { background: #1F4E79; color: white; border-color: #1F4E79; }
+    .meta { color: #9aa7b5; font-size: 0.8em; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 9px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9em; }
+    .btn:hover { background: #163d60; }
+    .btn-mini { font-size: 0.74em; padding: 4px 9px; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; display: inline-block; background: #2E75B6; color: white; }
+    .btn-mini:hover { background: #1F4E79; }
+    .btn-mini.rouge { background: #C0392B; } .btn-mini.rouge:hover { background: #9C2A1F; }
+    .btn-mini.vert { background: #1F7A3D; } .btn-mini.vert:hover { background: #176030; }
+
+    /* ===== FRISE (Gantt horizontal) ===== */
+    .frise { border: 1px solid #dde3ed; border-radius: 10px; overflow: hidden; }
+    .fr-axis { display: flex; align-items: flex-end; height: 22px; border-bottom: 1px solid #e3e9f1; background: #f7f9fc; }
+    .fr-axis .sp { width: 140px; flex: none; }
+    .fr-axis .track { position: relative; flex: 1; height: 100%; }
+    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.7em; color: #889; white-space: nowrap; }
+    .fr-jour { border-bottom: 2px solid #e3e9f1; }
+    .fr-jour-tt { background: #eef2f8; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; }
+    .fr-jour-tt .ferme { color: #b0b8c4; font-weight: normal; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #f0f3f8; min-height: 26px; }
+    .fr-label { width: 140px; flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 8px; font-size: 0.8em; }
+    .fr-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+    .fr-track { position: relative; flex: 1; background-size: 100% 100%; }
+    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #eef1f6; }
+    .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
+    .fr-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; color: white; font-size: 0.7em; line-height: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+    .fr-tot { width: 52px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.75em; color: #667; }
+
+    /* ===== Saisie trame ===== */
+    .cfg { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; background: #f7f9fc; border: 1px solid #dde3ed; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+    .cfg label { font-size: 0.78em; color: #555; display: block; }
+    .cfg input, .cfg select { padding: 7px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
+    .grille-wrap { overflow-x: auto; border: 1px solid #dde3ed; border-radius: 10px; }
+    table.saisie { border-collapse: collapse; width: 100%; font-size: 0.78em; min-width: 1050px; }
+    table.saisie th, table.saisie td { border: 1px solid #e3e9f1; padding: 4px 5px; text-align: center; vertical-align: top; }
+    table.saisie th { background: #1F4E79; color: white; }
+    table.saisie td.collab { text-align: left; background: #f5f8fc; position: sticky; left: 0; white-space: nowrap; }
+    .collab .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .cre { display: flex; gap: 2px; justify-content: center; margin-bottom: 2px; }
+    .cre input { width: 70px; padding: 2px 5px; border: 1px solid #ccd4e0; border-radius: 4px; font-size: 0.92em; }
+    .cre input[type=time]::-webkit-calendar-picker-indicator { display: none; }   /* masque la pendule */
+    .cre input[type=time]::-webkit-inner-spin-button { display: none; }
+    .jtot { color: #889; font-size: 0.92em; }
+    .stub { padding: 40px; text-align: center; color: #889; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <h1>🗓️ Planning équipe</h1>
+
+  {% if msg == 'trame_ok' %}<div class="msg">Trame (semaine {{ sem }}) enregistrée.</div>{% endif %}
+  {% if msg == 'config_ok' %}<div class="msg">Configuration de la trame enregistrée.</div>{% endif %}
+  {% if msg == 'ouv_ok' %}<div class="msg">Horaires d'ouverture enregistrés.</div>{% endif %}
+  {% if msg == 'equipe_ok' %}<div class="msg">Équipe (couleurs / fonctions) enregistrée.</div>{% endif %}
+  {% if msg == 'trame_creee' %}<div class="msg">Nouvelle trame créée. Renseigne sa config et ses horaires, puis active-la.</div>{% endif %}
+  {% if msg == 'activee' %}<div class="msg">Trame activée — c'est elle qui sert au planning.</div>{% endif %}
+  {% if msg == 'desactivee' %}<div class="msg">Trame désactivée.</div>{% endif %}
+  {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
+  {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
+
+  <div class="ongs">
+    {% for cle, lib in onglets %}
+    <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet_principal == cle else '' }}">{{ lib }}</a>
+    {% endfor %}
+  </div>
+  {% if onglet_principal == 'planning' %}
+  <div class="ongs-sec">
+    {% for cle, lib in sous_planning %}
+    <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet == cle else '' }}">{{ lib }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if onglet == 'planning' and trame %}
+  <div class="semsel">
+    {% for s in semaines %}
+    <a href="{{ url_for('.vue', onglet=onglet, sem=s, trame=tid) }}" class="{{ 'actif' if s == sem else '' }}">Semaine {{ s }}</a>
+    {% endfor %}
+    <span class="meta" style="align-self:center; margin-left:8px;">{{ trame.nb_semaines }} semaines tournantes{% if trame.date_demarrage %} · démarrage {{ trame.date_demarrage }}{% endif %} · <strong style="color:#1F7A3D;">trame active</strong></span>
+  </div>
+  {% endif %}
+
+  {# ===================== ONGLET PLANNING : LA FRISE ===================== #}
+  {% if onglet == 'planning' %}
+    {% if frise %}
+    <div style="text-align:right; margin-bottom:6px;"><a href="{{ url_for('.imprimer_frise', tid=tid, sem=sem) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer la frise</a></div>
+    {% include '_frise.html' %}
+    <p class="meta" style="margin-top:8px;">Frise de la <strong>semaine {{ sem }}</strong> (trame active). Zone crème = heures d'ouverture. Pour modifier, va dans l'onglet <strong>Trame</strong>.</p>
+    {% else %}
+    <div class="stub">
+      <p style="font-size:1.05em;">Aucune trame active.</p>
+      <p class="meta" style="margin-top:6px;">Va dans l'onglet <strong>Trame</strong>, crée une trame (ou sélectionne-en une) puis clique <strong>« Activer cette trame »</strong> : c'est elle qui alimente le planning.</p>
+    </div>
+    {% endif %}
+
+  {# ===================== ONGLET ÉQUIPE : cartes ===================== #}
+  {% elif onglet == 'equipe' %}
+    <h2>👥 Collaborateurs <span class="meta" style="font-weight:normal;">— clique une carte pour régler fonction & couleur</span></h2>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
+      {% for m in membres %}
+      <div style="width:122px; border-radius:8px; overflow:hidden; box-shadow:0 1px 5px rgba(0,0,0,.16); {% if selected and selected.email == m.email %}outline:3px solid #1F4E79; outline-offset:1px;{% endif %}">
+        <a href="{{ url_for('.vue', onglet='equipe', edit=m.email) }}" style="text-decoration:none; display:block; background:{{ m.couleur }}; color:#fff; padding:6px 6px; font-weight:bold; font-size:0.82em; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px rgba(0,0,0,.25);" title="Modifier {{ m.prenom }}">{{ m.prenom }}</a>
+        <div style="background:#fff; padding:5px 5px 6px; text-align:center;">
+          <div style="font-size:0.66em; color:#333; background:#eef2f8; border-radius:5px; padding:2px 4px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ m.fonction or 'Poste —' }}</div>
+          <form method="POST" action="{{ url_for('.set_permission') }}" style="margin:0 0 4px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email" value="{{ m.email }}">
+            <select name="permission_planning" onchange="this.form.submit()" title="Permission" style="font-size:0.64em; width:100%; padding:2px; border:1px solid #d4deeb; border-radius:5px; background:#fbfdff; color:#1F4E79;">
+              {% for p in permissions %}<option value="{{ p }}" {% if m.permission == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
+          </form>
+          <div style="font-size:0.6em; color:{{ '#1F7A3D' if m.a_email else '#9C0006' }};">{{ '✉ ok' if m.a_email else 'pas d\'email' }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if selected %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:16px; max-width:540px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+        <h2 style="margin:0;"><span style="display:inline-block; width:14px; height:14px; border-radius:50%; background:{{ selected.couleur }}; vertical-align:middle;"></span> {{ selected.prenom }} {{ selected.nom }}</h2>
+        {% if selected.mail_invit %}<a href="{{ selected.mail_invit }}" target="_blank" rel="noopener" class="btn-mini" style="background:#5b4a9e;">✉️ Envoyer une invitation</a>{% endif %}
+      </div>
+      <form method="POST" action="{{ url_for('.enregistrer_collab_equipe') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="email" value="{{ selected.email }}">
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+          <div>
+            <label style="font-size:0.8em; color:#555; display:block; margin-bottom:3px;">Fonction</label>
+            <select name="fonction_planning" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:190px;">
+              <option value="">—</option>
+              {% for f in fonctions %}<option value="{{ f }}" {% if selected.fonction == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.8em; color:#555; display:block; margin-bottom:3px;">Permission</label>
+            <select name="permission_planning" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:170px;">
+              {% for p in permissions %}<option value="{{ p }}" {% if selected.permission == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.8em; color:#555; display:block; margin-bottom:3px;">Vue du planning</label>
+            <select name="vue_planning" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:180px;">
+              {% for v in vues %}<option value="{{ v }}" {% if selected.vue == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:0.8em; color:#555; display:block; margin-bottom:6px;">Couleur</label>
+          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:#f7f9fc; border:1px solid #e3e9f1; border-radius:8px; padding:10px 12px;">
+            <div style="display:flex; align-items:center; gap:7px;">
+              <input type="color" id="coulpick" name="couleur_planning" value="{{ selected.couleur }}" style="width:54px; height:44px; border:1px solid #ccd4e0; border-radius:8px; cursor:pointer; padding:2px; background:#fff;">
+              <span class="meta" style="font-size:0.75em;">clique pour<br>le dégradé</span>
+            </div>
+            <label style="font-size:0.82em; color:#555; display:flex; align-items:center; gap:5px; cursor:pointer;">
+              <input type="checkbox" name="auto_couleur" id="autocoul" {% if not selected.couleur_choisie %}checked{% endif %}> couleur automatique
+            </label>
+            <span style="display:flex; flex-wrap:wrap; gap:7px; align-items:center; max-width:260px;">
+              {% for col in palette %}
+              <span class="swatch-quick" data-col="{{ col }}" title="{{ col }}" style="display:inline-block; width:22px; height:22px; border-radius:50%; background:{{ col }}; box-shadow:0 0 0 1px #ccc; cursor:pointer;"></span>
+              {% endfor %}
+            </span>
+          </div>
+        </div>
+        <script>
+        (function () {
+          var pick = document.getElementById('coulpick'), auto = document.getElementById('autocoul');
+          if (!pick) return;
+          function maj() { pick.disabled = auto.checked; pick.style.opacity = auto.checked ? .4 : 1; }
+          auto.addEventListener('change', maj); maj();
+          pick.addEventListener('input', function () { auto.checked = false; });   // touche au picker => couleur manuelle
+          document.querySelectorAll('.swatch-quick').forEach(function (s) {
+            s.addEventListener('click', function () { auto.checked = false; maj(); pick.value = s.dataset.col; });
+          });
+        })();
+        </script>
+        <button class="btn" type="submit">💾 Enregistrer</button>
+      </form>
+      <p class="meta" style="margin-top:8px;">Couleur &amp; fonction pilotent la frise et la fiche salarié (Équipe &amp; RH). « Envoyer une invitation » ouvre un mail pré-rempli vers le collaborateur.</p>
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer; font-size:0.8em; color:#1F4E79;">ℹ️ Signification des permissions</summary>
+        <ul style="font-size:0.8em; color:#555; margin:6px 0 0 18px; line-height:1.5;">
+          <li><strong>Pas d'accès</strong> : ne peut pas consulter le planning.</li>
+          <li><strong>Consultation</strong> : peut consulter le planning de la pharmacie.</li>
+          <li><strong>Gestionnaire</strong> : peut modifier les plannings, gérer opérateurs et trames, et les permissions (sauf admin).</li>
+          <li><strong>Administrateur</strong> : tout ça + supprimer le planning + gérer l'abonnement.</li>
+        </ul>
+        <p style="font-size:0.78em; color:#889; margin:6px 0 0 18px;">« Vue du planning » : tout le planning, ou seulement son planning personnel. <em>(L'accès en ligne des salariés n'est pas encore actif dans botRh — ces réglages sont prêts pour plus tard.)</em></p>
+      </details>
+    </div>
+    {% else %}
+    <p class="meta">Clique sur une carte pour modifier la fonction et la couleur du collaborateur.</p>
+    {% endif %}
+
+  {# ===================== ONGLET TRAME : SAISIE ===================== #}
+  {% elif onglet == 'trame' %}
+    {# --- Créer une nouvelle trame (en premier) --- #}
+    <details style="margin-bottom:16px; border:1px solid #dde3ed; border-radius:10px; padding:0 14px;" {% if not liste_trames %}open{% endif %}>
+      <summary style="cursor:pointer; padding:12px 0; font-weight:bold; color:#1F4E79;">➕ Créer une nouvelle trame</summary>
+      <form method="POST" action="{{ url_for('.creer_trame') }}" class="cfg" style="border:none; background:none; padding:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div><label>Date de démarrage</label><input type="date" name="date_demarrage"></div>
+        <div><label>Importer une trame</label>
+          <select name="importer">
+            <option value="">Ne pas importer</option>
+            {% for lt in liste_trames %}<option value="{{ lt.id }}">{{ lt.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="15" value="2" style="width:70px;"></div>
+        <div style="flex:1; min-width:160px;"><label>Commentaire</label><input type="text" name="commentaire" placeholder="ex: planning d'été"></div>
+        <button class="btn" type="submit">Ajouter la nouvelle trame</button>
+      </form>
+      <p class="meta" style="padding:8px 0 12px;">Pour une rotation de N semaines (A, B, C…) → <strong>une seule</strong> trame avec « semaines tournantes = N ». Ne crée pas plusieurs trames pour les semaines de rotation : une nouvelle trame sert quand le planning change durablement (nouvelle période). « Importer » recopie collaborateurs et horaires pour ne pas tout refaire.</p>
+    </details>
+
+    {# --- Bloc trame : sélection + activation + configuration (ensemble) --- #}
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:12px 14px; margin-bottom:16px;">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        {% if liste_trames %}
+          <label class="meta">Trame :</label>
+          <select onchange="location.href=this.value" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.88em;">
+            {% for lt in liste_trames %}
+            <option value="{{ url_for('.vue', onglet='trame', trame=lt.id) }}" {% if lt.id == tid %}selected{% endif %}>{{ lt.label }}</option>
+            {% endfor %}
+          </select>
+          {% if trame %}
+          <form method="POST" action="{{ url_for('.toggle_trame') }}" style="display:inline; margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="tid" value="{{ tid }}">
+            {% if trame.activee %}
+            <button class="btn" type="submit" style="background:#9C6500;">Désactiver la trame</button>
+            {% else %}
+            <button class="btn" type="submit" style="background:#1F7A3D;">Activer cette trame</button>
+            {% endif %}
+          </form>
+          {% if trame.activee %}<span class="meta" style="color:#1F7A3D; font-weight:bold;">● Active — sert au planning</span>{% endif %}
+          {% endif %}
+        {% else %}
+          <span class="meta">Aucune trame pour l'instant — crée-en une ci-dessus.</span>
+        {% endif %}
+      </div>
+      {% if trame %}
+      <details style="margin-top:10px; border-top:1px solid #eef2f8; padding-top:6px;">
+        <summary style="cursor:pointer; padding:6px 0; font-weight:bold; color:#1F4E79;">⚙️ Configuration de la trame <span class="meta" style="font-weight:normal;">— date, semaines, commentaire (clique pour modifier)</span></summary>
+        <form method="POST" action="{{ url_for('.enregistrer_config') }}" class="cfg" style="border:none; background:none; padding:6px 0 4px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="tid" value="{{ tid }}">
+          <div><label>Date de démarrage</label><input type="date" name="date_demarrage" value="{{ trame.date_demarrage }}"></div>
+          <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="15" value="{{ trame.nb_semaines }}" style="width:70px;"></div>
+          <div><label>Semaine de démarrage</label>
+            <select name="semaine_demarrage">{% for s in semaines %}<option value="{{ s }}" {% if trame.semaine_demarrage == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+          </div>
+          <div style="flex:1; min-width:160px;"><label>Commentaire</label><input type="text" name="commentaire" value="{{ trame.commentaire|default('') }}"></div>
+          <button class="btn" type="submit">Enregistrer la config</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+
+    {% if trame %}
+
+    <details style="margin-bottom:20px; border:1px solid #dde3ed; border-radius:10px; padding:0 14px;">
+      <summary style="cursor:pointer; padding:12px 0; font-weight:bold; color:#1F4E79;">🚪 Horaires d'ouverture de la pharmacie <span class="meta" style="font-weight:normal;">— clique pour modifier (rarement utile)</span></summary>
+      <form method="POST" action="{{ url_for('.enregistrer_ouverture') }}" style="margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="tid" value="{{ tid }}">
+      <table class="saisie" style="min-width:auto; max-width:420px;">
+        <thead><tr><th style="text-align:left;">Jour</th><th>Ouverture</th></tr></thead>
+        <tbody>
+          {% for j in range(1,8) %}
+          <tr>
+            <td class="collab" style="position:static;">{{ jours_noms[j] }}</td>
+            <td>
+              <span class="cre" style="align-items:center;">
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="ouv__{{ j }}__0__debut" value="{{ ouverture[j][0][0] }}">
+                <span>–</span>
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="ouv__{{ j }}__0__fin" value="{{ ouverture[j][0][1] }}">
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="meta" style="margin:8px 0;"><strong>À noter :</strong> jour <strong>fermé</strong> (dimanche…) → laisser les cases vides.</p>
+      <button class="btn" type="submit">Enregistrer les horaires d'ouverture</button>
+      </form>
+    </details>
+
+    <h2>👥 Collaborateurs <span class="meta" style="font-weight:normal;">— glisse ⠿ pour réordonner</span></h2>
+    <div id="collabList" data-tid="{{ tid }}" style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:660px; margin-bottom:20px;">
+      {% for l in lignes %}
+      <div class="collab-row" draggable="true" data-email="{{ l.email }}" style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:#fff;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">
+        <span class="drag-handle" title="Glisser pour déplacer" style="cursor:grab; color:#aeb6c2; font-size:1.15em; line-height:1; user-select:none;">⠿</span>
+        <span style="display:inline-block; width:15px; height:15px; border-radius:50%; background:{{ l.couleur }}; flex:none;"></span>
+        <span style="flex:1; font-size:0.9em;"><a href="{{ url_for('.vue', onglet='equipe') }}#eq-{{ l.email|replace('@','-')|replace('.','-') }}" title="Voir / régler dans Équipe" style="color:#1F4E79; text-decoration:none;"><strong>{{ l.prenom }} {{ l.nom }}</strong></a> <span class="meta">[{{ "%g"|format(l.moyenne) }}h/sem · moyenne {% for s in semaines %}{{ s }}{% if not loop.last %}/{% endif %}{% endfor %}]</span></span>
+        <span style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <a href="{{ url_for('.vue', onglet='trame', trame=tid, horaires=l.email) }}" class="btn-mini">Horaires</a>
+          <a href="{{ url_for('.imprimer_collaborateur', tid=tid, email=l.email) }}" target="_blank" rel="noopener" class="btn-mini">Imprimer</a>
+          <form method="POST" action="{{ url_for('.toggle_collab_trame') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+            <input type="hidden" name="email" value="{{ l.email }}"><input type="hidden" name="action" value="retirer">
+            <button type="submit" class="btn-mini rouge" onclick="return confirm('Retirer {{ l.prenom }} de cette trame ?');">Retirer de la trame</button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    <script>
+    (function () {
+      const list = document.getElementById('collabList');
+      if (!list) return;
+      const CSRF = "{{ csrf_token() }}", TID = list.dataset.tid;
+      let dragged = null;
+      list.querySelectorAll('.collab-row').forEach(function (row) {
+        row.addEventListener('dragstart', function (e) { dragged = row; row.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; });
+        row.addEventListener('dragend', function () { row.style.opacity = ''; persist(); });
+        row.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          if (!dragged || dragged === row) return;
+          const apres = (e.clientY - row.getBoundingClientRect().top) > row.offsetHeight / 2;
+          if (apres) row.after(dragged); else row.before(dragged);
+        });
+      });
+      function persist() {
+        const emails = Array.from(list.querySelectorAll('.collab-row')).map(function (r) { return r.dataset.email; });
+        fetch("{{ url_for('.reordonner') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+          body: JSON.stringify({ tid: TID, emails: emails })
+        });
+      }
+    })();
+    </script>
+
+    {% if hors_trame %}
+    <h2 style="font-size:0.95em;">➕ Ajouter un collaborateur <span class="meta" style="font-weight:normal;">— a une fiche mais n'est pas sur cette trame</span></h2>
+    <div style="border:1px solid #cfe0cf; border-radius:10px; overflow:hidden; max-width:660px; margin-bottom:20px;">
+      {% for h in hors_trame %}
+      <div style="display:flex; align-items:center; gap:10px; padding:7px 12px;{% if not loop.first %} border-top:1px solid #e8f1e8;{% endif %}">
+        <span style="display:inline-block; width:13px; height:13px; border-radius:50%; background:{{ h.couleur }}; opacity:.5; flex:none;"></span>
+        <span style="flex:1; font-size:0.9em; color:#667;">{{ h.prenom }} {{ h.nom }}</span>
+        <form method="POST" action="{{ url_for('.toggle_collab_trame') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+          <input type="hidden" name="email" value="{{ h.email }}"><input type="hidden" name="action" value="ajouter">
+          <button type="submit" class="btn-mini vert">Inclure à la trame</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <h2 id="apercu" style="margin-bottom:8px; scroll-margin-top:14px;">👁️ Aperçu de la trame</h2>
+    <div class="semsel" style="margin-bottom:12px;">
+      {% for s in semaines %}
+      <a href="{{ url_for('.vue', onglet='trame', sem=s, trame=tid) }}#apercu" class="{{ 'actif' if s == sem else '' }}">Semaine {{ s }}</a>
+      {% endfor %}
+      <span class="meta" style="align-self:center; margin-left:8px;">{{ trame.nb_semaines }} semaines tournantes</span>
+    </div>
+    {% if frise %}
+    <div style="text-align:right; margin-bottom:6px;"><a href="{{ url_for('.imprimer_frise', tid=tid, sem=sem) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer la frise</a></div>
+    {% include '_frise.html' %}
+    <p class="meta" style="margin-top:8px;">Visualisation de la <strong>semaine {{ sem }}</strong> d'après les horaires saisis. Zone crème = heures d'ouverture. Pour modifier un collaborateur, clique sur <strong>Horaires</strong> dans la liste ci-dessus.</p>
+    {% endif %}
+
+    {# --- Suppression de la trame (tout en bas) --- #}
+    <hr style="border:none; border-top:1px solid #eee; margin:28px 0 14px;">
+    <div style="border:1px solid #f0c0c0; background:#fff6f6; border-radius:10px; padding:14px; max-width:660px;">
+      <strong style="color:#9C0006;">⚠️ Zone de suppression</strong>
+      <p class="meta" style="margin:6px 0 10px; color:#9C0006;">Toute suppression est <strong>définitive et irréversible</strong> : la trame et tous ses horaires seront perdus, sans possibilité de récupération.</p>
+      <form method="POST" action="{{ url_for('.supprimer_trame') }}" onsubmit="return confirm('Supprimer DÉFINITIVEMENT cette trame et tous ses horaires ? Cette action est irréversible.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tid" value="{{ tid }}">
+        <button type="submit" class="btn" style="background:#C0392B;">🗑 Supprimer définitivement cette trame</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="meta">↑ Crée une trame ci-dessus pour pouvoir saisir ses horaires.</p>
+    {% endif %}
+
+  {# ===================== SOUS-ONGLETS À VENIR ===================== #}
+  {% else %}
+    <div class="stub">
+      <p style="font-size:1.1em;">🚧 « {% for c,l in onglets + sous_planning %}{% if c==onglet %}{{ l }}{% endif %}{% endfor %} » — à venir.</p>
+      <p class="meta" style="margin-top:8px;">Prévu : {{
+        {'effectifs':'effectifs minimums par créneau + contrôle pharmacien',
+         'changements':'journal des absences / heures sup',
+         'totaux':'planifié vs réel (relevés) + fin de mois sur la période 25→24',
+         'options':'filtres d''affichage'}.get(onglet, '') }}.</p>
+    </div>
+  {% endif %}
+</div>
+<script>
+  // Masque heure HH:MM + passage auto à la case suivante (horaires d'ouverture).
+  (function () {
+    var inputs = Array.prototype.slice.call(document.querySelectorAll('input[placeholder="HH:MM"]'));
+    inputs.forEach(function (inp, i) {
+      inp.addEventListener('input', function () {
+        var d = inp.value.replace(/\D/g, '').slice(0, 4);
+        inp.value = d.length <= 2 ? d : d.slice(0, 2) + ':' + d.slice(2);
+        if (d.length === 4 && inputs[i + 1]) inputs[i + 1].focus();
+      });
+    });
+  })();
+</script>
+</body>
+</html>

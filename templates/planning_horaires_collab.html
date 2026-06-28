@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horaires — {{ emp.prenom }} {{ emp.nom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 18px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 920px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+    .titre { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    h1 { color: #1F4E79; font-size: 1.2em; }
+    .sub { color: #889; font-size: 0.82em; margin-bottom: 16px; }
+    .actions a { font-size: 0.78em; padding: 6px 12px; border-radius: 7px; text-decoration: none; margin-left: 4px; display: inline-block; }
+    .a-impr { background: #2E75B6; color: white; } .a-impr:hover { background: #1F4E79; }
+    .a-retour { background: #eef2f8; color: #1F4E79; border: 1px solid #d4deeb; }
+    .msg { padding: 9px 14px; border-radius: 8px; font-size: 0.86em; margin-bottom: 14px; background: #C6EFCE; color: #276221; }
+    .copier { background: #f7f9fc; border: 1px solid #dde3ed; border-radius: 9px; padding: 10px 14px; margin-bottom: 18px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .copier select { padding: 7px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85em; }
+    .sem { margin-bottom: 20px; }
+    .sem h2 { color: #1F4E79; font-size: 1em; margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; max-width: 640px; font-size: 0.86em; }
+    th, td { border: 1px solid #e3e9f1; padding: 5px 8px; }
+    th { background: #1F4E79; color: white; text-align: left; }
+    td.jour { background: #f5f8fc; font-weight: bold; color: #1F4E79; white-space: nowrap; width: 110px; }
+    .cre { display: inline-flex; gap: 3px; align-items: center; margin-right: 10px; }
+    .cre input { width: 70px; padding: 3px 5px; border: 1px solid #ccd4e0; border-radius: 5px; font-size: 0.95em; }
+    .cre input[type=time]::-webkit-calendar-picker-indicator { display: none; }   /* masque la pendule */
+    .cre input[type=time]::-webkit-inner-spin-button { display: none; }
+    .raz { font-size: 0.78em; color: #9C0006; cursor: pointer; text-decoration: underline; background: none; border: none; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 11px 22px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.95em; }
+    .btn:hover { background: #163d60; }
+    .btn-sec { background: #1F7A3D; }
+    .copsem { margin-left: 10px; font-size: 0.72em; font-weight: normal; background: #eef2f8; color: #1F4E79; border: 1px solid #d4deeb; border-radius: 6px; padding: 3px 10px; cursor: pointer; vertical-align: middle; }
+    .copsem:hover { background: #e0e8f4; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <div class="titre"><span class="dot" style="background:{{ couleur }};"></span><h1>{{ emp.prenom }} {{ emp.nom }}</h1></div>
+    <div class="actions">
+      <a class="a-impr" href="{{ url_for('.imprimer_collaborateur', tid=tid, email=emp.email, format='texte') }}" target="_blank" rel="noopener">📄 Texte imprimable</a>
+      <a class="a-impr" href="{{ url_for('.imprimer_collaborateur', tid=tid, email=emp.email, format='grille') }}" target="_blank" rel="noopener">🗒️ Grille imprimable</a>
+      <a class="a-retour" href="{{ url_for('.vue', onglet='trame', trame=tid) }}">← Retour</a>
+    </div>
+  </div>
+  <div class="sub">Trame du {{ trame.date_demarrage or trame.cree_le or '—' }}{% if trame.commentaire %} · {{ trame.commentaire }}{% endif %}</div>
+
+  <div style="margin-bottom:16px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <label style="font-size:0.85em; color:#555; font-weight:bold;">Collaborateur :</label>
+    <select onchange="location.href=this.value" style="padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:220px;">
+      {% for t in tous %}
+      <option value="{{ url_for('.vue', onglet='trame', trame=tid, horaires=t.email) }}" {% if t.email == emp.email %}selected{% endif %}>{{ t.prenom }} {{ t.nom }}</option>
+      {% endfor %}
+    </select>
+    <span class="meta" style="color:#9aa7b5; font-size:0.78em;">← change de personne</span>
+  </div>
+
+  {% if msg == 'horaires_ok' %}<div class="msg">Horaires enregistrés.</div>{% endif %}
+  {% if msg == 'copie_sem_ok' %}<div class="msg">Semaine copiée et enregistrée.</div>{% endif %}
+
+  <form method="POST" action="{{ url_for('.enregistrer_horaires_collab') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="email" value="{{ emp.email }}">
+    {% for w in weeks %}
+    {% set autre = 'B' if w.sem == 'A' else 'A' %}
+    <div class="sem">
+      <h2>Semaine {{ w.sem }} <span style="color:#1F7A3D;">({{ "%g"|format(w.total) }}h)</span>
+        <button type="submit" class="copsem" formaction="{{ url_for('.copier_semaine') }}" name="copier_sens" value="{{ w.sem }}:{{ autre }}">⧉ copier vers Semaine {{ autre }}</button>
+      </h2>
+      <table>
+        <tbody>
+          {% for j in w.jours %}
+          <tr>
+            <td class="jour">{{ j.nom }}</td>
+            <td>
+              {% for s in [0,1] %}
+              <span class="cre">
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h__{{ w.sem }}__{{ j.iso }}__{{ s }}__debut" value="{{ j.creneaux[s].debut }}">
+                <span>–</span>
+                <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h__{{ w.sem }}__{{ j.iso }}__{{ s }}__fin" value="{{ j.creneaux[s].fin }}">
+              </span>
+              {% endfor %}
+              <button type="button" class="raz" onclick="for(const i of this.parentNode.querySelectorAll('input')) i.value='';">remise à zéro</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+    <button class="btn btn-sec" type="submit">💾 Valider les modifications</button>
+  </form>
+  <p class="meta" style="margin-top:8px; color:#9aa7b5; font-size:0.78em;">« copier vers Semaine X » enregistre directement ce qui est à l'écran et recopie la semaine — pas besoin de valider ensuite.</p>
+</div>
+<script>
+  // Masque heure HH:MM + passage auto à la case suivante quand c'est rempli.
+  (function () {
+    var inputs = Array.prototype.slice.call(document.querySelectorAll('input[placeholder="HH:MM"]'));
+    inputs.forEach(function (inp, i) {
+      inp.addEventListener('input', function () {
+        var d = inp.value.replace(/\D/g, '').slice(0, 4);
+        inp.value = d.length <= 2 ? d : d.slice(0, 2) + ':' + d.slice(2);
+        if (d.length === 4 && inputs[i + 1]) inputs[i + 1].focus();   // case suivante
+      });
+    });
+  })();
+</script>
+</body>
+</html>

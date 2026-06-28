@@ -54,9 +54,21 @@ def csrf_token():
         session["_csrf_token"] = tok
     return tok
 
+# Palette de couleurs imposée pour le planning d'équipe (pastilles des collaborateurs).
+PALETTE_PLANNING = [
+    "#2E86C1", "#28B463", "#CB4335", "#8E44AD", "#D68910", "#16A085",
+    "#2C3E50", "#E74C3C", "#1ABC9C", "#9B59B6", "#F39C12", "#34495E",
+    "#27AE60", "#C0392B", "#2980B9", "#7D3C98",
+]
+
+def couleur_collaborateur(profil, index=0):
+    """Couleur d'un collaborateur : celle choisie dans son profil, sinon auto par index."""
+    c = (profil or {}).get("couleur_planning", "") if isinstance(profil, dict) else ""
+    return c or PALETTE_PLANNING[index % len(PALETTE_PLANNING)]
+
 @app.context_processor
 def _injecter_csrf():
-    return {"csrf_token": csrf_token}
+    return {"csrf_token": csrf_token, "PALETTE_PLANNING": PALETTE_PLANNING}
 
 @app.before_request
 def _verifier_csrf():
@@ -613,6 +625,9 @@ PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 # Champs du profil RH (clé interne -> libellé affiché)
 CHAMPS_PROFIL = [
     ("poste", "Poste / fonction"),
+    ("fonction_planning", "Fonction (planning)"),   # Pharmacien / Préparateur / Autre
+    ("couleur_planning", "Couleur (planning)"),      # pastille sur la frise
+    ("heures_contractuelles_hebdo", "Heures contractuelles / semaine"),
     ("code_operateur", "Code opérateur"),
     ("rpps", "N° RPPS"),
     ("type_contrat", "Type de contrat"),
@@ -2614,6 +2629,8 @@ import sys as _sys
 _sys.modules.setdefault("app", _sys.modules[__name__])
 from recrutement import bp as recrutement_bp  # noqa: E402
 app.register_blueprint(recrutement_bp)
+from planning_equipe import bp as planning_equipe_bp  # noqa: E402
+app.register_blueprint(planning_equipe_bp)
 
 
 if __name__ == "__main__":
