@@ -8,19 +8,24 @@ formulaire /admin/recrutement/promesse ; ce module ne fait que composer.
 import io
 from datetime import datetime, timedelta
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_JUSTIFY
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                TableStyle)
+# reportlab est importé PARESSEUSEMENT (dans generer_pdf_promesse) : s'il manque
+# côté serveur (piège python3.12 / pip --user), seule la génération du PDF
+# échoue — le site, le formulaire et l'aperçu restent fonctionnels.
 
-VERT_APOTHICAL = colors.HexColor("#1c4532")
-GRIS_TEXTE = colors.HexColor("#222222")
+VERT_HEX = "#1c4532"
+GRIS_HEX = "#222222"
 
 CIVILITES = ["Madame", "Monsieur", "Mademoiselle"]
 TYPES_CONTRAT = ["CDD", "CDI"]
+
+
+def reportlab_disponible():
+    """Témoin healthcheck : True si la génération PDF est possible."""
+    try:
+        import reportlab  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def valeurs_par_defaut(candidat=None):
@@ -94,9 +99,12 @@ def paragraphes_courrier(p):
 
 
 def _bandeau(canvas, doc):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
     canvas.saveState()
     largeur, hauteur = A4
-    canvas.setFillColor(VERT_APOTHICAL)
+    canvas.setFillColor(colors.HexColor(VERT_HEX))
     canvas.rect(0, hauteur - 1.6 * cm, largeur, 1.6 * cm, stroke=0, fill=1)
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 9)
@@ -108,6 +116,14 @@ def _bandeau(canvas, doc):
 
 def generer_pdf_promesse(p):
     """Compose le PDF et renvoie un BytesIO prêt pour send_file."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_JUSTIFY
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle)
+    GRIS_TEXTE = colors.HexColor(GRIS_HEX)
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             topMargin=2.6 * cm, bottomMargin=1.8 * cm,

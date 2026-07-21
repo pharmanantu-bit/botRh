@@ -9,6 +9,7 @@ import hashlib
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
 from werkzeug.utils import secure_filename
+import promesse_embauche  # léger : n'importe PAS reportlab au chargement
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -2609,6 +2610,7 @@ def healthcheck():
     info["secrets_par_defaut"] = {k: (os.getenv(k) in (None, "", v)) for k, v in _defauts.items()}
     info["crypto_au_repos"] = bool((os.getenv("BOTRH_CRYPTO_KEY") or "").strip())
     info["securite_ok"] = not any(info["secrets_par_defaut"].values())
+    info["pdf_promesse"] = promesse_embauche.reportlab_disponible()
 
     if request.args.get("github") == "1":
         import urllib.request
