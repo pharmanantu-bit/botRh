@@ -5,6 +5,7 @@ PythonAnywhere oubliée). N'envoie un mail QUE si le site est en panne.
 Lancé par GitHub Actions (le runner a un accès Internet ; il peut envoyer du
 SMTP, contrairement au serveur).
 """
+import json
 import os
 import smtplib
 import urllib.request
@@ -27,6 +28,13 @@ except Exception as e:
 
 if ok:
     print("Site en ligne, rien à signaler.")
+    # Témoins de santé (booléens non sensibles) pour lecture dans les logs Actions.
+    try:
+        temoin = json.loads(contenu)
+        for cle_t in ("securite_ok", "crypto_au_repos", "pdf_promesse"):
+            print(f"  {cle_t} : {temoin.get(cle_t, '(absent)')}")
+    except ValueError:
+        pass
     raise SystemExit(0)
 
 print(f"Site injoignable ({detail}) — envoi de l'alerte.")
