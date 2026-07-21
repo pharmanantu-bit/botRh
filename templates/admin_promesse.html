@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promesse d'embauche — {{ c.prenom }} {{ c.nom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 26px; max-width: 1100px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    h1 { color: #1F4E79; font-size: 1.35em; }
+    h2 { color: #1F4E79; font-size: 1em; margin: 0 0 10px; }
+    .retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .msg { padding: 9px 14px; border-radius: 8px; font-size: 0.86em; margin-bottom: 14px; }
+    .msg-ok { background: #C6EFCE; color: #276221; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    label { font-size: 0.8em; color: #555; display: block; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; font-family: inherit; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+    .btn-vert { background: #1c4532; } .btn-vert:hover { background: #143324; }
+    .deux-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .deux-col { grid-template-columns: 1fr; } }
+    .apercu { background: #fbfcfe; border: 1px solid #dde3ed; border-radius: 10px; padding: 20px; font-size: 0.82em; line-height: 1.55; color: #333; }
+    .apercu .bande { background: #1c4532; color: white; margin: -20px -20px 16px; padding: 8px 14px; border-radius: 9px 9px 0 0; font-size: 0.85em; font-weight: bold; letter-spacing: 1px; }
+    .apercu p { margin-bottom: 10px; text-align: justify; }
+    .apercu .droite { text-align: right; }
+    .apercu .sig { display: flex; justify-content: space-between; margin-top: 24px; gap: 10px; }
+    .aide { color: #9aa7b5; font-size: 0.78em; margin-top: 4px; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>📄 Promesse d'embauche — {{ c.prenom }} {{ c.nom|upper }}</h1>
+    <a class="retour" href="{{ retour }}">← Retour à la fiche</a>
+  </div>
+
+  {% if msg == 'promesse_ok' %}<div class="msg msg-ok">Champs enregistrés — l'aperçu est à jour.</div>{% endif %}
+
+  <form method="POST" action="/admin/recrutement/promesse">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="id" value="{{ cid }}">
+    <input type="hidden" name="email" value="{{ email }}">
+    <div class="deux-col">
+      <div>
+        <div class="bloc">
+          <h2>Candidat</h2>
+          <div class="grid">
+            <div><label>Civilité</label>
+              <select name="civilite">{% for civ in civilites %}<option {% if p.civilite == civ %}selected{% endif %}>{{ civ }}</option>{% endfor %}</select></div>
+            <div><label>Prénom</label><input name="prenom" value="{{ p.prenom }}"></div>
+            <div><label>Nom</label><input name="nom" value="{{ p.nom }}"></div>
+            <div><label>Poste (en qualité de…)</label><input name="poste" value="{{ p.poste }}" placeholder="Préparatrice en pharmacie"></div>
+          </div>
+        </div>
+
+        <div class="bloc">
+          <h2>Contrat</h2>
+          <div class="grid">
+            <div><label>Type de contrat</label>
+              <select name="type_contrat">{% for t in types_contrat %}<option {% if p.type_contrat == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+            <div><label>Durée (si CDD)</label><input name="duree_contrat" value="{{ p.duree_contrat }}" placeholder="6 mois"></div>
+            <div><label>Début du contrat</label><input name="date_debut" value="{{ p.date_debut }}" placeholder="1er Septembre 2026"></div>
+            <div><label>Salaire mensuel brut</label><input name="salaire_brut" value="{{ p.salaire_brut }}" placeholder="2 308 €"></div>
+            <div><label>Heures mensuelles</label><input name="heures_mensuelles" value="{{ p.heures_mensuelles }}"></div>
+            <div><label>Précision temps de travail</label><input name="temps_precision" value="{{ p.temps_precision }}"></div>
+            <div><label>Convention collective</label><input name="convention" value="{{ p.convention }}"></div>
+            <div><label>Promesse valable jusqu'au</label><input name="validite" value="{{ p.validite }}"></div>
+          </div>
+        </div>
+
+        <div class="bloc">
+          <h2>Pharmacie & signature</h2>
+          <div class="grid">
+            <div><label>Nom de la pharmacie</label><input name="pharmacie_nom" value="{{ p.pharmacie_nom }}"></div>
+            <div><label>Adresse</label><input name="pharmacie_adresse" value="{{ p.pharmacie_adresse }}"></div>
+            <div><label>CP + Ville</label><input name="pharmacie_cp_ville" value="{{ p.pharmacie_cp_ville }}"></div>
+            <div><label>Téléphone</label><input name="pharmacie_tel" value="{{ p.pharmacie_tel }}"></div>
+            <div><label>Siret</label><input name="pharmacie_siret" value="{{ p.pharmacie_siret }}"></div>
+            <div><label>Signataires</label><input name="gerants" value="{{ p.gerants }}"></div>
+            <div><label>Titre des signataires</label><input name="gerants_titre" value="{{ p.gerants_titre }}"></div>
+            <div><label>Date du courrier</label><input name="date_courrier" value="{{ p.date_courrier }}"></div>
+          </div>
+        </div>
+
+        <button class="btn" type="submit" name="action" value="enregistrer">💾 Enregistrer & rafraîchir l'aperçu</button>
+        <button class="btn btn-vert" type="submit" name="action" value="pdf">📄 Générer le PDF</button>
+        <div class="aide">Les champs sont conservés sur la fiche candidat : tu peux revenir corriger et régénérer le PDF autant de fois que nécessaire.</div>
+      </div>
+
+      <div class="apercu">
+        <div class="bande">APOTHICAL — PROMESSE D'EMBAUCHE (aperçu)</div>
+        <p>{{ p.pharmacie_nom }}<br>{{ p.pharmacie_adresse }}<br>{{ p.pharmacie_cp_ville }}<br>{{ p.pharmacie_tel }}<br>Siret : {{ p.pharmacie_siret }}</p>
+        <p class="droite">À l'attention de<br>{{ p.civilite }} {{ p.nom|upper }}<br>{{ p.prenom }}</p>
+        <p class="droite">Le {{ p.date_courrier }}</p>
+        <p><b>Objet : Promesse d'embauche.</b></p>
+        <p>{{ p.prenom }},</p>
+        {% for par in apercu %}<p>{{ par|replace('<b>', '')|replace('</b>', '') }}</p>{% endfor %}
+        <div class="sig">
+          <span>{{ p.gerants }}<br>{{ p.gerants_titre }}</span>
+          <span>{{ p.civilite }} {{ p.prenom|upper }} {{ p.nom|upper }}<br>lu et approuvé + signature</span>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+</body>
+</html>

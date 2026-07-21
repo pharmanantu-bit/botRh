@@ -910,6 +910,7 @@ def admin_employes():
             "manquants": docs_manquants(e["email"]),
             "statut": profil.get("statut", "actif"),
             "photo": profil.get("photo"),
+            "releves_actif": bool(profil.get("releves_actif", True)),
         }
         (archives if info["statut"] == "archive" else actifs).append(info)
 
@@ -2351,16 +2352,55 @@ def export_reponses():
                               mimetype="application/json")
 
 
+def releves_actif(profil):
+    """True si l'employé est dans la boucle des relevés d'heures. Absent = actif
+    (comportement historique) ; les archivés sont toujours exclus."""
+    if profil.get("statut", "actif") == "archive":
+        return False
+    return bool(profil.get("releves_actif", True))
+
+
 @app.route("/export_employes")
 def export_employes():
     """Renvoie la liste des employés gérée via l'admin, pour que les envois
     (GitHub Actions) utilisent toujours la liste à jour. Le serveur est la
-    source unique de vérité. Clé requise."""
+    source unique de vérité. Clé requise. Exclut les profils archivés et ceux
+    dont les relevés d'heures sont désactivés (releves_actif = False)."""
     cle = request.args.get("cle", "")
     if cle != API_CLE:
         abort(403)
-    return app.response_class(json.dumps(charger_employes(), ensure_ascii=False),
+    profils = charger_profils()
+    employes = [e for e in charger_employes()
+                if releves_actif(profils.get(e["email"], {}))]
+    return app.response_class(json.dumps(employes, ensure_ascii=False),
                               mimetype="application/json")
+
+
+@app.route("/admin/employe/releves-actif", methods=["POST"])
+def admin_employe_releves_actif():
+    """Bouton fiche salarié : inclut/retire l'employé de la boucle des relevés."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    profil = profils.get(email, {})
+    actif = request.form.get("actif") == "1"
+    profil["releves_actif"] = actif
+    journal = profil.setdefault("journal", [])
+    journal.append({
+        "id": uuid.uuid4().hex[:8],
+        "date": datetime.now().strftime("%d/%m/%Y"),
+        "type": "Autre",
+        "note": ("✅ Relevés d'heures ACTIVÉS (inclus dans les envois mensuels)."
+                 if actif else
+                 "⏸ Relevés d'heures désactivés (exclu des envois mensuels et relances)."),
+    })
+    profils[email] = profil
+    sauvegarder_profils(profils)
+    return redirect(request.form.get("retour") or url_for("admin_employe", email=email))
 
 
 def _lire_fichiers_dossier(dossier, ignore=()):

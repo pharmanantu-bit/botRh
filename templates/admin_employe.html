@@ -148,6 +148,22 @@
 
   <div class="fiche-actions">
     <a href="/admin/employe/attestation?email={{ emp.email|urlencode }}" target="_blank" class="fa-btn fa-attest">📄 Attestation de travail</a>
+    <a href="/admin/recrutement/promesse?email={{ emp.email|urlencode }}" class="fa-btn" style="background:#1c4532; color:white;">📄 Promesse d'embauche</a>
+    {% set rel_actif = profil.get('releves_actif', True) and statut != 'archive' %}
+    <form method="POST" action="/admin/employe/releves-actif" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" value="{{ emp.email }}">
+      <input type="hidden" name="actif" value="{{ '0' if rel_actif else '1' }}">
+      {% if rel_actif %}
+      <button type="submit" class="fa-btn" style="background:#C6EFCE; color:#276221;"
+              title="Cet employé reçoit les relevés d'heures mensuels. Cliquer pour le retirer de la boucle."
+              onclick="return confirm('Retirer cet employé des envois de relevés d\'heures ?');">🕒 Relevés : ACTIF</button>
+      {% else %}
+      <button type="submit" class="fa-btn" style="background:#FFF3D6; color:#9C6500;"
+              title="Cet employé est exclu des relevés d'heures mensuels. Cliquer pour l'inclure."
+              onclick="return confirm('Inclure cet employé dans les envois de relevés d\'heures ?');">⏸ Relevés : NON ACTIF</button>
+      {% endif %}
+    </form>
     <a href="/admin/employe/export?email={{ emp.email|urlencode }}" class="fa-btn fa-export">⬇️ Exporter le dossier (ZIP)</a>
     {% if statut == 'archive' %}
     <form method="POST" action="/admin/employe/statut" style="display:inline;">

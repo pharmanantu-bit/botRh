@@ -22,6 +22,7 @@ import extraction_pj
 import recrutement_ia
 import crypto_rh          # chiffrement au repos du cv_texte (même traitement que l'IBAN)
 import rgpd_recrutement   # durée de conservation, anonymisation, mention d'information
+import promesse_embauche  # courrier « promesse d'embauche » : défauts + PDF
 
 bp = Blueprint("recrutement", __name__)
 
@@ -801,6 +802,9 @@ def embaucher():
     profils = charger_profils()
     prof = profils.get(email, {})
     prof.setdefault("statut", "actif")
+    # Nouvel embauché : PAS encore dans la boucle des relevés d'heures — à
+    # activer à la main (fiche salarié) quand il prend réellement ses fonctions.
+    prof.setdefault("releves_actif", False)
     if c.get("poste_vise"):
         prof.setdefault("poste", c["poste_vise"])
     if c.get("telephone"):
@@ -866,3 +870,84 @@ def dossier_zip():
     buf.seek(0)
     nom = secure_filename(f"dossier_{c.get('prenom', '')}_{c.get('nom', '')}") or "dossier"
     return send_file(buf, as_attachment=True, download_name=f"{nom}.zip", mimetype="application/zip")
+
+
+# --- Promesse d'embauche : formulaire (tous champs modifiables) + PDF ---
+# Deux points d'entrée : ?id=<candidat> (Recrutement) ou ?email=<salarié>
+# (fiche Équipe & RH). Les valeurs saisies sont conservées sur la fiche.
+
+def _cible_promesse(cid, email):
+    """Renvoie (source_prefill, promesse_sauvée, lien_retour) selon la cible."""
+    if cid:
+        c = charger_candidats().get(cid)
+        if not c:
+            abort(404)
+        return c, (c.get("promesse") or {}), url_for(".candidat", id=cid)
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    profil = charger_profils().get(email, {})
+    source = {"nom": emp.get("nom", ""), "prenom": emp.get("prenom", ""),
+              "poste_vise": profil.get("poste", "")}
+    return source, (profil.get("promesse") or {}), url_for("admin_employe", email=email)
+
+
+@bp.route("/admin/recrutement/promesse")
+def promesse():
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.args.get("id", "")
+    email = request.args.get("email", "")
+    source, sauve, retour = _cible_promesse(cid, email)
+    p = promesse_embauche.valeurs_par_defaut(source)
+    p.update(sauve)
+    return render_template("admin_promesse.html", c=source, cid=cid, email=email,
+                           retour=retour, p=p,
+                           civilites=promesse_embauche.CIVILITES,
+                           types_contrat=promesse_embauche.TYPES_CONTRAT,
+                           apercu=promesse_embauche.paragraphes_courrier(p),
+                           msg=request.args.get("msg", ""))
+
+
+@bp.route("/admin/recrutement/promesse", methods=["POST"])
+def promesse_post():
+    if not _admin():
+        return redirect(url_for("admin"))
+    cid = request.form.get("id", "")
+    email = request.form.get("email", "")
+    source, sauve, _retour = _cible_promesse(cid, email)
+    p = promesse_embauche.valeurs_par_defaut(source)
+    p.update(sauve)
+    for champ in promesse_embauche.CHAMPS_PROMESSE:
+        if champ in request.form:
+            p[champ] = request.form.get(champ, "").strip()
+    generer = request.form.get("action") == "pdf"
+    trace = {
+        "id": uuid.uuid4().hex[:8],
+        "date": datetime.now().strftime("%d/%m/%Y"),
+        "type": "Décision RH",
+        "note": f"📄 Promesse d'embauche générée ({p.get('type_contrat')}, "
+                f"{p.get('poste') or 'poste non précisé'}, "
+                f"valable jusqu'au {p.get('validite') or '—'}).",
+    }
+    if cid:
+        candidats = charger_candidats()
+        candidats[cid]["promesse"] = p
+        if generer:
+            candidats[cid].setdefault("journal", []).append(trace)
+        sauvegarder_candidats(candidats)
+    else:
+        profils = charger_profils()
+        profil = profils.get(email, {})
+        profil["promesse"] = p
+        if generer:
+            profil.setdefault("journal", []).append(trace)
+        profils[email] = profil
+        sauvegarder_profils(profils)
+    if generer:
+        buf = promesse_embauche.generer_pdf_promesse(p)
+        nom = secure_filename(f"promesse_embauche_{p.get('prenom', '')}_{p.get('nom', '')}") \
+            or "promesse_embauche"
+        return send_file(buf, as_attachment=True, download_name=f"{nom}.pdf",
+                         mimetype="application/pdf")
+    return redirect(url_for(".promesse", id=cid, email=email, msg="promesse_ok"))
