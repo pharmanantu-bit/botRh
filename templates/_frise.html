@@ -12,7 +12,7 @@
     {% for l in j.lignes %}
     <div class="fr-row{% if j.date_iso %} fr-clic{% endif %}"
       {% if j.date_iso %}data-email="{{ l.email }}" data-date="{{ j.date_iso }}" data-jour="{{ j.nom }}" data-prenom="{{ l.prenom }}" data-creneaux='{{ l.creneaux|tojson }}' data-trame='{{ l.creneaux_trame|tojson }}' data-motif="{{ l.motif }}"{% endif %}>
-      <div class="fr-label">{% if l.marque %}<span title="{{ l.marque_titre }}" style="color:{{ {'rouge': '#C0392B', 'bleu': '#2E75B6', 'orange': '#E67E22', 'gris': '#95A5A6'}[l.marque] }}; font-size:0.9em;">◆</span> {% endif %}{{ l.prenom }}</div>
+      <div class="fr-label">{{ l.prenom }}{% if l.marque %}<span title="{{ l.marque_titre }}" style="color:{{ {'rouge': '#C0392B', 'bleu': '#2E75B6', 'orange': '#E67E22', 'gris': '#95A5A6'}[l.marque] }}; font-size:0.9em; margin-left:auto;">◆</span>{% endif %}</div>
       <div class="fr-track">
         {% for o in j.ouverture %}<div class="fr-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
         {% for t in frise.ticks %}<div class="fr-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
