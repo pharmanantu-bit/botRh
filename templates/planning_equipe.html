@@ -365,10 +365,11 @@
         <input type="hidden" name="email" value="{{ selected.email }}">
         <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
           <div>
-            <label style="font-size:0.8em; color:#555; display:block; margin-bottom:3px;">Fonction</label>
-            <select name="fonction_planning" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:190px;">
+            <label style="font-size:0.8em; color:#555; display:block; margin-bottom:3px;">Poste / fonction <span style="color:#999;">(= dossier salarié)</span></label>
+            <select name="poste" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; min-width:190px;">
               <option value="">—</option>
               {% for f in fonctions %}<option value="{{ f }}" {% if selected.fonction == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+              {% if selected.fonction and selected.fonction not in fonctions %}<option value="{{ selected.fonction }}" selected>{{ selected.fonction }} (ancien intitulé)</option>{% endif %}
             </select>
           </div>
           <div>

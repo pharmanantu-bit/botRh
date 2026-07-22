@@ -237,16 +237,16 @@
       <input type="hidden" name="email" value="{{ emp.email }}">
       <input type="hidden" name="annee" value="{{ annee }}">
       <div class="grille">
-        <label>Poste / fonction
-          <input type="text" name="poste" value="{{ profil.poste|default('') }}" placeholder="ex: Préparatrice">
-        </label>
-        <label>Fonction (planning)
-          <select name="fonction_planning">
-            {% set fp = profil.fonction_planning|default('') %}
-            <option value="" {% if not fp %}selected{% endif %}>—</option>
-            {% for opt in ['Pharmacien','Préparateur','Autre'] %}
-            <option value="{{ opt }}" {% if fp == opt %}selected{% endif %}>{{ opt }}</option>
+        <label>Poste / fonction <span style="font-weight:normal; color:#888; font-size:0.85em;">(dossier + planning)</span>
+          <select name="poste">
+            {% set p = profil.poste|default('') %}
+            <option value="" {% if not p %}selected{% endif %}>—</option>
+            {% for opt in postes %}
+            <option value="{{ opt }}" {% if p == opt %}selected{% endif %}>{{ opt }}</option>
             {% endfor %}
+            {% if p and p not in postes %}
+            <option value="{{ p }}" selected>{{ p }} (ancien intitulé)</option>
+            {% endif %}
           </select>
         </label>
         <label>Heures contractuelles / semaine

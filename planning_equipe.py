@@ -18,7 +18,7 @@ from flask import (Blueprint, request, render_template, redirect, url_for,
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes,
                  charger_profils, sauvegarder_profils, couleur_collaborateur,
-                 collaborateur_actif, PALETTE_PLANNING)
+                 collaborateur_actif, poste_de, POSTES, PALETTE_PLANNING)
 
 bp = Blueprint("planning_equipe", __name__)
 
@@ -451,8 +451,7 @@ ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
 # Effectifs & Options : sous-onglets internes de « Planning ».
 SOUS_PLANNING = [("planning", "Planning"), ("effectifs", "Effectifs"), ("options", "Options")]
 
-FONCTIONS = ["Pharmacien", "Préparateur", "Rayonniste", "Conseillère",
-             "Étudiant pharmacie", "Apprentie", "Ménage", "Autre"]
+FONCTIONS = POSTES   # référentiel unique : le champ `poste` du dossier salarié
 PERMISSIONS = ["Pas d'accès", "Consultation", "Gestionnaire", "Administrateur"]
 VUES_PLANNING = ["Le planning de tous", "Son planning personnel"]
 
@@ -726,7 +725,7 @@ def vue():
             prof = profils.get(e["email"], {})
             membres.append({
                 "email": e["email"], "prenom": e["prenom"], "nom": e["nom"],
-                "fonction": prof.get("fonction_planning", ""),
+                "fonction": poste_de(prof),
                 "couleur_choisie": prof.get("couleur_planning", ""),   # "" = auto
                 "couleur": couleurs[e["email"]],                       # effective (stable)
                 "a_email": bool((e["email"] or "").strip()),
@@ -1126,12 +1125,16 @@ def enregistrer_collab_equipe():
     if not _admin():
         return redirect(url_for("admin"))
     email = request.form.get("email", "")
-    fonc = request.form.get("fonction_planning", "")
+    fonc = request.form.get("poste", "")
     coul = (request.form.get("couleur_planning", "") or "").strip()
     auto = request.form.get("auto_couleur")
     profils = charger_profils()
     prof = profils.get(email, {})
-    prof["fonction_planning"] = fonc if fonc in FONCTIONS else ""
+    # Écrit dans le champ unique `poste` ; un ancien intitulé hors liste reste
+    # accepté tel quel (option « (ancien intitulé) » du menu déroulant).
+    if fonc in FONCTIONS or fonc == poste_de(prof) or not fonc:
+        prof["poste"] = fonc
+        prof.pop("fonction_planning", None)
     perm = request.form.get("permission_planning", "")
     vue = request.form.get("vue_planning", "")
     prof["permission_planning"] = perm if perm in PERMISSIONS else "Pas d'accès"
@@ -1159,7 +1162,9 @@ def enregistrer_equipe():
         fonc = request.form.get(f"fonc__{email}", "")
         coul = request.form.get(f"coul__{email}", "")
         prof = profils.get(email, {})
-        prof["fonction_planning"] = fonc if fonc in FONCTIONS else ""
+        if fonc in FONCTIONS or not fonc:
+            prof["poste"] = fonc
+            prof.pop("fonction_planning", None)
         prof["couleur_planning"] = coul if coul in PALETTE_PLANNING else ""
         profils[email] = prof
     sauvegarder_profils(profils)

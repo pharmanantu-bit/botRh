@@ -628,10 +628,15 @@ def sauvegarder_employes(employes):
 # --- Dossier salarié (données personnelles, fichier gitignoré, source = serveur) ---
 PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 
+# Intitulés de poste (menu déroulant) — champ UNIQUE `poste`, utilisé partout :
+# dossier salarié, cartes équipe, attestation ET planning équipe. Fusion de
+# l'ancien `fonction_planning` (encore lu en secours pour les anciens profils).
+POSTES = ["Pharmacien", "Préparateur", "Apprentie", "Étudiant",
+          "Conseillère", "Rayonniste", "Resp ménage"]
+
 # Champs du profil RH (clé interne -> libellé affiché)
 CHAMPS_PROFIL = [
     ("poste", "Poste / fonction"),
-    ("fonction_planning", "Fonction (planning)"),   # Pharmacien / Préparateur / Autre
     ("couleur_planning", "Couleur (planning)"),      # pastille sur la frise
     ("heures_contractuelles_hebdo", "Heures contractuelles / semaine"),
     ("code_operateur", "Code opérateur"),
@@ -801,8 +806,16 @@ def charger_profils():
 def sauvegarder_profils(profils):
     _ecrire_json(PROFILS_FILE, profils)
 
+def poste_de(profil):
+    """Intitulé de poste affiché partout — retombe sur l'ancien champ
+    `fonction_planning` pour les profils d'avant la fusion (2026-07)."""
+    return (profil.get("poste") or profil.get("fonction_planning") or "").strip()
+
+
 def profil_de(email):
-    return charger_profils().get(email, {})
+    profil = charger_profils().get(email, {})
+    profil["poste"] = poste_de(profil)   # copie isolée : sans effet sur le store
+    return profil
 
 
 # --- Documents RH (privés admin, stockés sur disque, gitignorés) ---
@@ -909,7 +922,7 @@ def admin_employes():
         profil = profils.get(e["email"], {})
         info = {
             **e,
-            "poste": profil.get("poste", ""),
+            "poste": poste_de(profil),
             "contrat": profil.get("type_contrat", ""),
             "nb_docs": len(idx_docs.get(e["email"], [])),
             "alertes": alertes_completes(e["email"], profil),
@@ -946,7 +959,7 @@ def admin_infos_equipe():
         profil = profils.get(e["email"], {})
         if profil.get("statut") == "archive":
             continue
-        poste = profil.get("poste", "")
+        poste = poste_de(profil)
         pl = poste.lower()
         cat = "titulaire" if "titulaire" in pl else ("pharmacien" if "pharmacien" in pl else "autre")
         equipe.append({
@@ -1389,6 +1402,7 @@ def admin_employe():
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
                            cumul_solde=round(cp - cm, 2),
                            profil=profil_de(email), champs_profil=CHAMPS_PROFIL,
+                           postes=POSTES,
                            documents=docs_de(email),
                            docs_par_famille=grouper_docs_par_famille(docs_de(email)),
                            familles_docs=FAMILLES_DOCS,
@@ -1568,6 +1582,7 @@ def admin_employe_profil():
     profil = profils.get(email, {})  # conserve les clés hors formulaire (ex: statut)
     for cle, _ in CHAMPS_PROFIL:
         profil[cle] = request.form.get(cle, "").strip()
+    profil.pop("fonction_planning", None)   # ancien champ, fusionné dans `poste`
     profils[email] = profil
     sauvegarder_profils(profils)
     return redirect(url_for("admin_employe", email=email, annee=request.form.get("annee", datetime.now().year)))
