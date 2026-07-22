@@ -360,7 +360,7 @@ def _pad2(creneaux):
 
 
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
-           lundi_date=None, changements=None, absences=None):
+           lundi_date=None, changements=None, absences=None, masquer_vides=False):
     horaires = trame.get("horaires_ouverture", HORAIRES_DEFAUT)
     amp_min, amp_max = _amplitude(horaires)
     span = amp_max - amp_min
@@ -404,6 +404,10 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     left, width = _pos(d, f, amp_min, span)
                     barres.append({"left": left, "width": width, "couleur": couleur,
                                    "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
+            # Option « Lignes vides : masquer » = ne montrer que les présents du jour
+            # (repos, absence ou jour vidé par un changement → ligne retirée).
+            if masquer_vides and not barres:
+                continue
             lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
                            "barres": barres, "total": total_jour(cr_eff),
                            "modifie": modifie, "motif": motif,
@@ -601,7 +605,8 @@ def vue():
                 v = {"sem": rot, "titre": titre}
                 if mode == "grille":
                     v["frise"] = _frise(act, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
-                                        lundi, changements, absences)
+                                        lundi, changements, absences,
+                                        masquer_vides=opts.get("lignes_vides") == "masquer")
                 elif mode == "texte":
                     v["texte"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
                                    "jours": [{"nom": JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m"),
