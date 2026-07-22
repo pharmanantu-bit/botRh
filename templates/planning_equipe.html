@@ -357,8 +357,13 @@
     {% endif %}{# fin not ponctuel #}
     {% else %}
     <div class="stub">
+      {% if avant_trame %}
+      <p style="font-size:1.05em;">Pas de planning sur cette semaine.</p>
+      <p class="meta" style="margin-top:6px;">La première trame activée démarre le <strong>{{ avant_trame }}</strong> — le planning est vide avant cette date (règle des trames : l'historique commence à la première trame).</p>
+      {% else %}
       <p style="font-size:1.05em;">Aucune trame active.</p>
       <p class="meta" style="margin-top:6px;">Va dans l'onglet <strong>Trame</strong>, crée une trame (ou sélectionne-en une) puis clique <strong>« Activer cette trame »</strong> : c'est elle qui alimente le planning.</p>
+      {% endif %}
     </div>
     {% endif %}
 

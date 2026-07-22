@@ -274,9 +274,8 @@ def trame_active_pour(data, jour):
     actives = sorted((t for t in data.get("trames", []) if t.get("activee")),
                      key=_debut_trame)
     en_vigueur = [t for t in actives if _debut_trame(t) <= lundi]
-    if en_vigueur:
-        return en_vigueur[-1]
-    return actives[0] if actives else None    # semaine antérieure à la 1re trame
+    # Avant le démarrage de la 1re trame activée : PAS de trame → planning vide.
+    return en_vigueur[-1] if en_vigueur else None
 
 
 def couleurs_map(employes_base, profils):
@@ -933,7 +932,14 @@ def vue():
                     "couleur": couleurs.get(em, "#888"), "motif": a.get("motif", "Non catégorisé"),
                     "debut": _fr_date(a.get("debut", "")), "fin": _fr_date(a.get("fin", "")),
                     "commentaire": a.get("commentaire", "")})
+        # Semaine antérieure au démarrage de la 1re trame activée → planning vide
+        # avec message dédié (et non « aucune trame active »).
+        debuts = [_debut_trame(t) for t in data.get("trames", []) if t.get("activee")]
+        avant_trame = ""
+        if act is None and debuts and min(debuts) > date.min:
+            avant_trame = min(debuts).strftime("%d/%m/%Y")
         ctx.update(trame=act, tid=act.get("id") if act else None, pas_active=act is None,
+                   avant_trame=avant_trame,
                    vues=vues, mode=mode, periode=periode, nav=nav, heures_reel=heures_reel,
                    motifs=MOTIFS, recap_chg=recap_chg, recap_collab=recap_collab,
                    ponctuel=ponctuel, saisie=saisie, ponctuel_jours=ponctuel_jours,
