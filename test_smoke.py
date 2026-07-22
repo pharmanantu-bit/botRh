@@ -59,6 +59,10 @@ routes_admin = [
     "/admin/planning-equipe?onglet=trame",
     "/admin/planning-equipe?onglet=trame&sem=B",
     "/admin/planning-equipe?onglet=effectifs",
+    "/admin/planning-equipe?onglet=changements",
+    "/admin/planning-equipe?onglet=totaux",
+    f"/admin/planning-equipe?onglet=totaux&mois={annee}-{int(mois):02d}",
+    "/admin/planning-equipe?onglet=totaux&mois=n_importe_quoi",
 ]
 if employes:
     routes_admin.append(f"/admin/employe?email={urllib.parse.quote(employes[0]['email'])}")

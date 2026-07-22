@@ -732,6 +732,86 @@
     </div>
     {% endif %}
 
+  {# ===================== ONGLET TOTAUX / FIN DE MOIS ===================== #}
+  {% elif onglet == 'totaux' %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
+      <h2 style="margin:0; font-size:1.1em;">Totaux {{ tot_mois_label }}
+        <span class="meta" style="font-weight:normal;">— {{ tot_nb_releves }} relevé{{ 's' if tot_nb_releves != 1 else '' }} reçu{{ 's' if tot_nb_releves != 1 else '' }}</span>
+        <select onchange="location.href=this.value" style="margin-left:8px; padding:6px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.85em;">
+          {% for m in tot_mois_list %}
+          <option value="{{ url_for('.vue', onglet='totaux', mois=m.val) }}" {% if m.val == tot_mois_sel %}selected{% endif %}>{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </h2>
+    </div>
+    <p class="meta" style="margin:0 0 14px;">
+      <strong>Planning</strong> = trame du mois ajustée des horaires ponctuels et absences ;
+      <strong>Relevé</strong> = heures déclarées par le collaborateur (H+ − H− = solde) ;
+      <strong>Écart</strong> = solde du relevé − solde du planning. Un écart nul signifie que le relevé
+      colle aux modifications du planning ; sinon, à vérifier ensemble à la fin du mois.
+    </p>
+
+    {% if pas_active %}
+    <div class="stub">
+      <p style="font-size:1.05em;">Aucune trame active.</p>
+      <p class="meta" style="margin-top:6px;">Va dans l'onglet <strong>Trame</strong>, crée une trame (ou sélectionne-en une) puis clique <strong>« Activer cette trame »</strong> : les totaux se calculent sur la trame active.</p>
+    </div>
+    {% elif not tot_lignes %}
+    <div class="stub">
+      <p style="font-size:1.05em;">Aucun collaborateur sur la trame active.</p>
+      <p class="meta" style="margin-top:6px;">Ajoute des collaborateurs depuis l'onglet <strong>Trame</strong>.</p>
+    </div>
+    {% else %}
+    <div style="overflow-x:auto;">
+      <table class="saisie" style="min-width:900px;">
+        <tr>
+          <th style="text-align:left;">Collaborateur</th>
+          <th title="Heures de la trame sur le mois">Trame (h)</th>
+          <th title="Trame ajustée des horaires ponctuels et absences">Ajusté (h)</th>
+          <th title="Ajusté − Trame">Solde planning</th>
+          <th>Jours modifiés</th>
+          <th>Relevé H+</th>
+          <th>Relevé H−</th>
+          <th title="H+ − H−">Solde relevé</th>
+          <th title="Solde relevé − Solde planning">Écart</th>
+          <th>Statut</th>
+        </tr>
+        {% for l in tot_lignes %}
+        <tr>
+          <td class="collab"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}</td>
+          <td>{{ "%g"|format(l.trame) }}</td>
+          <td>{{ "%g"|format(l.ajuste) }}</td>
+          <td style="{% if l.solde_plan > 0 %}color:#1F7A3D;{% elif l.solde_plan < 0 %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }}</td>
+          <td class="meta">{% if l.j_ponctuels %}{{ l.j_ponctuels }} ponctuel{{ 's' if l.j_ponctuels > 1 else '' }}{% endif %}{% if l.j_ponctuels and l.j_absents %} · {% endif %}{% if l.j_absents %}{{ l.j_absents }} absence{{ 's' if l.j_absents > 1 else '' }}{% endif %}{% if not l.j_ponctuels and not l.j_absents %}—{% endif %}</td>
+          {% if l.solde is not none %}
+          <td>{{ "%g"|format(l.plus) }}</td>
+          <td>{{ "%g"|format(l.moins) }}</td>
+          <td>{{ "%+g"|format(l.solde) if l.solde else "0" }}</td>
+          <td style="font-weight:bold; {% if l.coherent %}color:#1F7A3D;{% else %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.ecart) if l.ecart else "0" }}</td>
+          <td>{% if l.coherent %}<span style="color:#1F7A3D;">✅ Cohérent</span>{% else %}<span style="color:#C0392B;">⚠️ À vérifier</span>{% endif %}</td>
+          {% else %}
+          <td class="meta">—</td><td class="meta">—</td><td class="meta">—</td><td class="meta">—</td>
+          <td><span class="meta">⏳ Relevé en attente</span></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+        <tr style="background:#f5f8fc; font-weight:bold;">
+          <td class="collab">Total</td>
+          <td>{{ "%g"|format(tot_totaux.trame) }}</td>
+          <td>{{ "%g"|format(tot_totaux.ajuste) }}</td>
+          <td>{{ "%+g"|format(tot_totaux.solde_plan) if tot_totaux.solde_plan else "0" }}</td>
+          <td></td>
+          <td>{{ "%g"|format(tot_totaux.plus) }}</td>
+          <td>{{ "%g"|format(tot_totaux.moins) }}</td>
+          <td>{{ "%+g"|format(tot_totaux.solde) if tot_totaux.solde else "0" }}</td>
+          <td>{{ "%+g"|format(tot_totaux.ecart) if tot_totaux.ecart else "0" }}</td>
+          <td class="meta" style="font-weight:normal;">sur relevés reçus</td>
+        </tr>
+      </table>
+    </div>
+    <p class="meta" style="margin-top:10px;">💡 Les relevés sont déclarés par les collaborateurs jusqu'au 25 du mois — avant cette date, la colonne Relevé peut être incomplète. Consulte <a href="{{ url_for('admin_mois') }}" style="color:#1F4E79;">Relevés du mois</a> pour relancer.</p>
+    {% endif %}
+
   {# ===================== SOUS-ONGLETS À VENIR ===================== #}
   {% else %}
     <div class="stub">

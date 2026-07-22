@@ -843,6 +843,85 @@ def vue():
                    chg_total=sum(len(g["lignes"]) for g in groupes))
         return render_template("planning_equipe.html", **ctx)
 
+    if onglet == "totaux":
+        from app import charger_reponses, reponse_de, MOIS_FR
+        changements = charger_changements()
+        absences = charger_absences()
+        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
+        today = date.today()
+        mois_sel = request.args.get("mois") or today.strftime("%Y-%m")
+        try:
+            an, mo = int(mois_sel[:4]), int(mois_sel[5:7])
+            date(an, mo, 1)
+        except (ValueError, TypeError):
+            an, mo = today.year, today.month
+            mois_sel = today.strftime("%Y-%m")
+        nb_jours = calendar.monthrange(an, mo)[1]
+        reps = charger_reponses(mo, an) or {}
+        lignes, tot = [], {"trame": 0.0, "ajuste": 0.0, "solde_plan": 0.0,
+                           "plus": 0.0, "moins": 0.0, "solde": 0.0, "ecart": 0.0}
+        nb_releves = 0
+        for em in membres_ordonnes(act, employes_base):
+            e = emap[em]
+            h_trame = h_ajuste = 0.0
+            j_ponctuels = j_absents = 0
+            for k in range(1, nb_jours + 1):
+                d = date(an, mo, k)
+                cr_tr = creneaux_trame_jour(act, em, d)
+                ht = total_jour(cr_tr)
+                chg = changement_de(changements, d.isoformat(), em)
+                if chg is not None:
+                    crs = chg.get("creneaux", []) or []
+                    ha = total_jour(crs)
+                    if not meme_que_trame(crs, cr_tr):
+                        j_ponctuels += 1
+                elif absence_active(absences, em, d) is not None:
+                    ha = 0.0
+                    if ht > 0:
+                        j_absents += 1
+                else:
+                    ha = ht
+                h_trame += ht
+                h_ajuste += ha
+            h_trame, h_ajuste = round(h_trame, 2), round(h_ajuste, 2)
+            solde_plan = round(h_ajuste - h_trame, 2)
+            r = reponse_de(reps, e["prenom"], em)
+            if r:
+                plus = float(r.get("heures_plus", 0) or 0)
+                moins = float(r.get("heures_moins", 0) or 0)
+                solde = round(plus - moins, 2)
+                ecart = round(solde - solde_plan, 2)
+                nb_releves += 1
+                tot["plus"] += plus
+                tot["moins"] += moins
+                tot["solde"] += solde
+                tot["ecart"] += ecart
+            else:
+                plus = moins = solde = ecart = None
+            tot["trame"] += h_trame
+            tot["ajuste"] += h_ajuste
+            tot["solde_plan"] += solde_plan
+            lignes.append({"prenom": e["prenom"], "nom": e["nom"],
+                           "couleur": couleurs.get(em, "#888"),
+                           "trame": h_trame, "ajuste": h_ajuste,
+                           "solde_plan": solde_plan,
+                           "j_ponctuels": j_ponctuels, "j_absents": j_absents,
+                           "plus": plus, "moins": moins, "solde": solde,
+                           "ecart": ecart,
+                           "coherent": ecart is not None and abs(ecart) <= 0.01})
+        tot = {k: round(v, 2) for k, v in tot.items()}
+        # Sélecteur : les 12 derniers mois + le mois sélectionné.
+        mois_set = {(_ajoute_mois(today.replace(day=1), -k)).strftime("%Y-%m")
+                    for k in range(12)}
+        mois_set.add(mois_sel)
+        mois_list = [{"val": ym, "label": f"{MOIS_FR[int(ym[5:7])]} {ym[:4]}"}
+                     for ym in sorted(mois_set, reverse=True)]
+        ctx.update(tot_lignes=lignes, tot_totaux=tot, tot_nb_releves=nb_releves,
+                   tot_mois_list=mois_list, tot_mois_sel=mois_sel,
+                   tot_mois_label=f"{MOIS_FR[mo]} {an}",
+                   pas_active=act is None)
+        return render_template("planning_equipe.html", **ctx)
+
     # sous-onglets à venir
     return render_template("planning_equipe.html", **ctx)
 
