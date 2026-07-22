@@ -479,6 +479,18 @@ def _pad2(creneaux):
     return cr[:2]
 
 
+def _assombrir(couleur, k=0.42):
+    """Version foncée d'une couleur #RRGGBB (k = part de luminosité conservée).
+    Sert à afficher les horaires MODIFIÉS dans la couleur du collaborateur en
+    plus foncé, pour repérer la modification sur la grille."""
+    try:
+        h = (couleur or "").lstrip("#")
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return "#%02x%02x%02x" % (int(r * k), int(g * k), int(b * k))
+    except (ValueError, IndexError):
+        return "#333333"
+
+
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
            lundi_date=None, changements=None, absences=None, masquer_vides=False,
            masquer_fermes=False):
@@ -536,7 +548,11 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     d, f = _minutes(c["debut"]), _minutes(c["fin"])
                     left, width = _pos(d, f, amp_min, span)
                     barres.append({"left": left, "width": width, "couleur": couleur,
-                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
+                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else ""),
+                                   # Jour modifié : horaires dans la couleur du
+                                   # collaborateur en plus foncé (repérage visuel).
+                                   "txt": _assombrir(couleur) if modifie else "",
+                                   "gras": modifie})
             # Option « Lignes vides : masquer » = ne montrer que les présents du jour
             # (repos, absence ou jour vidé par un changement → ligne retirée).
             if masquer_vides and not barres:
