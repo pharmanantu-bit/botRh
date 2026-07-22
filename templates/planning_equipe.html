@@ -102,6 +102,7 @@
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
   {% if msg == 'effectifs_ok' %}<div class="msg">Effectifs minimums enregistrés.</div>{% endif %}
   {% if msg == 'conges_ok' %}<div class="msg">Droits de congés enregistrés.</div>{% endif %}
+  {% if msg == 'trame_protegee' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Impossible de supprimer une trame <strong>activée</strong> : elle sert à l'historique des plannings. Désactive-la d'abord si tu veux vraiment la supprimer.</div>{% endif %}
   {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
   {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
 
@@ -502,8 +503,9 @@
             <button class="btn" type="submit" style="background:#1F7A3D;">Activer cette trame</button>
             {% endif %}
           </form>
-          {% if trame.activee %}<span class="meta" style="color:#1F7A3D; font-weight:bold;">● Active — sert au planning</span>{% endif %}
+          {% if trame.activee %}<span class="meta" style="color:#1F7A3D; font-weight:bold;">● Activée — sert au planning à partir de sa date de démarrage</span>{% endif %}
           {% endif %}
+          <span class="meta" style="display:block; margin-top:6px;">Les trames <strong>activées</strong> se succèdent dans le temps : chaque semaine du planning utilise la trame activée la plus récente qui avait démarré. <strong>Ne désactive pas les anciennes trames</strong> — elles portent l'historique des plannings passés.</span>
         {% else %}
           <span class="meta">Aucune trame pour l'instant — crée-en une ci-dessus.</span>
         {% endif %}

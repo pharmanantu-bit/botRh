@@ -242,9 +242,9 @@ def trame_selectionnee(data, tid=None):
         t = trame_par_id(data, tid)
         if t:
             return t
-    for t in trames:
-        if t.get("activee"):
-            return t
+    act = trame_active_pour(data, date.today())   # trame en vigueur aujourd'hui
+    if act:
+        return act
     return trames[0] if trames else None
 
 
@@ -253,6 +253,30 @@ def _label_trame(t):
     com = (t.get("commentaire") or "").strip()
     actif = " — Activée" if t.get("activee") else " — désactivée"
     return f"{base}{(' · ' + com) if com else ''}{actif}"
+
+
+def _debut_trame(t):
+    """Lundi de la date de démarrage de la trame (date.min si absente)."""
+    try:
+        return _lundi(datetime.strptime(t.get("date_demarrage", ""), "%Y-%m-%d").date())
+    except (ValueError, TypeError):
+        return date.min
+
+
+def trame_active_pour(data, jour):
+    """RÈGLE MÉTIER : les trames ACTIVÉES se succèdent dans le temps et servent à
+    calculer le planning semaine après semaine — pour la semaine du jour donné,
+    on prend la trame activée dont la date de démarrage (ramenée au lundi) est la
+    plus récente ≤ ce lundi. Les trames non activées (brouillons) sont ignorées.
+    Les anciennes trames activées doivent être CONSERVÉES : sans elles,
+    l'historique des plannings serait perdu."""
+    lundi = _lundi(jour)
+    actives = sorted((t for t in data.get("trames", []) if t.get("activee")),
+                     key=_debut_trame)
+    en_vigueur = [t for t in actives if _debut_trame(t) <= lundi]
+    if en_vigueur:
+        return en_vigueur[-1]
+    return actives[0] if actives else None    # semaine antérieure à la 1re trame
 
 
 def couleurs_map(employes_base, profils):
@@ -669,13 +693,10 @@ def vue():
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "planning":
-        # Le planning suit TOUJOURS la trame ACTIVE (pas la trame éditée dans l'onglet Trame).
-        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
         opts = charger_options()
         changements = charger_changements()
         absences = charger_absences()
         masques = set(opts.get("collaborateurs_masques", []))
-        emp_base = [emap[em] for em in membres_ordonnes(act, employes_base) if em not in masques]
         jours_aff = [j for j in range(1, 8)
                      if str(j) in opts.get("jours", []) or not opts.get("jours")]
         montrer_h = opts.get("horaires_grille") != "masquer"
@@ -686,6 +707,10 @@ def vue():
             ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
         except (ValueError, TypeError):
             ref = date.today()
+        # Le planning suit la trame ACTIVÉE en vigueur pour la semaine consultée
+        # (les trames activées se succèdent : l'historique garde ses anciennes trames).
+        act = trame_active_pour(data, ref)
+        emp_base = [emap[em] for em in membres_ordonnes(act, employes_base) if em not in masques]
         # Lundis à afficher selon la période.
         if periode == "hebdo":
             lundis = [_lundi(ref)]
@@ -702,9 +727,10 @@ def vue():
             cur = _lundi(ref)
             for k in range(-2, 7):
                 L = cur + timedelta(days=7 * k)
+                tr_l = trame_active_pour(data, L)
                 nav["boutons"].append({"url": url_for(".vue", onglet="planning", date=L.isoformat()),
                                      "label": L.strftime("%d/%m"),
-                                     "sub": ("Sem. " + semaine_rotation(act, L)) if act else "",
+                                     "sub": ("Sem. " + semaine_rotation(tr_l, L)) if tr_l else "",
                                      "actif": L == cur})
         else:
             prem = ref.replace(day=1)
@@ -713,19 +739,22 @@ def vue():
                 nav["boutons"].append({"url": url_for(".vue", onglet="planning", date=m.isoformat()),
                                      "label": f"{MOIS_ABBR[m.month]} {m.year % 100:02d}", "sub": "",
                                      "actif": (m.year, m.month) == (ref.year, ref.month)})
-        # Vues (1 par semaine), rotation A/B calculée depuis la date.
+        # Vues (1 par semaine) : chaque semaine utilise la trame activée EN VIGUEUR
+        # à sa date (succession des trames), rotation A/B calculée depuis la date.
         vues = []
-        if act:
-            for lundi in lundis:
-                rot = semaine_rotation(act, lundi)
-                emp_sm = emp_base
+        for lundi in lundis:
+            act_l = trame_active_pour(data, lundi)
+            if act_l:
+                rot = semaine_rotation(act_l, lundi)
+                emp_sm = [emap[em] for em in membres_ordonnes(act_l, employes_base)
+                          if em not in masques]
                 if opts.get("lignes_vides") == "masquer":
-                    emp_sm = [e for e in emp_base if total_semaine(_jours_sem(act, e["email"], rot)) > 0]
+                    emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
                 fin = lundi + timedelta(days=6)
                 titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
                 v = {"sem": rot, "titre": titre}
                 if mode == "grille":
-                    v["frise"] = _frise(act, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
+                    v["frise"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
                                         lundi, changements, absences,
                                         masquer_vides=opts.get("lignes_vides") == "masquer",
                                         masquer_fermes=True)
@@ -745,7 +774,7 @@ def vue():
                             elif fer or absence_active(absences, e["email"], d) is not None:
                                 cr = []
                             else:
-                                cr = _jours_sem(act, e["email"], rot).get(str(j), []) or []
+                                cr = _jours_sem(act_l, e["email"], rot).get(str(j), []) or []
                             cr = [c for c in cr if creneau_valide(c)]
                             if not cr:
                                 continue
@@ -771,7 +800,7 @@ def vue():
                         for j in jours_aff:
                             d = lundi + timedelta(days=j - 1)
                             fer = ferie_de(d)
-                            cr_tr = [c for c in _jours_sem(act, e["email"], rot).get(str(j), []) or []
+                            cr_tr = [c for c in _jours_sem(act_l, e["email"], rot).get(str(j), []) or []
                                      if creneau_valide(c)]
                             chg = changement_de(changements, d.isoformat(), e["email"])
                             if chg is not None:
@@ -796,7 +825,7 @@ def vue():
                                          "travaillees": _fmt_hmin(tot_eff),
                                          "comptables": _fmt_hmin(tot_trame)})
                     # Jours de fermeture sans personne (ex. dimanche) : colonne retirée.
-                    ho = act.get("horaires_ouverture", HORAIRES_DEFAUT)
+                    ho = act_l.get("horaires_ouverture", HORAIRES_DEFAUT)
                     garder = [i for i, j in enumerate(jours_aff)
                               if ho.get(str(j)) or any(l["cells"][i]["creneaux"] for l in lignes_t)]
                     v["cols"] = [v["cols"][i] for i in garder]
@@ -808,6 +837,7 @@ def vue():
         recap_chg = []
         if act:
             for lundi in lundis:
+                tr_sem = trame_active_pour(data, lundi)
                 for k in range(7):
                     dt = lundi + timedelta(days=k)
                     for em, ch in (changements.get(dt.isoformat(), {}) or {}).items():
@@ -816,7 +846,7 @@ def vue():
                         crs = ch.get("creneaux", []) or []
                         # Changement rétabli à la trame (horaires identiques) → pas une vraie
                         # modif : on ne l'affiche pas dans « Modifications apportées ».
-                        if crs and meme_que_trame(crs, creneaux_trame_jour(act, em, dt)):
+                        if crs and meme_que_trame(crs, creneaux_trame_jour(tr_sem, em, dt)):
                             continue
                         txt = " · ".join(f'{c["debut"]}–{c["fin"]}' for c in crs) if crs else "Non travaillé"
                         recap_chg.append({
@@ -869,6 +899,8 @@ def vue():
                     cr_eff, motif_r = (chg.get("creneaux", []) or []), chg.get("motif", "Non catégorisé")
                 elif abs_a is not None:
                     cr_eff, motif_r = [], abs_a.get("motif", "Non catégorisé")
+                elif ferie_de(ref):
+                    cr_eff, motif_r = [], "Non catégorisé"   # férié : personne par défaut
                 else:
                     cr_eff, motif_r = cr_tr, "Non catégorisé"
                 p, pt = _pad2(cr_eff), _pad2(cr_tr)
@@ -951,7 +983,6 @@ def vue():
         from app import MOIS_FR
         changements = charger_changements()
         absences = charger_absences()
-        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
 
         def _fmt(cr):
             cr = cr or []
@@ -975,7 +1006,7 @@ def vue():
                     if em not in emap:
                         continue
                     crs = ch.get("creneaux", []) or []
-                    cr_tr = creneaux_trame_jour(act, em, d)
+                    cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
                     if meme_que_trame(crs, cr_tr):           # rétabli à la trame → pas une modif
                         continue
                     out.append({"type": "ponctuel", "prenom": emap[em]["prenom"],
@@ -1035,7 +1066,6 @@ def vue():
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "effectifs":
-        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
         cfg = charger_effectifs()
         changements = charger_changements()
         absences = charger_absences()
@@ -1044,6 +1074,7 @@ def vue():
         except (ValueError, TypeError):
             ref = date.today()
         lundi = _lundi(ref)
+        act = trame_active_pour(data, lundi)     # trame en vigueur pour CETTE semaine
         jours_eff, ticks, alertes_total = [], [], 0
         if act:
             ho_all = act.get("horaires_ouverture", HORAIRES_DEFAUT)
@@ -1173,7 +1204,6 @@ def vue():
         from app import charger_reponses, reponse_de, MOIS_FR
         changements = charger_changements()
         absences = charger_absences()
-        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
         today = date.today()
         mois_sel = request.args.get("mois") or today.strftime("%Y-%m")
         try:
@@ -1183,6 +1213,10 @@ def vue():
             an, mo = today.year, today.month
             mois_sel = today.strftime("%Y-%m")
         nb_jours = calendar.monthrange(an, mo)[1]
+        # Trame de référence pour la liste des membres = celle en vigueur au
+        # dernier jour du mois ; les heures se calculent jour par jour avec la
+        # trame en vigueur à chaque date (succession des trames conservée).
+        act = trame_active_pour(data, date(an, mo, nb_jours))
         reps = charger_reponses(mo, an) or {}
         lignes, tot = [], {"trame": 0.0, "ajuste": 0.0, "solde_plan": 0.0,
                            "plus": 0.0, "moins": 0.0, "solde": 0.0, "ecart": 0.0}
@@ -1193,7 +1227,7 @@ def vue():
             j_ponctuels = j_absents = 0
             for k in range(1, nb_jours + 1):
                 d = date(an, mo, k)
-                cr_tr = creneaux_trame_jour(act, em, d)
+                cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
                 ht = total_jour(cr_tr)
                 chg = changement_de(changements, d.isoformat(), em)
                 if chg is not None:
@@ -1279,33 +1313,35 @@ def creer_trame():
 
 @bp.route("/admin/planning-equipe/supprimer-trame", methods=["POST"])
 def supprimer_trame():
-    """Supprime DÉFINITIVEMENT une trame (et tous ses horaires)."""
+    """Supprime DÉFINITIVEMENT une trame (et tous ses horaires). RÈGLE MÉTIER :
+    une trame ACTIVÉE ne peut pas être supprimée — les anciennes trames activées
+    doivent être conservées, sans elles l'historique des plannings serait perdu."""
     if not _admin():
         return redirect(url_for("admin"))
     tid = request.form.get("tid", "")
     data = charger_trames()
-    data["trames"] = [t for t in data.get("trames", []) if t.get("id") != tid]
+    t = trame_par_id(data, tid)
+    if t and t.get("activee"):
+        return redirect(url_for(".vue", onglet="trame", trame=tid, msg="trame_protegee"))
+    data["trames"] = [x for x in data.get("trames", []) if x.get("id") != tid]
     sauvegarder_trames(data)
     return redirect(url_for(".vue", onglet="trame", msg="trame_suppr"))
 
 
 @bp.route("/admin/planning-equipe/activer", methods=["POST"])
 def toggle_trame():
-    """Active / désactive une trame. Une seule trame active à la fois (l'active sert
-    au planning) : activer une trame désactive les autres."""
+    """Active / désactive une trame. RÈGLE MÉTIER : plusieurs trames activées
+    coexistent et se SUCCÈDENT par date de démarrage — pour une semaine donnée,
+    le planning prend la trame activée la plus récente qui a démarré avant elle.
+    Les anciennes trames activées portent l'historique : les laisser activées."""
     if not _admin():
         return redirect(url_for("admin"))
     tid = request.form.get("tid", "")
     data = charger_trames()
     t = trame_par_id(data, tid)
     if t:
-        if not t.get("activee"):
-            for x in data.get("trames", []):
-                x["activee"] = (x.get("id") == tid)   # une seule active
-            msg = "activee"
-        else:
-            t["activee"] = False
-            msg = "desactivee"
+        t["activee"] = not t.get("activee")
+        msg = "activee" if t["activee"] else "desactivee"
         sauvegarder_trames(data)
     else:
         msg = "no_trame"
@@ -1430,8 +1466,10 @@ def enregistrer_changement():
             d_obj = datetime.strptime(date_iso, "%Y-%m-%d").date()
         except ValueError:
             d_obj = None
-        act = next((t for t in charger_trames().get("trames", []) if t.get("activee")), None)
-        retour_trame = bool(creneaux) and d_obj is not None and \
+        act = trame_active_pour(charger_trames(), d_obj) if d_obj else None
+        # Sur un jour FÉRIÉ, saisir les horaires de trame note la personne
+        # PRÉSENTE (censée travailler) : pas de retour-trame dans ce cas.
+        retour_trame = bool(creneaux) and d_obj is not None and not ferie_de(d_obj) and \
             meme_que_trame(creneaux, creneaux_trame_jour(act, email, d_obj))
         if retour_trame:
             if date_iso in data and email in data[date_iso]:
@@ -1479,7 +1517,8 @@ def saisie_ponctuelle():
         d_obj = None
     if not d_obj:
         return redirect(url_for(".vue", onglet="planning"))
-    act = next((t for t in charger_trames().get("trames", []) if t.get("activee")), None)
+    act = trame_active_pour(charger_trames(), d_obj)
+    fer = ferie_de(d_obj)
     data = charger_changements()
     for em in request.form.getlist("email"):
         creneaux = []
@@ -1493,8 +1532,10 @@ def saisie_ponctuelle():
         motif = motif if motif in MOTIFS else "Non catégorisé"
         cr_tr = creneaux_trame_jour(act, em, d_obj)
         present = date_iso in data and em in data.get(date_iso, {})
-        # Retour à la trame (mêmes horaires) OU jour de repos laissé vide → pas de changement.
-        if meme_que_trame(creneaux, cr_tr) or (not creneaux and not cr_tr):
+        # Retour à la trame (mêmes horaires) OU jour de repos laissé vide → pas de
+        # changement. Sur un FÉRIÉ : vide = défaut (personne ne travaille) ; des
+        # horaires, même de trame, notent la personne présente.
+        if (not creneaux and (fer or not cr_tr)) or (not fer and meme_que_trame(creneaux, cr_tr)):
             if present:
                 del data[date_iso][em]
         else:
@@ -1757,7 +1798,7 @@ def imprimer_frise():
         return redirect(url_for("admin"))
     data = charger_trames()
     trame = (trame_par_id(data, request.args.get("tid", ""))
-             or next((t for t in data.get("trames", []) if t.get("activee")), None)
+             or trame_active_pour(data, date.today())
              or trame_selectionnee(data))
     if not trame:
         abort(404)
