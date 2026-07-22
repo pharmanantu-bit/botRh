@@ -256,33 +256,26 @@
         </label>
         <div class="grille-champ">Couleur (planning)
           {% set cc = profil.couleur_planning|default('') %}
-          <details class="palette-pick" style="position:relative; padding-top:4px;">
-            <summary style="list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:8px; border:1px solid #ccc; border-radius:6px; padding:5px 10px; background:#fff; user-select:none;">
-              <span id="cc-apercu" style="display:inline-block; width:18px; height:18px; border-radius:50%; background:{{ cc or '#e9e9e9' }}; box-shadow:0 0 0 1px #bbb;"></span>
-              <span id="cc-libelle" style="font-size:0.9em; color:#444;">🎨 {{ cc if cc else 'auto' }}</span>
-              <span style="font-size:0.7em; color:#999;">▾</span>
-            </summary>
-            <span style="position:absolute; z-index:20; top:100%; left:0; margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:#fff; border:1px solid #ccc; border-radius:8px; padding:10px; box-shadow:0 4px 14px rgba(0,0,0,.15); max-width:280px;">
-              {% for col in PALETTE_PLANNING %}
-              <label style="cursor:pointer; margin:0;">
-                <input type="radio" name="couleur_planning" value="{{ col }}" {% if cc == col %}checked{% endif %} style="display:none;"
-                       onchange="ccChoisie(this, '{{ col }}')">
-                <span title="{{ col }}" style="display:inline-block; width:22px; height:22px; border-radius:50%; background:{{ col }}; border:3px solid {% if cc == col %}#1F4E79{% else %}#fff{% endif %}; box-shadow:0 0 0 1px #ccc;"></span>
-              </label>
-              {% endfor %}
-              <label style="cursor:pointer; margin:0; font-size:0.8em; color:#888;">
-                <input type="radio" name="couleur_planning" value="" {% if not cc %}checked{% endif %} style="display:none;"
-                       onchange="ccChoisie(this, '')">
-                <span style="display:inline-block; padding:2px 6px; border:1px solid {% if not cc %}#1F4E79{% else %}#ccc{% endif %}; border-radius:6px;">auto</span>
-              </label>
-            </span>
-          </details>
+          <input type="hidden" name="couleur_planning" id="cc-val" value="{{ cc }}">
+          <span style="display:flex; align-items:center; gap:10px; padding-top:4px;">
+            <input type="color" id="cc-picker" value="{{ cc or '#2E75B6' }}" title="Ouvrir le nuancier"
+                   style="width:46px; height:32px; padding:2px; border:1px solid #ccc; border-radius:6px; cursor:pointer; background:#fff;"
+                   oninput="document.getElementById('cc-val').value = this.value; ccMaj();">
+            <button type="button" id="cc-auto" title="Laisser l'application attribuer une couleur"
+                    style="border:1px solid #ccc; background:#fff; border-radius:6px; padding:5px 12px; cursor:pointer; font-size:0.85em; color:#555;"
+                    onclick="document.getElementById('cc-val').value=''; ccMaj();">auto</button>
+            <span id="cc-libelle" style="font-size:0.85em; color:#666;"></span>
+          </span>
           <script>
-            function ccChoisie(radio, col) {
-              document.getElementById('cc-apercu').style.background = col || '#e9e9e9';
-              document.getElementById('cc-libelle').textContent = col ? ('🎨 ' + col) : '🎨 auto';
-              radio.closest('details').removeAttribute('open');
+            function ccMaj() {
+              var v = document.getElementById('cc-val').value;
+              document.getElementById('cc-libelle').textContent = v ? ('🎨 ' + v) : 'auto (attribuée par l\'application)';
+              var b = document.getElementById('cc-auto');
+              b.style.borderColor = v ? '#ccc' : '#1F4E79';
+              b.style.color = v ? '#555' : '#1F4E79';
+              b.style.fontWeight = v ? 'normal' : 'bold';
             }
+            ccMaj();
           </script>
         </div>
         <label>Code opérateur
