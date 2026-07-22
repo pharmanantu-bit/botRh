@@ -634,10 +634,11 @@ PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 POSTES = ["Pharmacien", "Préparateur", "Apprentie", "Étudiant",
           "Conseillère", "Rayonniste", "Resp ménage"]
 
-# Champs du profil RH (clé interne -> libellé affiché)
+# Champs du profil RH (clé interne -> libellé affiché). NB : `couleur_planning`
+# (pastille sur la frise) se règle UNIQUEMENT dans Planning > Équipe — la lister
+# ici écraserait la couleur à chaque sauvegarde de la fiche.
 CHAMPS_PROFIL = [
     ("poste", "Poste / fonction"),
-    ("couleur_planning", "Couleur (planning)"),      # pastille sur la frise
     ("heures_contractuelles_hebdo", "Heures contractuelles / semaine"),
     ("code_operateur", "Code opérateur"),
     ("rpps", "N° RPPS"),
@@ -1589,13 +1590,6 @@ def admin_employe_profil():
     for cle, _ in CHAMPS_PROFIL:
         profil[cle] = request.form.get(cle, "").strip()
     profil.pop("fonction_planning", None)   # ancien champ, fusionné dans `poste`
-    # Couleur libre du nuancier : #RRGGBB strict, sinon retour à « auto ».
-    c = profil.get("couleur_planning", "")
-    if c and not (len(c) == 7 and c[0] == "#"
-                  and all(ch in "0123456789abcdefABCDEF" for ch in c[1:])):
-        profil["couleur_planning"] = ""
-    elif c:
-        profil["couleur_planning"] = c.upper()
     profils[email] = profil
     sauvegarder_profils(profils)
     return redirect(url_for("admin_employe", email=email, annee=request.form.get("annee", datetime.now().year)))

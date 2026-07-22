@@ -31,7 +31,6 @@
     .grille { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
     .grille label { display:flex; flex-direction:column; font-size:0.8em; color:#555; gap:4px; }
     .grille label.large { grid-column:1 / -1; }
-    .grille .grille-champ { display:flex; flex-direction:column; font-size:0.8em; color:#555; gap:4px; }
     .grille input, .grille select, .grille textarea { padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.92em; font-family:inherit; }
     .grille input:focus, .grille select:focus, .grille textarea:focus { border-color:#2E75B6; outline:none; }
     .btn-save { margin-top:14px; background:#1a7a6e; color:white; border:none; padding:10px 18px; border-radius:8px; font-size:0.9em; font-weight:bold; cursor:pointer; }
@@ -254,30 +253,6 @@
           <input type="number" step="0.5" min="0" name="heures_contractuelles_hebdo"
                  value="{{ profil.heures_contractuelles_hebdo|default('') }}" placeholder="ex: 35">
         </label>
-        <div class="grille-champ">Couleur (planning)
-          {% set cc = profil.couleur_planning|default('') %}
-          <input type="hidden" name="couleur_planning" id="cc-val" value="{{ cc }}">
-          <span style="display:flex; align-items:center; gap:10px; padding-top:4px;">
-            <input type="color" id="cc-picker" value="{{ cc or '#2E75B6' }}" title="Ouvrir le nuancier"
-                   style="width:46px; height:32px; padding:2px; border:1px solid #ccc; border-radius:6px; cursor:pointer; background:#fff;"
-                   oninput="document.getElementById('cc-val').value = this.value; ccMaj();">
-            <button type="button" id="cc-auto" title="Laisser l'application attribuer une couleur"
-                    style="border:1px solid #ccc; background:#fff; border-radius:6px; padding:5px 12px; cursor:pointer; font-size:0.85em; color:#555;"
-                    onclick="document.getElementById('cc-val').value=''; ccMaj();">auto</button>
-            <span id="cc-libelle" style="font-size:0.85em; color:#666;"></span>
-          </span>
-          <script>
-            function ccMaj() {
-              var v = document.getElementById('cc-val').value;
-              document.getElementById('cc-libelle').textContent = v ? ('🎨 ' + v) : 'auto (attribuée par l\'application)';
-              var b = document.getElementById('cc-auto');
-              b.style.borderColor = v ? '#ccc' : '#1F4E79';
-              b.style.color = v ? '#555' : '#1F4E79';
-              b.style.fontWeight = v ? 'normal' : 'bold';
-            }
-            ccMaj();
-          </script>
-        </div>
         <label>Code opérateur
           <input type="text" name="code_operateur" value="{{ profil.code_operateur|default('') }}" placeholder="ex: OP1234">
         </label>
