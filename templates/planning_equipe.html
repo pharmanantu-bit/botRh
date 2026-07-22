@@ -96,6 +96,7 @@
   {% if msg == 'desactivee' %}<div class="msg">Trame désactivée.</div>{% endif %}
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
   {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
+  {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
 
   <div class="ongs">
     {% for cle, lib in onglets %}
@@ -642,7 +643,6 @@
 
   {# ===================== SOUS-ONGLET OPTIONS ===================== #}
   {% elif onglet == 'options' %}
-    {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
     <form method="POST" action="{{ url_for('.enregistrer_options') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

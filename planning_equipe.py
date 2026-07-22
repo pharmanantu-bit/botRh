@@ -1092,7 +1092,8 @@ def enregistrer_options():
     o["recap_changements"] = request.form.get("recap_changements", "masquer")
     o["heures_travaillees"] = request.form.get("heures_travaillees", "aucun")
     sauvegarder_options(o)
-    return redirect(url_for(".vue", onglet="options", msg="options_ok"))
+    # Retour direct au planning pour voir l'effet des options.
+    return redirect(url_for(".vue", onglet="planning", msg="options_ok"))
 
 
 @bp.route("/admin/planning-equipe/changement", methods=["POST"])
