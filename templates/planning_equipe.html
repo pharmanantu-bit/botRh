@@ -289,7 +289,7 @@
       {% elif mode == 'texte' %}
         <div style="font-size:0.9em; line-height:1.65;">
           {% for j in v.texte_jours %}
-          <div style="font-weight:bold; color:#1F4E79; margin:{{ '2px' if loop.first else '12px' }} 0 2px;">{{ j.label }}</div>
+          <div style="font-weight:bold; color:#1F4E79; margin:{{ '2px' if loop.first else '12px' }} 0 2px;">{{ j.label }}{% if j.ferie %} <span style="color:#9C6500; font-weight:normal;">— Férié ({{ j.ferie }})</span>{% endif %}</div>
           {% for l in j.lignes %}
           <div style="display:flex; gap:10px;">
             <span style="min-width:110px;"><span style="color:{{ l.couleur }};">●</span> {{ l.prenom }}</span>
@@ -306,7 +306,7 @@
             <thead>
               <tr>
                 <th style="border:1px solid #000; padding:6px 12px;"></th>
-                {% for col in v.cols %}<th style="border:1px solid #000; padding:6px 12px; font-weight:bold;">{{ col.nom }}<br>{{ col.date }}</th>{% endfor %}
+                {% for col in v.cols %}<th style="border:1px solid #000; padding:6px 12px; font-weight:bold;">{{ col.nom }}<br>{{ col.date }}{% if col.ferie %}<br><span style="color:#9C6500; font-size:0.88em;">Férié</span>{% endif %}</th>{% endfor %}
                 <th style="border:1px solid #000; padding:6px 10px;">Heures<br>travaillées</th>
                 <th style="border:1px solid #000; padding:6px 10px;">Heures<br>comptables</th>
               </tr>

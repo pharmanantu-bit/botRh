@@ -8,7 +8,7 @@
   </div>
   {% for j in frise.jours %}
   <div class="fr-jour">
-    <div class="fr-jour-tt">{{ j.nom }}{% if j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
+    <div class="fr-jour-tt">{{ j.nom }}{% if j.ferie %} <span class="ferme" style="color:#9C6500;">— férié ({{ j.ferie }})</span>{% elif j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
     {% for l in j.lignes %}
     <div class="fr-row{% if j.date_iso %} fr-clic{% endif %}"
       {% if j.date_iso %}data-email="{{ l.email }}" data-date="{{ j.date_iso }}" data-jour="{{ j.nom }}" data-prenom="{{ l.prenom }}" data-creneaux='{{ l.creneaux|tojson }}' data-trame='{{ l.creneaux_trame|tojson }}' data-motif="{{ l.motif }}"{% endif %}>

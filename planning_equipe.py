@@ -301,6 +301,42 @@ def _creneaux_txt(trame, email, sem, j):
     return ", ".join(f"{c['debut']}–{c['fin']}" for c in cr) or "repos"
 
 
+def _paques(an):
+    """Date du dimanche de Pâques (algorithme de Butcher)."""
+    a, b, c = an % 19, an // 100, an % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    return date(an, (h + l - 7 * m + 114) // 31, (h + l - 7 * m + 114) % 31 + 1)
+
+
+def jours_feries(an):
+    """Jours fériés français de l'année : {date: libellé}."""
+    p = _paques(an)
+    return {
+        date(an, 1, 1): "Jour de l'an",
+        p + timedelta(days=1): "Lundi de Pâques",
+        date(an, 5, 1): "Fête du Travail",
+        date(an, 5, 8): "Victoire 1945",
+        p + timedelta(days=39): "Ascension",
+        p + timedelta(days=50): "Lundi de Pentecôte",
+        date(an, 7, 14): "Fête nationale",
+        date(an, 8, 15): "Assomption",
+        date(an, 11, 1): "Toussaint",
+        date(an, 11, 11): "Armistice 1918",
+        date(an, 12, 25): "Noël",
+    }
+
+
+def ferie_de(d):
+    """Libellé du jour férié couvrant cette date (ou None)."""
+    return jours_feries(d.year).get(d)
+
+
 def _lundi(d):
     """Lundi de la semaine contenant la date d."""
     return d - timedelta(days=d.weekday())
@@ -378,7 +414,9 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
     for j in range(1, 8):
         if jours_affiches is not None and j not in jours_affiches:
             continue
-        date_iso = (lundi_date + timedelta(days=j - 1)).isoformat() if lundi_date else ""
+        date_reelle = (lundi_date + timedelta(days=j - 1)) if lundi_date else None
+        date_iso = date_reelle.isoformat() if date_reelle else ""
+        ferie = ferie_de(date_reelle) if date_reelle else None
         ouv = []
         for p in horaires.get(str(j), []) or []:
             d, f = _minutes(p[0]), _minutes(p[1])
@@ -403,6 +441,10 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                 modifie = True
             elif abs_a is not None:
                 cr_eff, motif, modifie = [], abs_a.get("motif", "Absence"), True
+            elif ferie:
+                # Jour férié : personne ne travaille par défaut, seul un
+                # changement ponctuel (garde…) rend présent.
+                cr_eff, motif, modifie = [], ferie, False
             else:
                 cr_eff, motif, modifie = cr_trame, "", False
             barres = []
@@ -423,13 +465,17 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
         ferme = not horaires.get(str(j))
         # Jour de fermeture (ex. dimanche) : masqué du planning, SAUF si une
         # modification y met quelqu'un de présent (garde, inventaire…).
-        if masquer_fermes and ferme and not any(l["barres"] for l in lignes):
+        if masquer_fermes and ferme and not ferie and not any(l["barres"] for l in lignes):
             continue
+        # Jour férié : la ligne du jour reste visible, mais sans collaborateur
+        # (seuls les présents notés par un changement apparaissent).
+        if ferie:
+            lignes = [l for l in lignes if l["barres"]]
         nom = JOURS_NOMS[j]
         if lundi_date:
             nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
-                      "lignes": lignes, "ferme": ferme})
+                      "lignes": lignes, "ferme": ferme, "ferie": ferie})
     return {"ticks": ticks, "jours": jours}
 
 
@@ -628,12 +674,13 @@ def vue():
                     tj = []
                     for j in jours_aff:
                         d = lundi + timedelta(days=j - 1)
+                        fer = ferie_de(d)
                         lignes_j = []
                         for e in emp_sm:
                             chg = changement_de(changements, d.isoformat(), e["email"])
                             if chg is not None:
                                 cr = chg.get("creneaux", []) or []
-                            elif absence_active(absences, e["email"], d) is not None:
+                            elif fer or absence_active(absences, e["email"], d) is not None:
                                 cr = []
                             else:
                                 cr = _jours_sem(act, e["email"], rot).get(str(j), []) or []
@@ -642,28 +689,34 @@ def vue():
                                 continue
                             lignes_j.append({"prenom": e["prenom"], "couleur": couleurs[e["email"]],
                                              "txt": " ".join(f'{c["debut"]}-{c["fin"]}' for c in cr)})
-                        if lignes_j:
+                        if lignes_j or fer:
                             tj.append({"label": f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m/%y')}",
-                                       "lignes": lignes_j})
+                                       "ferie": fer, "lignes": lignes_j})
                     v["texte_jours"] = tj
                 else:  # tableau
                     # Tableau façon feuille de semaine : une colonne par jour, créneaux
                     # effectifs empilés (rouge si jour modifié), totaux travaillé/comptable.
                     v["titre"] = f"Semaine {lundi.isocalendar()[1]} ({rot})"
                     v["cols"] = [{"nom": JOURS_NOMS[j],
-                                  "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y")}
+                                  "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y"),
+                                  "ferie": ferie_de(lundi + timedelta(days=j - 1))}
                                  for j in jours_aff]
                     lignes_t = []
                     for e in emp_sm:
                         cells, tot_eff, tot_trame = [], 0.0, 0.0
                         for j in jours_aff:
                             d = lundi + timedelta(days=j - 1)
+                            fer = ferie_de(d)
                             cr_tr = [c for c in _jours_sem(act, e["email"], rot).get(str(j), []) or []
                                      if creneau_valide(c)]
                             chg = changement_de(changements, d.isoformat(), e["email"])
                             if chg is not None:
                                 cr = [c for c in chg.get("creneaux", []) or [] if creneau_valide(c)]
                                 modif = not meme_que_trame(cr, cr_tr)
+                            elif fer:
+                                # Férié : repos par défaut (les heures de trame restent
+                                # comptables), seul un ponctuel rend présent.
+                                cr, modif = [], False
                             elif absence_active(absences, e["email"], d) is not None:
                                 cr, modif = [], bool(cr_tr)
                             else:
