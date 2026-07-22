@@ -335,6 +335,15 @@
         </div>
       {% endif %}
     {% endfor %}
+    {% if mode == 'grille' and vues %}
+    <div style="border:1px solid #dde3ed; border-radius:8px; padding:9px 13px; margin-top:4px; font-size:0.78em; color:#445; line-height:1.8;">
+      <strong style="color:#1F4E79;">Légende</strong> — les losanges identifient les lignes avec un changement :
+      <span style="white-space:nowrap;"><span style="color:#C0392B;">◆</span> absent alors que prévu dans la trame</span> ·
+      <span style="white-space:nowrap;"><span style="color:#2E75B6;">◆</span> présent alors que non prévu</span> ·
+      <span style="white-space:nowrap;"><span style="color:#E67E22;">◆</span> présent avec des heures différentes <span class="meta">(heures ajoutées en couleur foncée sur la barre)</span></span> ·
+      <span style="white-space:nowrap;"><span style="color:#95A5A6;">◆</span> absence sur un jour non prévu</span>
+    </div>
+    {% endif %}
 
     {% if heures_reel %}
     <div style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-top:16px;">

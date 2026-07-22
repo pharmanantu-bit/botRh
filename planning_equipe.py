@@ -573,9 +573,25 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             # (repos, absence ou jour vidé par un changement → ligne retirée).
             if masquer_vides and not barres:
                 continue
+            # Losange typé selon la nature du changement (cf. légende sous la grille).
+            marque, marque_titre = "", ""
+            if modifie:
+                a_eff = any(creneau_valide(c) for c in cr_eff)
+                a_tr = any(creneau_valide(c) for c in cr_trame)
+                if a_eff and a_tr:
+                    marque, marque_titre = "orange", "Présent avec des heures différentes de la trame"
+                elif a_eff:
+                    marque, marque_titre = "bleu", "Présent alors que non prévu dans la trame"
+                elif a_tr:
+                    marque, marque_titre = "rouge", "Absent alors que prévu dans la trame"
+                else:
+                    marque, marque_titre = "gris", "Absence sur un jour non prévu dans la trame"
+                if motif:
+                    marque_titre += f" — {motif}"
             lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
                            "barres": barres, "total": total_jour(cr_eff),
                            "modifie": modifie, "motif": motif,
+                           "marque": marque, "marque_titre": marque_titre,
                            "creneaux": _pad2(cr_eff), "creneaux_trame": _pad2(cr_trame)})
         ferme = not horaires.get(str(j))
         # Jour de fermeture (ex. dimanche) : masqué du planning, SAUF si une
