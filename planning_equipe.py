@@ -1275,7 +1275,8 @@ def enregistrer_horaires_collab():
     trame.setdefault("employes", {})[email] = _parse_horaires_form(request.form)
     trame["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     sauvegarder_trames(data)
-    return redirect(url_for(".vue", onglet="trame", trame=tid, horaires=email, msg="horaires_ok"))
+    # Retour direct à la page Trame (vue d'équipe) après validation.
+    return redirect(url_for(".vue", onglet="trame", trame=tid, msg="horaires_ok"))
 
 
 @bp.route("/admin/planning-equipe/copier-semaine", methods=["POST"])
