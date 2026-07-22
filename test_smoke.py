@@ -42,6 +42,7 @@ tok0 = tokens.generer_token(employes[0]["prenom"], employes[0]["email"]) if empl
 
 routes_publiques = [
     (f"/releve?token={tok0}&prenom={prenom0}", 200),
+    (f"/mon-espace?token={tok0}&prenom={prenom0}", 200),
     (f"/healthcheck?cle={cle}", 200),
     (f"/export_reponses?cle={cle}&mois={mois}&annee={annee}", 200),
     (f"/export_employes?cle={cle}", 200),

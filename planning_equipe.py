@@ -170,6 +170,66 @@ def _jours_ouvrables_cp(d1, d2, p1, p2):
     return n
 
 
+def bilan_cp(em, absences, changements, conges, p1, p2):
+    """Bilan congés payés d'un collaborateur sur la période [p1..p2] :
+    droit, report, posés (absences + ponctuels « Congés payés » du planning,
+    en jours ouvrables), restant et détail des plages."""
+    cf = conges.get(em) if isinstance(conges.get(em), dict) else {}
+    droit = cf.get("droit", CONGES_DROIT_DEFAUT)
+    report = cf.get("report", 0)
+    poses, detail, plages = 0, [], []
+    for a in absences:
+        if a.get("email") != em or a.get("motif") != "Congés payés":
+            continue
+        try:
+            d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
+            d2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d2 < p1 or d1 > p2:
+            continue
+        n = _jours_ouvrables_cp(d1, d2, p1, p2)
+        if n:
+            poses += n
+            plages.append((d1, d2))
+            detail.append((d1, f"Du {d1.strftime('%d/%m/%y')} au {d2.strftime('%d/%m/%y')} : {n} j"))
+    # Jours ponctuels « Congés payés » (jour vidé), hors plages déjà comptées.
+    for diso, parem in changements.items():
+        ch = (parem or {}).get(em)
+        if not ch or ch.get("motif") != "Congés payés" or (ch.get("creneaux") or []):
+            continue
+        try:
+            d0 = datetime.strptime(diso, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if not (p1 <= d0 <= p2) or d0.isoweekday() > 6 or ferie_de(d0):
+            continue
+        if any(a1 <= d0 <= a2 for a1, a2 in plages):
+            continue
+        poses += 1
+        detail.append((d0, f"Le {d0.strftime('%d/%m/%y')} : 1 j"))
+    return {"droit": droit, "report": report, "poses": poses,
+            "restant": round(droit + report - poses, 1),
+            "detail": [t for _, t in sorted(detail)]}
+
+
+# --- Demandes de congés des employés (depuis Mon espace) ---------------------
+DEMANDES_CP_FILE = os.path.join(BASE_DIR, "planning_demandes_conges.json")
+STATUTS_CP = {"en_attente": "En attente", "acceptee": "Acceptée",
+              "refusee": "Refusée", "annulee": "Annulée"}
+
+
+def charger_demandes_cp():
+    """[{id, email, debut, fin, commentaire, statut, demande_le, traite_le…}].
+    Statuts : en_attente / acceptee / refusee / annulee."""
+    d = _lire_json(DEMANDES_CP_FILE, [])
+    return d if isinstance(d, list) else []
+
+
+def sauvegarder_demandes_cp(lst):
+    _ecrire_json(DEMANDES_CP_FILE, lst)
+
+
 def _cle_creneaux(creneaux):
     """Signature normalisée d'une liste de créneaux (ordre indifférent), pour comparer."""
     return sorted((c.get("debut", ""), c.get("fin", "")) for c in (creneaux or [])
@@ -1239,51 +1299,43 @@ def vue():
         cp_lignes = []
         for e in employes_base:
             em = e["email"]
-            cf = conges.get(em) if isinstance(conges.get(em), dict) else {}
-            droit = cf.get("droit", CONGES_DROIT_DEFAUT)
-            report = cf.get("report", 0)
-            poses, detail, plages = 0, [], []
-            for a in absences:
-                if a.get("email") != em or a.get("motif") != "Congés payés":
-                    continue
-                try:
-                    d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
-                    d2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
-                except ValueError:
-                    continue
-                if d2 < p1 or d1 > p2:
-                    continue
-                n = _jours_ouvrables_cp(d1, d2, p1, p2)
-                if n:
-                    poses += n
-                    plages.append((d1, d2))
-                    detail.append((d1, f"Du {d1.strftime('%d/%m/%y')} au {d2.strftime('%d/%m/%y')} : {n} j"))
-            # Jours ponctuels « Congés payés » (jour vidé), hors plages déjà comptées.
-            for diso, parem in changements.items():
-                ch = (parem or {}).get(em)
-                if not ch or ch.get("motif") != "Congés payés" or (ch.get("creneaux") or []):
-                    continue
-                try:
-                    d0 = datetime.strptime(diso, "%Y-%m-%d").date()
-                except ValueError:
-                    continue
-                if not (p1 <= d0 <= p2) or d0.isoweekday() > 6 or ferie_de(d0):
-                    continue
-                if any(a1 <= d0 <= a2 for a1, a2 in plages):
-                    continue
-                poses += 1
-                detail.append((d0, f"Le {d0.strftime('%d/%m/%y')} : 1 j"))
-            cp_lignes.append({"email": em, "prenom": e["prenom"], "nom": e["nom"],
-                              "couleur": couleurs.get(em, "#888"),
-                              "droit": droit, "report": report, "poses": poses,
-                              "restant": round(droit + report - poses, 1),
-                              "detail": [t for _, t in sorted(detail)]})
+            b = bilan_cp(em, absences, changements, conges, p1, p2)
+            cp_lignes.append({**b, "email": em, "prenom": e["prenom"], "nom": e["nom"],
+                              "couleur": couleurs.get(em, "#888")})
+        # Demandes de congés des employés (déposées depuis Mon espace).
+        def _fr(iso):
+            try:
+                return datetime.strptime(iso, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return None
+        cp_attente, cp_traitees = [], []
+        restants = {l["email"]: l["restant"] for l in cp_lignes}
+        for dm in sorted(charger_demandes_cp(), key=lambda x: x.get("demande_le", ""), reverse=True):
+            em = dm.get("email")
+            if em not in emap:
+                continue
+            d1, d2 = _fr(dm.get("debut", "")), _fr(dm.get("fin", ""))
+            nb = _jours_ouvrables_cp(d1, d2, d1, d2) if d1 and d2 else 0
+            row = {"id": dm.get("id", ""), "prenom": emap[em]["prenom"],
+                   "couleur": couleurs.get(em, "#888"),
+                   "debut": d1.strftime("%d/%m/%Y") if d1 else "?",
+                   "fin": d2.strftime("%d/%m/%Y") if d2 else "?",
+                   "nb": nb, "commentaire": dm.get("commentaire", ""),
+                   "demande_le": dm.get("demande_le", ""), "traite_le": dm.get("traite_le", ""),
+                   "statut": dm.get("statut", ""), "motif_refus": dm.get("motif_refus", ""),
+                   "statut_label": STATUTS_CP.get(dm.get("statut", ""), dm.get("statut", "")),
+                   "depasse": nb > restants.get(em, 0)}
+            if dm.get("statut") == "en_attente":
+                cp_attente.append(row)
+            elif dm.get("statut") in ("acceptee", "refusee"):
+                cp_traitees.append(row)
         an_cour = periode_conges()[0].year
         cp_periodes = [{"an": a, "label": f"1 juin {a} → 31 mai {a + 1}",
                         "actif": a == p1.year} for a in range(an_cour, an_cour - 3, -1)]
         ctx.update(cp_lignes=cp_lignes, cp_periodes=cp_periodes, cp_annee=p1.year,
                    cp_label=f"1er juin {p1.year} → 31 mai {p2.year}",
-                   cp_total_poses=round(sum(l["poses"] for l in cp_lignes), 1))
+                   cp_total_poses=round(sum(l["poses"] for l in cp_lignes), 1),
+                   cp_attente=cp_attente, cp_traitees=cp_traitees[:8])
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "totaux":
@@ -1525,6 +1577,83 @@ def enregistrer_conges():
     _ecrire_json(CONGES_FILE, conges)
     return redirect(url_for(".vue", onglet="conges",
                             periode=request.form.get("periode", ""), msg="conges_ok"))
+
+
+@bp.route("/admin/planning-equipe/conges/traiter", methods=["POST"])
+def traiter_demande_cp():
+    """Accepte ou refuse une demande de congés. Accepter = créer l'absence
+    « Congés payés » au planning (le décompte CP suit automatiquement)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    did = request.form.get("id", "")
+    action = request.form.get("action", "")
+    demandes = charger_demandes_cp()
+    dm = next((x for x in demandes if x.get("id") == did), None)
+    if not dm or dm.get("statut") != "en_attente":
+        return redirect(url_for(".vue", onglet="conges", msg="cp_deja"))
+    if action == "accepter":
+        absences = charger_absences()
+        aid = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        absences.append({"id": aid, "email": dm["email"],
+                         "debut": dm.get("debut", ""), "fin": dm.get("fin", ""),
+                         "motif": "Congés payés",
+                         "commentaire": (dm.get("commentaire") or "Demande employé").strip()})
+        sauvegarder_absences(absences)
+        dm["statut"], dm["absence_id"], msg = "acceptee", aid, "cp_acceptee"
+    elif action == "refuser":
+        dm["statut"] = "refusee"
+        dm["motif_refus"] = (request.form.get("motif_refus") or "").strip()[:200]
+        msg = "cp_refusee"
+    else:
+        return redirect(url_for(".vue", onglet="conges"))
+    dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    sauvegarder_demandes_cp(demandes)
+    return redirect(url_for(".vue", onglet="conges", msg=msg))
+
+
+@bp.route("/mon-espace/conges/demander", methods=["POST"])
+def demander_conges():
+    """Dépôt d'une demande de congés par un employé (jeton signé, pas de session)."""
+    from tokens import resoudre_employe
+    token = request.form.get("token", "")
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(403)
+    retour = f"/mon-espace?token={token}&prenom={emp['prenom']}"
+    try:
+        d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
+        d2 = datetime.strptime(request.form.get("fin", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return redirect(retour + "&cp=dates#conges")
+    if d2 < d1 or d1 < date.today():
+        return redirect(retour + "&cp=dates#conges")
+    demandes = charger_demandes_cp()
+    demandes.append({"id": uuid.uuid4().hex[:10], "email": emp["email"],
+                     "debut": d1.isoformat(), "fin": d2.isoformat(),
+                     "commentaire": (request.form.get("commentaire") or "").strip()[:300],
+                     "statut": "en_attente",
+                     "demande_le": datetime.now().strftime("%d/%m/%Y %H:%M")})
+    sauvegarder_demandes_cp(demandes)
+    return redirect(retour + "&cp=ok#conges")
+
+
+@bp.route("/mon-espace/conges/annuler", methods=["POST"])
+def annuler_demande_conges():
+    """L'employé annule sa demande tant qu'elle est en attente."""
+    from tokens import resoudre_employe
+    token = request.form.get("token", "")
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(403)
+    demandes = charger_demandes_cp()
+    for dm in demandes:
+        if (dm.get("id") == request.form.get("id", "") and dm.get("email") == emp["email"]
+                and dm.get("statut") == "en_attente"):
+            dm["statut"] = "annulee"
+            dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            sauvegarder_demandes_cp(demandes)
+            break
+    return redirect(f"/mon-espace?token={token}&prenom={emp['prenom']}&cp=annulee#conges")
 
 
 @bp.route("/admin/planning-equipe/changement", methods=["POST"])

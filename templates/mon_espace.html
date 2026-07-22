@@ -55,6 +55,53 @@
   </div>
   {% endif %}
 
+  {% if cp %}
+  <div id="conges" style="border:1px solid #dde3ed; border-radius:10px; padding:16px 20px; margin-bottom:22px; background:#f9fbfd;">
+    <h2 style="color:#1F4E79; font-size:1.05em; margin-bottom:4px;">🏖️ Mes congés payés</h2>
+    <p style="color:#888; font-size:0.78em; margin-bottom:12px;">Période du {{ cp.periode }} · comptés en jours ouvrables (lundi-samedi, hors fériés)</p>
+
+    {% if cp_msg == 'ok' %}<div style="background:#d8f0de; border:1px solid #aadab8; color:#276221; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:0.9em;">✓ Votre demande a bien été envoyée — elle sera examinée par la pharmacie.</div>{% endif %}
+    {% if cp_msg == 'dates' %}<div style="background:#fde8e8; border:1px solid #f5b5b5; color:#9C0006; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:0.9em;">Dates invalides : la fin doit être après le début, et la demande ne peut pas être dans le passé.</div>{% endif %}
+    {% if cp_msg == 'annulee' %}<div style="background:#eef1f5; border:1px solid #d8dee6; color:#555; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:0.9em;">Votre demande a été annulée.</div>{% endif %}
+
+    <div class="stats" style="margin-top:0;">
+      <div class="stat"><div class="val neutre">{{ "%g"|format(cp.restant) }}</div><div class="lbl">Jours restants</div></div>
+      <div class="stat"><div class="val" style="color:#555;">{{ "%g"|format(cp.droit + cp.report) }}</div><div class="lbl">Droit{% if cp.report %} + report{% endif %}</div></div>
+      <div class="stat"><div class="val" style="color:#555;">{{ "%g"|format(cp.poses) }}</div><div class="lbl">Déjà posés</div></div>
+    </div>
+
+    <form method="POST" action="/mon-espace/conges/demander" style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <input type="hidden" name="token" value="{{ token }}">
+      <span><label style="font-size:0.78em; color:#555; display:block;">Du</label>
+        <input type="date" name="debut" required min="{{ auj }}" style="padding:8px; border:1px solid #ccd4e0; border-radius:6px;"></span>
+      <span><label style="font-size:0.78em; color:#555; display:block;">Au (inclus)</label>
+        <input type="date" name="fin" required min="{{ auj }}" style="padding:8px; border:1px solid #ccd4e0; border-radius:6px;"></span>
+      <span style="flex:1; min-width:160px;"><label style="font-size:0.78em; color:#555; display:block;">Commentaire (optionnel)</label>
+        <input type="text" name="commentaire" maxlength="300" placeholder="ex. vacances d'été" style="width:100%; padding:8px; border:1px solid #ccd4e0; border-radius:6px;"></span>
+      <button type="submit" class="btn-releve" style="margin-top:0;">Demander ces congés</button>
+    </form>
+
+    {% if demandes_cp %}
+    <div style="margin-top:14px;">
+      {% for dm in demandes_cp %}
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0; border-top:1px solid #e8edf4; font-size:0.88em;">
+        <span style="flex:1; min-width:200px;">Du <strong>{{ dm.debut }}</strong> au <strong>{{ dm.fin }}</strong>{% if dm.commentaire %} · <span style="color:#888;">{{ dm.commentaire }}</span>{% endif %}</span>
+        {% if dm.statut == 'en_attente' %}
+        <span class="badge-zero" style="background:#FFF3CD; color:#7a5b00;">⏳ {{ dm.statut_label }}</span>
+        <form method="POST" action="/mon-espace/conges/annuler" style="margin:0;" onsubmit="return confirm('Annuler cette demande ?');">
+          <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="id" value="{{ dm.id }}">
+          <button type="submit" style="background:none; border:1px solid #ccd4e0; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:0.85em; color:#555;">Annuler</button>
+        </form>
+        {% elif dm.statut == 'acceptee' %}<span class="badge-pos">✓ {{ dm.statut_label }}</span>
+        {% elif dm.statut == 'refusee' %}<span class="badge-neg">✖ {{ dm.statut_label }}{% if dm.motif_refus %} — {{ dm.motif_refus }}{% endif %}</span>
+        {% else %}<span class="badge-zero">{{ dm.statut_label }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if historique %}
     {% for h in historique %}
     <div class="mois-item">

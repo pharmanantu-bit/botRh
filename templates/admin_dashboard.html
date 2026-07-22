@@ -136,6 +136,12 @@
     </div>
   </div>
 
+  {% if demandes_cp_attente %}
+  <a href="/admin/planning-equipe?onglet=conges" style="display:block; background:#FFF3CD; border:1px solid #f0dc9a; color:#7a5b00; border-radius:10px; padding:12px 16px; margin-bottom:14px; text-decoration:none; font-size:0.95em;">
+    🏖️ <strong>{{ demandes_cp_attente }} demande{{ 's' if demandes_cp_attente > 1 else '' }} de congés en attente</strong> — clique pour accepter ou refuser (Planning → Congés).
+  </a>
+  {% endif %}
+
   <!-- Cockpit : ce qui demande attention maintenant -->
   <div class="cockpit">
     <a class="ck-card ck-bleu" href="/admin/mois">

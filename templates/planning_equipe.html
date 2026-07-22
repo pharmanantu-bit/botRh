@@ -102,6 +102,9 @@
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
   {% if msg == 'effectifs_ok' %}<div class="msg">Effectifs minimums enregistrés.</div>{% endif %}
   {% if msg == 'conges_ok' %}<div class="msg">Droits de congés enregistrés.</div>{% endif %}
+  {% if msg == 'cp_acceptee' %}<div class="msg">Demande acceptée — l'absence « Congés payés » est au planning, les compteurs sont à jour.</div>{% endif %}
+  {% if msg == 'cp_refusee' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Demande refusée.</div>{% endif %}
+  {% if msg == 'cp_deja' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Cette demande a déjà été traitée (ou n'existe plus).</div>{% endif %}
   {% if msg == 'trame_protegee' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Impossible de supprimer une trame <strong>activée</strong> : elle sert à l'historique des plannings. Désactive-la d'abord si tu veux vraiment la supprimer.</div>{% endif %}
   {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
   {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
@@ -842,6 +845,45 @@
       <span class="meta">{{ cp_total_poses }} j posés sur la période (équipe)</span>
     </div>
     <p class="meta" style="margin:0 0 14px;">Posés = jours <strong>ouvrables</strong> (lun-sam, hors fériés) des absences et horaires ponctuels au motif « <strong>Congés payés</strong> » du planning. Droit légal par défaut : 30 j ouvrables/an ; ajuste Droit et Report par collaborateur puis Enregistrer.</p>
+
+    {# ----- Demandes de congés déposées par les employés (Mon espace) ----- #}
+    {% if cp_attente %}
+    <div style="border:1px solid #f0dc9a; background:#FFFBEF; border-radius:10px; padding:12px 14px; margin-bottom:16px;">
+      <h3 style="margin:0 0 8px; font-size:0.95em; color:#7a5b00;">🏖️ Demandes en attente ({{ cp_attente|length }})</h3>
+      {% for dm in cp_attente %}
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0;{% if not loop.first %} border-top:1px solid #f2e7c6;{% endif %}">
+        <span style="min-width:150px;"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ dm.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ dm.prenom }}</strong></span>
+        <span style="flex:1; min-width:220px; font-size:0.9em;">Du <strong>{{ dm.debut }}</strong> au <strong>{{ dm.fin }}</strong> · {{ dm.nb }} j ouvrable{{ 's' if dm.nb > 1 else '' }}
+          {% if dm.depasse %}<span style="color:#C0392B; font-weight:bold;"> ⚠️ dépasse son solde</span>{% endif %}
+          {% if dm.commentaire %}<br><span class="meta">« {{ dm.commentaire }} »</span>{% endif %}
+          <br><span class="meta">Demandé le {{ dm.demande_le }}</span></span>
+        <form method="POST" action="{{ url_for('.traiter_demande_cp') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="accepter">
+          <button type="submit" class="btn-mini vert" onclick="return confirm('Accepter : l\'absence sera ajoutée au planning et décomptée des CP.');">✔ Accepter</button>
+        </form>
+        <form method="POST" action="{{ url_for('.traiter_demande_cp') }}" style="margin:0; display:flex; gap:5px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="refuser">
+          <input type="text" name="motif_refus" placeholder="motif (optionnel)" style="width:130px; padding:3px 6px; border:1px solid #ccd4e0; border-radius:4px; font-size:0.78em;">
+          <button type="submit" class="btn-mini rouge">✖ Refuser</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if cp_traitees %}
+    <details style="margin-bottom:16px;">
+      <summary style="cursor:pointer; font-size:0.85em; color:#556;">Dernières demandes traitées ({{ cp_traitees|length }})</summary>
+      <div style="font-size:0.84em; color:#556; padding:6px 2px;">
+        {% for dm in cp_traitees %}
+        <div style="padding:3px 0;"><strong>{{ dm.prenom }}</strong> · {{ dm.debut }} → {{ dm.fin }} ({{ dm.nb }} j) —
+          <span style="color:{{ '#1F7A3D' if dm.statut == 'acceptee' else '#C0392B' }};">{{ dm.statut_label }}</span>
+          le {{ dm.traite_le }}{% if dm.motif_refus %} · {{ dm.motif_refus }}{% endif %}</div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
 
     <form method="POST" action="{{ url_for('.enregistrer_conges') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
