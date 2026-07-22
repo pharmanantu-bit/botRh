@@ -367,7 +367,8 @@ def _pad2(creneaux):
 
 
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
-           lundi_date=None, changements=None, absences=None, masquer_vides=False):
+           lundi_date=None, changements=None, absences=None, masquer_vides=False,
+           masquer_fermes=False):
     horaires = trame.get("horaires_ouverture", HORAIRES_DEFAUT)
     amp_min, amp_max = _amplitude(horaires)
     span = amp_max - amp_min
@@ -419,11 +420,16 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                            "barres": barres, "total": total_jour(cr_eff),
                            "modifie": modifie, "motif": motif,
                            "creneaux": _pad2(cr_eff), "creneaux_trame": _pad2(cr_trame)})
+        ferme = not horaires.get(str(j))
+        # Jour de fermeture (ex. dimanche) : masqué du planning, SAUF si une
+        # modification y met quelqu'un de présent (garde, inventaire…).
+        if masquer_fermes and ferme and not any(l["barres"] for l in lignes):
+            continue
         nom = JOURS_NOMS[j]
         if lundi_date:
             nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
-                      "lignes": lignes, "ferme": not horaires.get(str(j))})
+                      "lignes": lignes, "ferme": ferme})
     return {"ticks": ticks, "jours": jours}
 
 
@@ -613,7 +619,8 @@ def vue():
                 if mode == "grille":
                     v["frise"] = _frise(act, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
                                         lundi, changements, absences,
-                                        masquer_vides=opts.get("lignes_vides") == "masquer")
+                                        masquer_vides=opts.get("lignes_vides") == "masquer",
+                                        masquer_fermes=True)
                 elif mode == "texte":
                     # Vue texte groupée par JOUR : seuls les présents du jour, avec
                     # leurs horaires effectifs (ponctuels + absences appliqués).
@@ -668,6 +675,13 @@ def vue():
                         lignes_t.append({"prenom": e["prenom"], "cells": cells,
                                          "travaillees": _fmt_hmin(tot_eff),
                                          "comptables": _fmt_hmin(tot_trame)})
+                    # Jours de fermeture sans personne (ex. dimanche) : colonne retirée.
+                    ho = act.get("horaires_ouverture", HORAIRES_DEFAUT)
+                    garder = [i for i, j in enumerate(jours_aff)
+                              if ho.get(str(j)) or any(l["cells"][i]["creneaux"] for l in lignes_t)]
+                    v["cols"] = [v["cols"][i] for i in garder]
+                    for l in lignes_t:
+                        l["cells"] = [l["cells"][i] for i in garder]
                     v["lignes"] = lignes_t
                 vues.append(v)
         # Récapitulatif des changements ponctuels sur la période affichée.
