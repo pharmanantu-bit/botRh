@@ -53,6 +53,9 @@
     .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.7em; color: #556; white-space: nowrap; }
     /* Chaque jour = un bloc séparé, espacé du suivant, bordure contrastée. */
     .fr-jour { border: 1px solid #aab6c8; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+    /* Jour en cours : cadre rouge pour le repérer immédiatement. */
+    .fr-jour.fr-auj { border: 2px solid #C0392B; box-shadow: 0 0 0 1px rgba(192,57,43,.25); }
+    .fr-jour.fr-auj .fr-jour-tt { background: #fdecea; border-bottom-color: #C0392B; }
     .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #aab6c8; }
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
     .fr-row { display: flex; align-items: stretch; border-top: 1px solid #ccd5e2; min-height: 26px; }
@@ -291,7 +294,7 @@
       {% elif mode == 'texte' %}
         <div style="font-size:0.9em; line-height:1.65;">
           {% for j in v.texte_jours %}
-          <div style="font-weight:bold; color:#1F4E79; margin:{{ '2px' if loop.first else '12px' }} 0 2px;">{{ j.label }}{% if j.ferie %} <span style="color:#9C6500; font-weight:normal;">— Férié ({{ j.ferie }})</span>{% endif %}</div>
+          <div{% if j.aujourdhui %} id="auj"{% endif %} style="font-weight:bold; color:{{ '#C0392B' if j.aujourdhui else '#1F4E79' }}; margin:{{ '2px' if loop.first else '12px' }} 0 2px;">{{ j.label }}{% if j.aujourdhui %} <span style="font-weight:normal;">• aujourd'hui</span>{% endif %}{% if j.ferie %} <span style="color:#9C6500; font-weight:normal;">— Férié ({{ j.ferie }})</span>{% endif %}</div>
           {% for l in j.lignes %}
           <div style="display:flex; gap:10px;">
             <span style="min-width:110px;"><span style="color:{{ l.couleur }};">●</span> {{ l.prenom }}</span>
@@ -308,7 +311,7 @@
             <thead>
               <tr>
                 <th style="border:1px solid #000; padding:6px 12px;"></th>
-                {% for col in v.cols %}<th style="border:1px solid #000; padding:6px 12px; font-weight:bold;">{{ col.nom }}<br>{{ col.date }}{% if col.ferie %}<br><span style="color:#9C6500; font-size:0.88em;">Férié</span>{% endif %}</th>{% endfor %}
+                {% for col in v.cols %}<th{% if col.aujourdhui %} id="auj"{% endif %} style="border:{{ '2px solid #C0392B' if col.aujourdhui else '1px solid #000' }}; padding:6px 12px; font-weight:bold;{% if col.aujourdhui %} color:#C0392B;{% endif %}">{{ col.nom }}<br>{{ col.date }}{% if col.aujourdhui %}<br><span style="font-size:0.82em;">• aujourd'hui</span>{% endif %}{% if col.ferie %}<br><span style="color:#9C6500; font-size:0.88em;">Férié</span>{% endif %}</th>{% endfor %}
                 <th style="border:1px solid #000; padding:6px 10px;">Heures<br>travaillées</th>
                 <th style="border:1px solid #000; padding:6px 10px;">Heures<br>comptables</th>
               </tr>
@@ -958,6 +961,11 @@
     document.addEventListener('click', fermer);
     window.addEventListener('resize', fermer);
   })();
+  // Bouton « Aujourd'hui » (lien #auj) : centre l'écran sur le jour en cours.
+  if (location.hash === '#auj') {
+    var auj = document.getElementById('auj');
+    if (auj) setTimeout(function () { auj.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 80);
+  }
 </script>
 {% endif %}
 <script>

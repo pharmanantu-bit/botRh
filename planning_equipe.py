@@ -481,7 +481,8 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
         if lundi_date:
             nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
-                      "lignes": lignes, "ferme": ferme, "ferie": ferie})
+                      "lignes": lignes, "ferme": ferme, "ferie": ferie,
+                      "aujourdhui": bool(date_reelle) and date_reelle == date.today()})
     return {"ticks": ticks, "jours": jours}
 
 
@@ -641,7 +642,7 @@ def vue():
                 L += timedelta(days=7)
         # Barre de navigation (semaines cliquables en Hebdo, mois en Mensuel).
         nav = {"type": "semaine" if periode == "hebdo" else "mois", "boutons": [],
-               "aujourdhui": url_for(".vue", onglet="planning", date=date.today().isoformat())}
+               "aujourdhui": url_for(".vue", onglet="planning", date=date.today().isoformat()) + "#auj"}
         if periode == "hebdo":
             cur = _lundi(ref)
             for k in range(-2, 7):
@@ -697,7 +698,8 @@ def vue():
                                              "txt": " ".join(f'{c["debut"]}-{c["fin"]}' for c in cr)})
                         if lignes_j or fer:
                             tj.append({"label": f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m/%y')}",
-                                       "ferie": fer, "lignes": lignes_j})
+                                       "ferie": fer, "lignes": lignes_j,
+                                       "aujourdhui": d == date.today()})
                     v["texte_jours"] = tj
                 else:  # tableau
                     # Tableau façon feuille de semaine : une colonne par jour, créneaux
@@ -705,7 +707,8 @@ def vue():
                     v["titre"] = f"Semaine {lundi.isocalendar()[1]} ({rot})"
                     v["cols"] = [{"nom": JOURS_NOMS[j],
                                   "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y"),
-                                  "ferie": ferie_de(lundi + timedelta(days=j - 1))}
+                                  "ferie": ferie_de(lundi + timedelta(days=j - 1)),
+                                  "aujourdhui": lundi + timedelta(days=j - 1) == date.today()}
                                  for j in jours_aff]
                     lignes_t = []
                     for e in emp_sm:
