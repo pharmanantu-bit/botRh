@@ -903,6 +903,19 @@ def vue():
                 rot = semaine_rotation(act_l, lundi)
                 emp_sm = [emap[em] for em in membres_semaine(act_l, employes_tous, profils, lundi)
                           if em not in masques]
+                # Remplaçants : un collaborateur HORS trame qui a des horaires
+                # ponctuels cette semaine s'affiche aussi (créé au préalable et
+                # non archivé pour les semaines courantes/futures).
+                vus = {e["email"] for e in emp_sm}
+                passee = lundi < _lundi(date.today())
+                for k in range(7):
+                    for em2, ch in (changements.get((lundi + timedelta(days=k)).isoformat(), {}) or {}).items():
+                        if (em2 in vus or em2 in masques or em2 not in emap
+                                or not (ch.get("creneaux") or [])):
+                            continue
+                        if passee or collaborateur_actif(profils.get(em2, {})):
+                            emp_sm.append(emap[em2])
+                            vus.add(em2)
                 if opts.get("lignes_vides") == "masquer":
                     emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
                 fin = lundi + timedelta(days=6)
@@ -1046,7 +1059,12 @@ def vue():
                                        "label": f"{JOURS_NOMS[d.isoweekday()]} {d.strftime('%d/%m')}",
                                        "ferme": not act.get("horaires_ouverture", HORAIRES_DEFAUT).get(str(d.isoweekday()))})
             rows = []
-            for e in emp_base:
+            # Membres de la trame d'abord, puis les autres collaborateurs ACTIFS
+            # (remplaçants potentiels — créés au préalable et non archivés).
+            deja = {e["email"] for e in emp_base}
+            saisissables = emp_base + [e for e in employes_base if e["email"] not in deja]
+            for e in saisissables:
+                remplacant = e["email"] not in deja
                 cr_tr = creneaux_trame_jour(act, e["email"], ref)
                 chg = changement_de(changements, ref.isoformat(), e["email"])
                 abs_a = absence_active(absences, e["email"], ref) if chg is None else None
@@ -1062,10 +1080,11 @@ def vue():
                 rows.append({"email": e["email"], "prenom": e["prenom"],
                              "couleur": couleurs.get(e["email"], "#888"),
                              "modifie": chg is not None or abs_a is not None,
-                             "motif": motif_r,
+                             "motif": motif_r, "remplacant": remplacant,
                              "c1d": p[0]["debut"], "c1f": p[0]["fin"], "c2d": p[1]["debut"], "c2f": p[1]["fin"],
                              "t1d": pt[0]["debut"], "t1f": pt[0]["fin"], "t2d": pt[1]["debut"], "t2f": pt[1]["fin"],
-                             "trame_txt": " · ".join(f'{c["debut"]}–{c["fin"]}' for c in cr_tr) or "repos"})
+                             "trame_txt": (" · ".join(f'{c["debut"]}–{c["fin"]}' for c in cr_tr)
+                                           or ("hors trame" if remplacant else "repos"))})
             saisie = {"date_iso": ref.isoformat(), "rows": rows,
                       "date_label": f"{JOURS_NOMS[ref.isoweekday()]} {ref.strftime('%d/%m/%Y')}"}
         # --- Sous-vue « Absence prolongée » : formulaire + liste des absences ---
@@ -1377,8 +1396,18 @@ def vue():
         lignes, tot = [], {"trame": 0.0, "ajuste": 0.0, "solde_plan": 0.0,
                            "plus": 0.0, "moins": 0.0, "solde": 0.0, "ecart": 0.0}
         nb_releves = 0
-        # Membres du mois : semaine passée → tous (historique), sinon actifs.
-        for em in membres_semaine(act, employes_tous, profils, _lundi(date(an, mo, nb_jours))):
+        # Membres du mois : semaine passée → tous (historique), sinon actifs ;
+        # + les remplaçants hors trame ayant des horaires ponctuels dans le mois.
+        membres_mois = membres_semaine(act, employes_tous, profils, _lundi(date(an, mo, nb_jours)))
+        vus_mois = set(membres_mois)
+        for diso, parem in changements.items():
+            if diso[:7] != mois_sel:
+                continue
+            for em2, ch in (parem or {}).items():
+                if em2 not in vus_mois and em2 in emap and (ch.get("creneaux") or []):
+                    membres_mois.append(em2)
+                    vus_mois.add(em2)
+        for em in membres_mois:
             e = emap[em]
             h_trame = h_ajuste = 0.0
             j_ponctuels = j_absents = 0

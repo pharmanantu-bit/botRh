@@ -136,8 +136,17 @@
     {% if ponctuel or abs_view %}
     <a href="{{ url_for('.vue', onglet='planning', date=ref_date) }}" class="btn-mini" style="background:#888;">← Retour au planning</a>
     {% else %}
-    <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Horaires ponctuels</a>
-    <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absence prolongée</a>
+    <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Remplaçant / horaires ponctuels</a>
+    <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absences prolongées</a>
+    <details style="align-self:center;">
+      <summary style="cursor:pointer; font-size:0.78em; color:#556;">ℹ️ À noter</summary>
+      <ul style="font-size:0.78em; color:#556; margin:6px 0 0 18px; line-height:1.6;">
+        <li>Pour un <strong>changement ponctuel</strong> (absence, échange, heures supplémentaires, formation…) : bouton « ⊕ Remplaçant / horaires ponctuels ».</li>
+        <li>Pour une <strong>absence prolongée</strong> : bouton « ⊕ Absences prolongées ».</li>
+        <li>Pour un <strong>changement régulier</strong> du planning : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage.</li>
+        <li>Pour les horaires d'un <strong>remplaçant</strong> : passe par « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable (Équipe &amp; RH) et ne pas être archivé.</li>
+      </ul>
+    </details>
     {% endif %}
   </div>
   {% endif %}
@@ -157,7 +166,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date" value="{{ saisie.date_iso }}">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-        <h2 style="margin:0; font-size:1em;">⊕ Horaires ponctuels — {{ saisie.date_label }}</h2>
+        <h2 style="margin:0; font-size:1em;">⊕ Remplaçant / horaires ponctuels — {{ saisie.date_label }}</h2>
         <button class="btn" type="submit">💾 Enregistrer ce jour</button>
       </div>
       <p class="meta" style="margin:0 0 10px; font-size:0.78em;">Modifie les heures réelles du jour (retard, départ, absence, heures sup). Vide = non travaillé. <strong>↺ trame</strong> remet les horaires habituels. Les horaires identiques à la trame ne sont pas comptés comme une modif.</p>
@@ -169,7 +178,7 @@
           <tbody>
             {% for r in saisie.rows %}
             <tr data-email="{{ r.email }}" data-t1d="{{ r.t1d }}" data-t1f="{{ r.t1f }}" data-t2d="{{ r.t2d }}" data-t2f="{{ r.t2f }}">
-              <td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}{% if r.modifie %} <span title="Modifié" style="color:#9C6500;">◆</span>{% endif %}
+              <td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}{% if r.modifie %} <span title="Modifié" style="color:#9C6500;">◆</span>{% endif %}{% if r.remplacant %} <span style="background:#e8f0fe; color:#1F4E79; border-radius:5px; padding:1px 6px; font-size:0.68em;">remplaçant</span>{% endif %}
                 <input type="hidden" name="email" value="{{ r.email }}">
                 <div class="meta" style="font-size:0.7em;">trame : {{ r.trame_txt }}</div></td>
               <td>
@@ -831,7 +840,7 @@
     </div>
     {% endif %}
     {% endfor %}
-    <p class="meta" style="margin-top:10px;">🟩 ouverture · 🔴 pas assez de présents · 🟠 pas assez de pharmaciens. Corrige via la trame ou ⊕ Horaires ponctuels.</p>
+    <p class="meta" style="margin-top:10px;">🟩 ouverture · 🔴 pas assez de présents · 🟠 pas assez de pharmaciens. Corrige via la trame ou ⊕ Remplaçant / horaires ponctuels.</p>
     {% endif %}
 
   {# ===================== ONGLET CONGÉS ===================== #}
