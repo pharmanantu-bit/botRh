@@ -290,7 +290,7 @@
     {% for v in vues %}
       <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
-        {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', tid=tid, sem=v.sem) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
+        {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', date=v.lundi) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
       </div>
       {% if mode == 'grille' %}
         {% set frise = v.frise %}{% include '_frise.html' %}

@@ -799,7 +799,7 @@ def vue():
                     emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
                 fin = lundi + timedelta(days=6)
                 titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
-                v = {"sem": rot, "titre": titre}
+                v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat()}
                 if mode == "grille":
                     v["frise"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
                                         lundi, changements, absences,
@@ -1850,10 +1850,47 @@ def copier_semaine():
 
 @bp.route("/admin/planning-equipe/imprimer-frise")
 def imprimer_frise():
-    """Page imprimable de la frise complète (toute l'équipe) pour une semaine."""
+    """Page imprimable de la frise complète (toute l'équipe) pour une semaine.
+    Avec ?date=AAAA-MM-JJ : imprime la semaine RÉELLE telle qu'affichée au
+    planning (changements ponctuels, absences, fériés, options d'affichage).
+    Sans date : aperçu de la trame brute (usage onglet Trame), comme avant."""
     if not _admin():
         return redirect(url_for("admin"))
     data = charger_trames()
+    profils = charger_profils()
+    employes_tous = charger_employes()
+    couleurs = couleurs_map(employes_tous, profils)
+    emap = {e["email"]: e for e in employes_tous}
+    try:
+        lundi = _lundi(datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date())
+    except (ValueError, TypeError):
+        lundi = None
+    if lundi:
+        act = trame_active_pour(data, lundi)
+        if not act:
+            abort(404)
+        opts = charger_options()
+        changements = charger_changements()
+        absences = charger_absences()
+        masques = set(opts.get("collaborateurs_masques", []))
+        actifs = [e for e in employes_tous
+                  if collaborateur_actif(profils.get(e["email"], {}))]
+        rot = semaine_rotation(act, lundi)
+        emp_inclus = [emap[em] for em in membres_ordonnes(act, actifs) if em not in masques]
+        if opts.get("lignes_vides") == "masquer":
+            emp_inclus = [e for e in emp_inclus
+                          if total_semaine(_jours_sem(act, e["email"], rot)) > 0]
+        jours_aff = {j for j in range(1, 8)
+                     if str(j) in opts.get("jours", []) or not opts.get("jours")}
+        frise = _frise(act, rot, emp_inclus, couleurs, jours_aff,
+                       opts.get("horaires_grille") != "masquer",
+                       lundi, changements, absences,
+                       masquer_vides=opts.get("lignes_vides") == "masquer",
+                       masquer_fermes=True)
+        titre = (f"Planning du {lundi.strftime('%d/%m')} au "
+                 f"{(lundi + timedelta(days=6)).strftime('%d/%m/%Y')} · Semaine {rot}")
+        return render_template("planning_frise_impr.html", frise=frise, trame=act,
+                               sem=rot, titre=titre, reel=True)
     trame = (trame_par_id(data, request.args.get("tid", ""))
              or trame_active_pour(data, date.today())
              or trame_selectionnee(data))
@@ -1862,10 +1899,7 @@ def imprimer_frise():
     sem = request.args.get("sem", "A")
     if sem not in SEMAINES:
         sem = "A"
-    employes_base = charger_employes()
-    couleurs = couleurs_map(employes_base, charger_profils())
-    emap = {e["email"]: e for e in employes_base}
-    emp_inclus = [emap[em] for em in membres_ordonnes(trame, employes_base)]
+    emp_inclus = [emap[em] for em in membres_ordonnes(trame, employes_tous)]
     frise = _frise(trame, sem, emp_inclus, couleurs)
     return render_template("planning_frise_impr.html", frise=frise, trame=trame, sem=sem)
 
