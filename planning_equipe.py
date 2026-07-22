@@ -18,7 +18,7 @@ from flask import (Blueprint, request, render_template, redirect, url_for,
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes,
                  charger_profils, sauvegarder_profils, couleur_collaborateur,
-                 PALETTE_PLANNING)
+                 collaborateur_actif, PALETTE_PLANNING)
 
 bp = Blueprint("planning_equipe", __name__)
 
@@ -469,8 +469,12 @@ def vue():
     trame = trame_selectionnee(data, request.args.get("trame"))
     tid = trame.get("id") if trame else None
     profils = charger_profils()
-    employes_base = charger_employes()
-    couleurs = couleurs_map(employes_base, profils)        # couleurs stables
+    employes_tous = charger_employes()
+    couleurs = couleurs_map(employes_tous, profils)        # couleurs stables (liste complète)
+    # Seuls les collaborateurs ACTIFS apparaissent au planning (ni archivés ni
+    # inactifs). Leurs heures de trame sont conservées en cas de réactivation.
+    employes_base = [e for e in employes_tous
+                     if collaborateur_actif(profils.get(e["email"], {}))]
     emap = {e["email"]: e for e in employes_base}
 
     liste_trames = [{"id": t.get("id"), "label": _label_trame(t), "activee": t.get("activee")}

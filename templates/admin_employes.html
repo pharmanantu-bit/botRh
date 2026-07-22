@@ -192,15 +192,15 @@
       <div class="carte-actions">
         <button class="btn-edit" onclick="event.stopPropagation(); ouvrirModal('{{ emp.prenom }}','{{ emp.nom }}','{{ emp.email }}')">Modifier</button>
         <form method="POST" action="/admin/employe/releves-actif" style="display:inline;" onclick="event.stopPropagation();"
-              onsubmit="return confirm('{{ 'Retirer' if emp.releves_actif else 'Inclure' }} {{ emp.prenom }} {{ emp.nom }} {{ 'des' if emp.releves_actif else 'dans les' }} envois de relevés d\'heures ?')">
+              onsubmit="return confirm('{{ 'Passer' if emp.releves_actif else 'Activer' }} {{ emp.prenom }} {{ emp.nom }} {{ 'en INACTIF ? Exclu(e) des relevés d\'heures et du planning équipe (dossier conservé).' if emp.releves_actif else '? Inclus(e) dans les relevés d\'heures et le planning équipe.' }}')">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="email" value="{{ emp.email }}">
           <input type="hidden" name="actif" value="{{ '0' if emp.releves_actif else '1' }}">
           <input type="hidden" name="retour" value="/admin/employes">
           {% if emp.releves_actif %}
-          <button type="submit" class="btn-releves rel-on" title="Relevés d'heures ACTIFS — cliquer pour retirer des envois mensuels">🕒 Actif</button>
+          <button type="submit" class="btn-releves rel-on" title="Collaborateur ACTIF : relevés d'heures + planning équipe — cliquer pour le passer INACTIF">🟢 Actif</button>
           {% else %}
-          <button type="submit" class="btn-releves rel-off" title="Relevés d'heures NON ACTIFS — cliquer pour inclure dans les envois mensuels">⏸ Non actif</button>
+          <button type="submit" class="btn-releves rel-off" title="Collaborateur INACTIF : exclu des relevés d'heures et du planning équipe — cliquer pour l'activer">⏸ Inactif</button>
           {% endif %}
         </form>
         <form method="POST" action="/admin/employe/statut" style="display:inline;" onclick="event.stopPropagation();"

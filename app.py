@@ -531,7 +531,12 @@ def admin_mois():
     est_courant = (mois == mois_courant and annee == annee_courante)
 
     reponses = charger_reponses(mois, annee)
-    employes = charger_employes()
+    # Collaborateurs actifs seulement — mais on garde ceux (devenus inactifs ou
+    # archivés depuis) qui ont un relevé sur le mois consulté (historique intact).
+    profils_mois = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils_mois.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
     planning = charger_planning(mois, annee)
 
     # Navigation mois précédent / suivant (sans dépasser le mois courant)
@@ -1106,7 +1111,7 @@ def admin_dashboard():
 
     # Cockpit : indicateurs clés du moment (en-tête de la page d'accueil)
     profils_ck = charger_profils()
-    actifs_ck = [e for e in employes if profils_ck.get(e["email"], {}).get("statut") != "archive"]
+    actifs_ck = [e for e in employes if collaborateur_actif(profils_ck.get(e["email"], {}))]
     mc, ac = datetime.now().month, datetime.now().year
     reps_mc = charger_reponses(mc, ac)
     nb_recus = sum(1 for e in actifs_ck if reponse_de(reps_mc, e["prenom"], e["email"]))
@@ -2353,9 +2358,13 @@ def export_reponses():
                               mimetype="application/json")
 
 
-def releves_actif(profil):
-    """True si l'employé est dans la boucle des relevés d'heures. Absent = actif
-    (comportement historique) ; les archivés sont toujours exclus."""
+def collaborateur_actif(profil):
+    """Statut général du collaborateur. True = en poste : inclus dans les relevés
+    d'heures ET visible au planning équipe. False = INACTIF (pas encore arrivé,
+    longue absence...) : exclu des deux, mais reste dans l'équipe — contrairement
+    à un ARCHIVÉ qui a quitté l'entreprise (dossier conservé à part).
+    Clé stockée : `releves_actif` (nom historique, pas de migration) ;
+    absente = actif ; un archivé n'est jamais actif."""
     if profil.get("statut", "actif") == "archive":
         return False
     return bool(profil.get("releves_actif", True))
@@ -2365,21 +2374,22 @@ def releves_actif(profil):
 def export_employes():
     """Renvoie la liste des employés gérée via l'admin, pour que les envois
     (GitHub Actions) utilisent toujours la liste à jour. Le serveur est la
-    source unique de vérité. Clé requise. Exclut les profils archivés et ceux
-    dont les relevés d'heures sont désactivés (releves_actif = False)."""
+    source unique de vérité. Clé requise. Exclut les profils archivés et les
+    collaborateurs inactifs (collaborateur_actif = False)."""
     cle = request.args.get("cle", "")
     if cle != API_CLE:
         abort(403)
     profils = charger_profils()
     employes = [e for e in charger_employes()
-                if releves_actif(profils.get(e["email"], {}))]
+                if collaborateur_actif(profils.get(e["email"], {}))]
     return app.response_class(json.dumps(employes, ensure_ascii=False),
                               mimetype="application/json")
 
 
 @app.route("/admin/employe/releves-actif", methods=["POST"])
 def admin_employe_releves_actif():
-    """Bouton fiche salarié : inclut/retire l'employé de la boucle des relevés."""
+    """Bouton fiche salarié : bascule le statut ACTIF/INACTIF du collaborateur
+    (inclusion dans les relevés d'heures ET le planning équipe)."""
     if not session.get("admin"):
         return redirect(url_for("admin"))
     email = request.form.get("email", "")
@@ -2395,9 +2405,9 @@ def admin_employe_releves_actif():
         "id": uuid.uuid4().hex[:8],
         "date": datetime.now().strftime("%d/%m/%Y"),
         "type": "Autre",
-        "note": ("✅ Relevés d'heures ACTIVÉS (inclus dans les envois mensuels)."
+        "note": ("🟢 Collaborateur passé ACTIF : inclus dans les relevés d'heures et le planning équipe."
                  if actif else
-                 "⏸ Relevés d'heures désactivés (exclu des envois mensuels et relances)."),
+                 "⏸ Collaborateur passé INACTIF : exclu des relevés d'heures et du planning équipe (dossier conservé)."),
     })
     profils[email] = profil
     sauvegarder_profils(profils)

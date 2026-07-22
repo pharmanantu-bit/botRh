@@ -156,12 +156,12 @@
       <input type="hidden" name="actif" value="{{ '0' if rel_actif else '1' }}">
       {% if rel_actif %}
       <button type="submit" class="fa-btn" style="background:#C6EFCE; color:#276221;"
-              title="Cet employé reçoit les relevés d'heures mensuels. Cliquer pour le retirer de la boucle."
-              onclick="return confirm('Retirer cet employé des envois de relevés d\'heures ?');">🕒 Relevés : ACTIF</button>
+              title="Collaborateur en poste : reçoit les relevés d'heures mensuels et apparaît au planning équipe. Cliquer pour le passer INACTIF."
+              onclick="return confirm('Passer ce collaborateur en INACTIF ? Il sera exclu des relevés d\'heures et du planning équipe (son dossier est conservé).');">🟢 Collaborateur : ACTIF</button>
       {% else %}
       <button type="submit" class="fa-btn" style="background:#FFF3D6; color:#9C6500;"
-              title="Cet employé est exclu des relevés d'heures mensuels. Cliquer pour l'inclure."
-              onclick="return confirm('Inclure cet employé dans les envois de relevés d\'heures ?');">⏸ Relevés : NON ACTIF</button>
+              title="Collaborateur inactif (pas encore arrivé, longue absence...) : exclu des relevés d'heures et du planning équipe. Cliquer pour l'activer."
+              onclick="return confirm('Activer ce collaborateur ? Il sera inclus dans les relevés d\'heures et le planning équipe.');">⏸ Collaborateur : INACTIF</button>
       {% endif %}
     </form>
     <a href="/admin/employe/export?email={{ emp.email|urlencode }}" class="fa-btn fa-export">⬇️ Exporter le dossier (ZIP)</a>
