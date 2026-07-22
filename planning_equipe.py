@@ -481,14 +481,25 @@ def _pad2(creneaux):
 
 def _assombrir(couleur, k=0.42):
     """Version foncée d'une couleur #RRGGBB (k = part de luminosité conservée).
-    Sert à afficher les horaires MODIFIÉS dans la couleur du collaborateur en
-    plus foncé, pour repérer la modification sur la grille."""
+    Marque les heures AJOUTÉES par rapport à la trame sur la grille."""
     try:
         h = (couleur or "").lstrip("#")
         r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
         return "#%02x%02x%02x" % (int(r * k), int(g * k), int(b * k))
     except (ValueError, IndexError):
         return "#333333"
+
+
+def _eclaircir(couleur, t=0.8):
+    """Version très claire d'une couleur #RRGGBB (t = part de blanc mélangée).
+    Marque les heures EN MOINS (prévues à la trame mais non travaillées)."""
+    try:
+        h = (couleur or "").lstrip("#")
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return "#%02x%02x%02x" % (int(r + (255 - r) * t), int(g + (255 - g) * t),
+                                  int(b + (255 - b) * t))
+    except (ValueError, IndexError):
+        return "#e8e8e8"
 
 
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
@@ -543,16 +554,53 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             else:
                 cr_eff, motif, modifie = cr_trame, "", False
             barres = []
-            for c in cr_eff:
-                if not creneau_valide(c):
-                    continue
-                d, f = _minutes(c["debut"]), _minutes(c["fin"])
-                left, width = _pos(d, f, amp_min, span)
-                # Jour modifié : la bande reste ENTIÈRE (un seul segment, horaires
-                # complets à gauche) mais prend la couleur du collaborateur en FONCÉ.
-                barres.append({"left": left, "width": width,
-                               "couleur": _assombrir(couleur, 0.55) if modifie else couleur,
-                               "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
+            eff_iv = [(_minutes(c["debut"]), _minutes(c["fin"]), c)
+                      for c in cr_eff if creneau_valide(c)]
+            trame_iv = [(_minutes(c["debut"]), _minutes(c["fin"]))
+                        for c in cr_trame if creneau_valide(c)]
+            if modifie and eff_iv:
+                # Jour modifié avec présence : la bande marque la DIFFÉRENCE avec
+                # la trame — heures en plus en FONCÉ, heures en moins (prévues mais
+                # non faites) en TRÈS CLAIR pointillé, le reste en couleur normale.
+                # Les horaires complets du créneau ne s'affichent qu'une fois, au
+                # début de la bande travaillée.
+                pts = sorted({x for iv in eff_iv for x in iv[:2]}
+                             | {x for iv in trame_iv for x in iv})
+                segs = []
+                for a, b in zip(pts, pts[1:]):
+                    mid = (a + b) / 2
+                    in_eff = any(d <= mid < f for d, f, _ in eff_iv)
+                    in_tr = any(t1 <= mid < t2 for t1, t2 in trame_iv)
+                    if in_eff and in_tr:
+                        typ = "normal"
+                    elif in_eff:
+                        typ = "ajout"
+                    elif in_tr:
+                        typ = "retrait"
+                    else:
+                        continue
+                    if segs and segs[-1]["typ"] == typ and segs[-1]["fin"] == a:
+                        segs[-1]["fin"] = b
+                    else:
+                        segs.append({"deb": a, "fin": b, "typ": typ})
+                labels = {d: f"{c['debut']}–{c['fin']}" for d, f, c in eff_iv}
+                for s in segs:
+                    left, width = _pos(s["deb"], s["fin"], amp_min, span)
+                    lab = ""
+                    if montrer_horaires and s["typ"] != "retrait" and s["deb"] in labels:
+                        lab = labels[s["deb"]]
+                    barres.append({
+                        "left": left, "width": width, "label": lab,
+                        "deborde": bool(lab),
+                        "couleur": (couleur if s["typ"] == "normal"
+                                    else _assombrir(couleur, 0.55) if s["typ"] == "ajout"
+                                    else _eclaircir(couleur)),
+                        "bordure": couleur if s["typ"] == "retrait" else ""})
+            else:
+                for d, f, c in eff_iv:
+                    left, width = _pos(d, f, amp_min, span)
+                    barres.append({"left": left, "width": width, "couleur": couleur,
+                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
             # Option « Lignes vides : masquer » = ne montrer que les présents du jour
             # (repos, absence ou jour vidé par un changement → ligne retirée).
             if masquer_vides and not barres:
