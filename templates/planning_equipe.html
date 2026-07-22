@@ -301,13 +301,25 @@
         </div>
       {% else %}
         <div class="grille-wrap">
-          <table class="saisie">
-            <thead><tr><th style="text-align:left;">Collaborateur</th>{% for col in v.cols %}<th>{{ col }}</th>{% endfor %}<th>Sem.</th></tr></thead>
+          <table style="border-collapse:collapse; background:#fff; font-size:0.8em; min-width:950px;">
+            <thead>
+              <tr>
+                <th style="border:1px solid #000; padding:6px 12px;"></th>
+                {% for col in v.cols %}<th style="border:1px solid #000; padding:6px 12px; font-weight:bold;">{{ col.nom }}<br>{{ col.date }}</th>{% endfor %}
+                <th style="border:1px solid #000; padding:6px 10px;">Heures<br>travaillées</th>
+                <th style="border:1px solid #000; padding:6px 10px;">Heures<br>comptables</th>
+              </tr>
+            </thead>
             <tbody>
               {% for l in v.lignes %}
-              <tr><td class="collab"><span class="dot" style="background:{{ l.couleur }};"></span>{{ l.prenom }}</td>
-                {% for cell in l.cells %}<td style="font-size:0.92em;">{{ cell }}</td>{% endfor %}
-                <td>{{ "%g"|format(l.total) }}h</td></tr>
+              <tr>
+                <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; text-align:center; white-space:nowrap;">{{ l.prenom }}</td>
+                {% for cell in l.cells %}
+                <td style="border:1px solid #000; padding:5px 9px; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap;{% if cell.modifie %} color:#C0392B;{% endif %}">{% for cr in cell.creneaux %}{{ cr }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+                {% endfor %}
+                <td style="border:1px solid #000; padding:5px 9px; text-align:center; font-weight:bold; color:#1F4E79; white-space:nowrap;">{{ l.travaillees }}</td>
+                <td style="border:1px solid #000; padding:5px 9px; text-align:center; font-weight:bold; color:#1F4E79; white-space:nowrap;">{{ l.comptables }}</td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>

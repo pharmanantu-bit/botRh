@@ -285,6 +285,12 @@ def total_semaine(jours_dict):
     return round(sum(total_jour(jours_dict.get(str(j), [])) for j in range(1, 8)), 2)
 
 
+def _fmt_hmin(heures):
+    """8.5 → « 8h30min » (format des totaux du tableau)."""
+    m = int(round(heures * 60))
+    return f"{m // 60}h{m % 60:02d}min"
+
+
 def _jours_sem(trame, email, sem):
     return (trame.get("employes", {}).get(email, {}) or {}).get(sem, {}) or {}
 
@@ -634,10 +640,35 @@ def vue():
                                        "lignes": lignes_j})
                     v["texte_jours"] = tj
                 else:  # tableau
-                    v["cols"] = [JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m") for j in jours_aff]
-                    v["lignes"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
-                                    "cells": [_creneaux_txt(act, e["email"], rot, j) for j in jours_aff],
-                                    "total": total_semaine(_jours_sem(act, e["email"], rot))} for e in emp_sm]
+                    # Tableau façon feuille de semaine : une colonne par jour, créneaux
+                    # effectifs empilés (rouge si jour modifié), totaux travaillé/comptable.
+                    v["titre"] = f"Semaine {lundi.isocalendar()[1]} ({rot})"
+                    v["cols"] = [{"nom": JOURS_NOMS[j],
+                                  "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y")}
+                                 for j in jours_aff]
+                    lignes_t = []
+                    for e in emp_sm:
+                        cells, tot_eff, tot_trame = [], 0.0, 0.0
+                        for j in jours_aff:
+                            d = lundi + timedelta(days=j - 1)
+                            cr_tr = [c for c in _jours_sem(act, e["email"], rot).get(str(j), []) or []
+                                     if creneau_valide(c)]
+                            chg = changement_de(changements, d.isoformat(), e["email"])
+                            if chg is not None:
+                                cr = [c for c in chg.get("creneaux", []) or [] if creneau_valide(c)]
+                                modif = not meme_que_trame(cr, cr_tr)
+                            elif absence_active(absences, e["email"], d) is not None:
+                                cr, modif = [], bool(cr_tr)
+                            else:
+                                cr, modif = cr_tr, False
+                            tot_eff += total_jour(cr)
+                            tot_trame += total_jour(cr_tr)
+                            cells.append({"creneaux": [f'{c["debut"]}-{c["fin"]}' for c in cr],
+                                          "modifie": modif})
+                        lignes_t.append({"prenom": e["prenom"], "cells": cells,
+                                         "travaillees": _fmt_hmin(tot_eff),
+                                         "comptables": _fmt_hmin(tot_trame)})
+                    v["lignes"] = lignes_t
                 vues.append(v)
         # Récapitulatif des changements ponctuels sur la période affichée.
         recap_chg = []
