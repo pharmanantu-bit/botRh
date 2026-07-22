@@ -16,7 +16,7 @@
       <div class="fr-track">
         {% for o in j.ouverture %}<div class="fr-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
         {% for t in frise.ticks %}<div class="fr-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
-        {% for b in l.barres %}<div class="fr-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};{% if b.txt %} color:{{ b.txt }}; font-weight:bold; text-shadow:none;{% endif %}">{{ b.label }}</div>{% endfor %}
+        {% for b in l.barres %}<div class="fr-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};">{{ b.label }}</div>{% endfor %}
         {% if not l.barres and j.date_iso %}<span style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:0.68em; color:#b0b8c4;">— absent —</span>{% endif %}
       </div>
     </div>

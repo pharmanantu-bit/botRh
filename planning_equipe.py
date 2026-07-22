@@ -543,16 +543,32 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             else:
                 cr_eff, motif, modifie = cr_trame, "", False
             barres = []
+            trame_iv = [(_minutes(c["debut"]), _minutes(c["fin"]))
+                        for c in cr_trame if creneau_valide(c)]
             for c in cr_eff:
-                if creneau_valide(c):
-                    d, f = _minutes(c["debut"]), _minutes(c["fin"])
+                if not creneau_valide(c):
+                    continue
+                d, f = _minutes(c["debut"]), _minutes(c["fin"])
+                if modifie and trame_iv:
+                    # Jour modifié : la barre est découpée aux bornes de la trame —
+                    # les portions HORS trame (heures ajoutées, ex. venir à 12:00 au
+                    # lieu de 14:00) sont dans la couleur du collaborateur en FONCÉ,
+                    # les portions conformes à la trame gardent la couleur normale.
+                    pts = sorted({d, f} | {x for iv in trame_iv for x in iv if d < x < f})
+                    for a, b in zip(pts, pts[1:]):
+                        mid = (a + b) / 2
+                        dans_trame = any(t1 <= mid < t2 for t1, t2 in trame_iv)
+                        left, width = _pos(a, b, amp_min, span)
+                        barres.append({"left": left, "width": width,
+                                       "couleur": couleur if dans_trame else _assombrir(couleur, 0.55),
+                                       "label": (f"{_hhmm(a)}–{_hhmm(b)}" if montrer_horaires else "")})
+                else:
                     left, width = _pos(d, f, amp_min, span)
-                    barres.append({"left": left, "width": width, "couleur": couleur,
-                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else ""),
-                                   # Jour modifié : horaires dans la couleur du
-                                   # collaborateur en plus foncé (repérage visuel).
-                                   "txt": _assombrir(couleur) if modifie else "",
-                                   "gras": modifie})
+                    barres.append({"left": left, "width": width,
+                                   # Présence entièrement hors trame (jour de repos
+                                   # travaillé, garde un férié) : barre foncée.
+                                   "couleur": _assombrir(couleur, 0.55) if modifie else couleur,
+                                   "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
             # Option « Lignes vides : masquer » = ne montrer que les présents du jour
             # (repos, absence ou jour vidé par un changement → ligne retirée).
             if masquer_vides and not barres:
