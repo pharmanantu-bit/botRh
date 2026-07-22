@@ -286,9 +286,17 @@
       {% if mode == 'grille' %}
         {% set frise = v.frise %}{% include '_frise.html' %}
       {% elif mode == 'texte' %}
-        <div style="font-size:0.88em; line-height:1.7;">
-          {% for c in v.texte %}
-          <div><span style="color:{{ c.couleur }};">●</span> <strong>{{ c.prenom }}</strong> — {% for j in c.jours %}{{ j.nom }} : {{ j.txt }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+        <div style="font-size:0.9em; line-height:1.65;">
+          {% for j in v.texte_jours %}
+          <div style="font-weight:bold; color:#1F4E79; margin:{{ '2px' if loop.first else '12px' }} 0 2px;">{{ j.label }}</div>
+          {% for l in j.lignes %}
+          <div style="display:flex; gap:10px;">
+            <span style="min-width:110px;"><span style="color:{{ l.couleur }};">●</span> {{ l.prenom }}</span>
+            <span style="font-variant-numeric:tabular-nums;">{{ l.txt }}</span>
+          </div>
+          {% endfor %}
+          {% else %}
+          <p class="meta">Personne de planifié sur cette semaine.</p>
           {% endfor %}
         </div>
       {% else %}

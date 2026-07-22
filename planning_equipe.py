@@ -26,6 +26,7 @@ TRAME_FILE = os.path.join(BASE_DIR, "planning_trame.json")
 
 JOURS_NOMS = {1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi",
               5: "Vendredi", 6: "Samedi", 7: "Dimanche"}
+JOURS_ABBR = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 7: "Dim"}
 MOIS_ABBR = {1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Juin",
              7: "Juil", 8: "Août", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc"}
 SEMAINES = ["A", "B"]  # rotation par défaut (2 semaines tournantes)
@@ -608,10 +609,30 @@ def vue():
                                         lundi, changements, absences,
                                         masquer_vides=opts.get("lignes_vides") == "masquer")
                 elif mode == "texte":
-                    v["texte"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
-                                   "jours": [{"nom": JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m"),
-                                              "txt": _creneaux_txt(act, e["email"], rot, j)} for j in jours_aff]}
-                                  for e in emp_sm]
+                    # Vue texte groupée par JOUR : seuls les présents du jour, avec
+                    # leurs horaires effectifs (ponctuels + absences appliqués).
+                    v["titre"] = f"Semaine {lundi.isocalendar()[1]} ({rot})"
+                    tj = []
+                    for j in jours_aff:
+                        d = lundi + timedelta(days=j - 1)
+                        lignes_j = []
+                        for e in emp_sm:
+                            chg = changement_de(changements, d.isoformat(), e["email"])
+                            if chg is not None:
+                                cr = chg.get("creneaux", []) or []
+                            elif absence_active(absences, e["email"], d) is not None:
+                                cr = []
+                            else:
+                                cr = _jours_sem(act, e["email"], rot).get(str(j), []) or []
+                            cr = [c for c in cr if creneau_valide(c)]
+                            if not cr:
+                                continue
+                            lignes_j.append({"prenom": e["prenom"], "couleur": couleurs[e["email"]],
+                                             "txt": " ".join(f'{c["debut"]}-{c["fin"]}' for c in cr)})
+                        if lignes_j:
+                            tj.append({"label": f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m/%y')}",
+                                       "lignes": lignes_j})
+                    v["texte_jours"] = tj
                 else:  # tableau
                     v["cols"] = [JOURS_NOMS[j] + " " + (lundi + timedelta(days=j - 1)).strftime("%d/%m") for j in jours_aff]
                     v["lignes"] = [{"prenom": e["prenom"], "couleur": couleurs[e["email"]],
