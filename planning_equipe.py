@@ -430,7 +430,9 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             # Changement ponctuel pour cette date réelle ? -> surcharge la trame.
             chg = changement_de(changements or {}, date_iso, e["email"]) if date_iso else None
             # Un changement rétabli à la trame (mêmes horaires) n'est plus une modif.
-            if chg is not None and chg.get("creneaux") and meme_que_trame(chg.get("creneaux"), cr_trame):
+            # SAUF un jour férié : là il sert à noter la personne présente, on le garde.
+            if (chg is not None and not ferie and chg.get("creneaux")
+                    and meme_que_trame(chg.get("creneaux"), cr_trame)):
                 chg = None
             # Absence prolongée couvrant ce jour (le changement ponctuel reste prioritaire).
             abs_a = absence_active(absences or [], e["email"],
@@ -438,7 +440,11 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             if chg is not None:
                 cr_eff = chg.get("creneaux", []) or []
                 motif = chg.get("motif", "")
-                modifie = True
+                # Présent un férié avec ses horaires de trame = il était censé
+                # travailler : ce n'est PAS une modification.
+                modifie = not (ferie and meme_que_trame(cr_eff, cr_trame))
+                if not modifie:
+                    motif = ""
             elif abs_a is not None:
                 cr_eff, motif, modifie = [], abs_a.get("motif", "Absence"), True
             elif ferie:
@@ -713,15 +719,18 @@ def vue():
                             if chg is not None:
                                 cr = [c for c in chg.get("creneaux", []) or [] if creneau_valide(c)]
                                 modif = not meme_que_trame(cr, cr_tr)
+                                tot_eff += total_jour(cr)
                             elif fer:
-                                # Férié : repos par défaut (les heures de trame restent
-                                # comptables), seul un ponctuel rend présent.
+                                # Férié : cases vides (personne ne pointe), mais les
+                                # heures de trame COMPTENT comme travaillées — un jour
+                                # férié est payé (règle française).
                                 cr, modif = [], False
+                                tot_eff += total_jour(cr_tr)
                             elif absence_active(absences, e["email"], d) is not None:
                                 cr, modif = [], bool(cr_tr)
                             else:
                                 cr, modif = cr_tr, False
-                            tot_eff += total_jour(cr)
+                                tot_eff += total_jour(cr)
                             tot_trame += total_jour(cr_tr)
                             cells.append({"creneaux": [f'{c["debut"]}-{c["fin"]}' for c in cr],
                                           "modifie": modif})
