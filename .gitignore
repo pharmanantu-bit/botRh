@@ -23,3 +23,5 @@ planning_trame.json
 planning_options.json
 planning_changements.json
 planning_absences.json
+planning_effectifs.json
+planning_conges.json

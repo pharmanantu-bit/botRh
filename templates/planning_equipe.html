@@ -100,6 +100,8 @@
   {% if msg == 'activee' %}<div class="msg">Trame activée — c'est elle qui sert au planning.</div>{% endif %}
   {% if msg == 'desactivee' %}<div class="msg">Trame désactivée.</div>{% endif %}
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
+  {% if msg == 'effectifs_ok' %}<div class="msg">Effectifs minimums enregistrés.</div>{% endif %}
+  {% if msg == 'conges_ok' %}<div class="msg">Droits de congés enregistrés.</div>{% endif %}
   {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
   {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
 
@@ -756,6 +758,100 @@
       <p class="meta" style="margin-top:6px;">Ajoute un horaire ponctuel ou une absence depuis l'onglet <strong>Planning</strong> ; il apparaîtra ici, classé par collaborateur.</p>
     </div>
     {% endif %}
+
+  {# ===================== SOUS-ONGLET EFFECTIFS ===================== #}
+  {% elif onglet == 'effectifs' %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+      <h2 style="margin:0; font-size:1.1em;">Effectifs — semaine du {{ eff_semaine }}
+        {% if eff_total %}<span style="color:#C0392B; font-weight:normal; font-size:0.85em;">— {{ eff_total }} alerte{{ 's' if eff_total > 1 else '' }}</span>
+        {% else %}<span style="color:#1F7A3D; font-weight:normal; font-size:0.85em;">— ✅ couverture OK</span>{% endif %}
+      </h2>
+      <span>
+        <a href="{{ url_for('.vue', onglet='effectifs', date=eff_prec) }}" class="btn-mini" style="background:#888;">← Sem. préc.</a>
+        <a href="{{ url_for('.vue', onglet='effectifs', date=eff_auj) }}" class="btn-mini">Cette semaine</a>
+        <a href="{{ url_for('.vue', onglet='effectifs', date=eff_suiv) }}" class="btn-mini" style="background:#888;">Sem. suiv. →</a>
+      </span>
+    </div>
+
+    <form method="POST" action="{{ url_for('.enregistrer_effectifs') }}" class="cfg" style="margin-bottom:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date" value="{{ ref_date }}">
+      <span><label>Présents minimum (total)</label>
+        <input type="number" name="min_total" value="{{ eff_cfg.min_total }}" min="0" max="20" style="width:70px;"></span>
+      <span><label>Pharmaciens minimum</label>
+        <input type="number" name="min_pharmaciens" value="{{ eff_cfg.min_pharmaciens }}" min="0" max="10" style="width:70px;"></span>
+      <button class="btn" type="submit">💾 Enregistrer</button>
+      <span class="meta" style="align-self:center;">Contrôle appliqué pendant les horaires d'ouverture, planning réel (modifs, absences et fériés inclus).</span>
+    </form>
+
+    {% if pas_active %}
+    <div class="stub"><p style="font-size:1.05em;">Aucune trame active.</p>
+      <p class="meta" style="margin-top:6px;">Active une trame dans l'onglet <strong>Trame</strong> pour contrôler la couverture.</p></div>
+    {% else %}
+    <div style="display:flex; align-items:flex-end; height:20px; margin-bottom:6px;">
+      <div style="width:130px; flex:none;"></div>
+      <div style="position:relative; flex:1;">
+        {% for t in eff_ticks %}<span style="position:absolute; left:{{ t.left }}%; transform:translateX(-50%); font-size:0.7em; color:#556;">{{ t.label }}</span>{% endfor %}
+      </div>
+    </div>
+    {% for j in eff_jours %}
+    <div style="display:flex; align-items:center; margin-bottom:4px;">
+      <div style="width:130px; flex:none; font-size:0.82em; font-weight:bold; color:#1F4E79;">{{ j.nom }}{% if j.ferie %}<br><span style="color:#9C6500; font-weight:normal; font-size:0.85em;">Férié</span>{% endif %}</div>
+      <div style="position:relative; flex:1; height:24px; border:1px solid #ccd5e2; border-radius:5px; background:#fff; overflow:hidden;">
+        {% for o in j.ouverture %}<div style="position:absolute; top:0; bottom:0; left:{{ o.left }}%; width:{{ o.width }}%; background:#e9f5ec;"></div>{% endfor %}
+        {% for t in eff_ticks %}<div style="position:absolute; top:0; bottom:0; left:{{ t.left }}%; width:1px; background:#d5dce8;"></div>{% endfor %}
+        {% for b in j.barres %}<div title="{{ b.titre }}" style="position:absolute; top:0; bottom:0; left:{{ b.left }}%; width:{{ b.width }}%; background:{{ '#e74c3c' if b.type == 'rouge' else '#f5a623' }}; opacity:.85;"></div>{% endfor %}
+      </div>
+      <div style="width:26px; flex:none; text-align:center;">{{ '✅' if j.ok else '⚠️' }}</div>
+    </div>
+    {% if j.alertes %}
+    <div style="margin:0 0 8px 130px; font-size:0.8em;">
+      {% for a in j.alertes %}<div style="color:{{ '#C0392B' if a.type == 'rouge' else '#9C6500' }};">{{ '🔴' if a.type == 'rouge' else '🟠' }} {{ a.txt }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    <p class="meta" style="margin-top:10px;">🟩 ouverture · 🔴 pas assez de présents · 🟠 pas assez de pharmaciens. Corrige via la trame ou ⊕ Horaires ponctuels.</p>
+    {% endif %}
+
+  {# ===================== ONGLET CONGÉS ===================== #}
+  {% elif onglet == 'conges' %}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
+      <h2 style="margin:0; font-size:1.1em;">Congés payés
+        <select onchange="location.href=this.value" style="margin-left:8px; padding:6px 8px; border:1px solid #ccc; border-radius:6px; font-size:0.85em;">
+          {% for p in cp_periodes %}
+          <option value="{{ url_for('.vue', onglet='conges', periode=p.an) }}" {% if p.actif %}selected{% endif %}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </h2>
+      <span class="meta">{{ cp_total_poses }} j posés sur la période (équipe)</span>
+    </div>
+    <p class="meta" style="margin:0 0 14px;">Posés = jours <strong>ouvrables</strong> (lun-sam, hors fériés) des absences et horaires ponctuels au motif « <strong>Congés payés</strong> » du planning. Droit légal par défaut : 30 j ouvrables/an ; ajuste Droit et Report par collaborateur puis Enregistrer.</p>
+
+    <form method="POST" action="{{ url_for('.enregistrer_conges') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="periode" value="{{ cp_annee }}">
+      <div style="overflow-x:auto;">
+        <table class="saisie" style="min-width:640px; max-width:860px;">
+          <tr>
+            <th style="text-align:left;">Collaborateur</th>
+            <th title="Droit annuel en jours ouvrables">Droit</th>
+            <th title="Reliquat de la période précédente">Report</th>
+            <th title="Jours ouvrables posés (planning)">Posés</th>
+            <th title="Droit + Report − Posés">Restant</th>
+          </tr>
+          {% for l in cp_lignes %}
+          <tr>
+            <td class="collab"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}</td>
+            <td><input type="number" name="droit_{{ l.email }}" value="{{ l.droit }}" min="0" max="60" step="0.5" style="width:64px; padding:3px; border:1px solid #ccd4e0; border-radius:4px; text-align:center;"></td>
+            <td><input type="number" name="report_{{ l.email }}" value="{{ l.report }}" min="0" max="60" step="0.5" style="width:64px; padding:3px; border:1px solid #ccd4e0; border-radius:4px; text-align:center;"></td>
+            <td>{% if l.detail %}<details style="display:inline-block;"><summary style="cursor:pointer;">{{ l.poses }} j</summary><div style="text-align:left; font-size:0.85em; color:#556; padding:4px 2px;">{% for t in l.detail %}{{ t }}<br>{% endfor %}</div></details>{% else %}0{% endif %}</td>
+            <td style="font-weight:bold; {% if l.restant < 0 %}color:#C0392B;{% elif l.restant <= 5 %}color:#9C6500;{% else %}color:#1F7A3D;{% endif %}">{{ "%g"|format(l.restant) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      <button class="btn" type="submit" style="margin-top:12px;">💾 Enregistrer les droits</button>
+    </form>
 
   {# ===================== ONGLET TOTAUX / FIN DE MOIS ===================== #}
   {% elif onglet == 'totaux' %}

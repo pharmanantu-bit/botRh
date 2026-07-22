@@ -116,6 +116,60 @@ def absence_active(absences, email, date_obj):
     return None
 
 
+def creneaux_effectifs_jour(trame, email, d, changements, absences):
+    """Créneaux réellement travaillés à une date : trame surchargée par le
+    changement ponctuel, annulée par une absence prolongée ou un jour férié."""
+    chg = changement_de(changements, d.isoformat(), email)
+    if chg is not None:
+        cr = chg.get("creneaux", []) or []
+    elif absence_active(absences, email, d) is not None or ferie_de(d):
+        cr = []
+    else:
+        cr = creneaux_trame_jour(trame, email, d)
+    return [c for c in cr if creneau_valide(c)]
+
+
+# --- Effectifs minimums (contrôle de couverture par créneau) -----------------
+EFFECTIFS_FILE = os.path.join(BASE_DIR, "planning_effectifs.json")
+EFFECTIFS_DEFAUT = {"min_total": 2, "min_pharmaciens": 1}
+
+
+def charger_effectifs():
+    o = dict(EFFECTIFS_DEFAUT)
+    d = _lire_json(EFFECTIFS_FILE)
+    if isinstance(d, dict):
+        o.update({k: v for k, v in d.items() if isinstance(v, int) and v >= 0})
+    return o
+
+
+# --- Congés payés (droits par collaborateur, posés comptés du planning) ------
+CONGES_FILE = os.path.join(BASE_DIR, "planning_conges.json")
+CONGES_DROIT_DEFAUT = 30      # jours OUVRABLES (lun-sam), règle légale française
+
+
+def charger_conges():
+    d = _lire_json(CONGES_FILE)
+    return d if isinstance(d, dict) else {}
+
+
+def periode_conges(ref=None):
+    """Période de référence CP française : 1er juin N → 31 mai N+1."""
+    ref = ref or date.today()
+    an = ref.year if ref.month >= 6 else ref.year - 1
+    return date(an, 6, 1), date(an + 1, 5, 31)
+
+
+def _jours_ouvrables_cp(d1, d2, p1, p2):
+    """Jours ouvrables (lun-sam, hors fériés) de [d1..d2] ∩ [p1..p2]."""
+    n, d = 0, max(d1, p1)
+    fin = min(d2, p2)
+    while d <= fin:
+        if d.isoweekday() <= 6 and not ferie_de(d):
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
 def _cle_creneaux(creneaux):
     """Signature normalisée d'une liste de créneaux (ordre indifférent), pour comparer."""
     return sorted((c.get("debut", ""), c.get("fin", "")) for c in (creneaux or [])
@@ -517,7 +571,8 @@ def _frise_solo(trame, sem, email, couleur):
 # --- Routes -----------------------------------------------------------------
 
 ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
-           ("changements", "Changements"), ("totaux", "Totaux / Fin de mois")]
+           ("changements", "Changements"), ("conges", "Congés"),
+           ("totaux", "Totaux / Fin de mois")]
 # Effectifs & Options : sous-onglets internes de « Planning ».
 SOUS_PLANNING = [("planning", "Planning"), ("effectifs", "Effectifs"), ("options", "Options")]
 
@@ -979,6 +1034,141 @@ def vue():
                    chg_total=sum(len(g["lignes"]) for g in groupes))
         return render_template("planning_equipe.html", **ctx)
 
+    if onglet == "effectifs":
+        act = next((t for t in data.get("trames", []) if t.get("activee")), None)
+        cfg = charger_effectifs()
+        changements = charger_changements()
+        absences = charger_absences()
+        try:
+            ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            ref = date.today()
+        lundi = _lundi(ref)
+        jours_eff, ticks, alertes_total = [], [], 0
+        if act:
+            ho_all = act.get("horaires_ouverture", HORAIRES_DEFAUT)
+            amp_min, amp_max = _amplitude(ho_all)
+            span = amp_max - amp_min
+            ticks = [{"label": f"{h}h", "left": round((h * 60 - amp_min) / span * 100, 2)}
+                     for h in range(amp_min // 60, amp_max // 60 + 1)]
+            for k in range(7):
+                dj = lundi + timedelta(days=k)
+                jiso = dj.isoweekday()
+                ouv = []
+                for p in ho_all.get(str(jiso), []) or []:
+                    a, b = _minutes(p[0]), _minutes(p[1])
+                    if a is not None and b is not None and b > a:
+                        ouv.append((a, b))
+                if not ouv:
+                    continue                       # jour fermé : pas de contrôle
+                fer = ferie_de(dj)
+                pres = []
+                for e in employes_base:
+                    est_ph = "pharmacien" in (poste_de(profils.get(e["email"], {})) or "").lower()
+                    for c in creneaux_effectifs_jour(act, e["email"], dj, changements, absences):
+                        pres.append((_minutes(c["debut"]), _minutes(c["fin"]), est_ph))
+                # Découpage aux bornes (ouverture + présences) puis contrôle par segment.
+                pts = sorted({x for ab in ouv for x in ab} | {x for (a, b, _) in pres for x in (a, b)})
+                segs = []
+                for a, b in zip(pts, pts[1:]):
+                    m = (a + b) / 2
+                    if not any(o1 <= m < o2 for o1, o2 in ouv):
+                        continue
+                    tot = sum(1 for (p1, p2, _) in pres if p1 <= m < p2)
+                    ph = sum(1 for (p1, p2, x) in pres if x and p1 <= m < p2)
+                    if tot < cfg["min_total"]:
+                        typ = "rouge"
+                        lab = f"{tot} présent{'s' if tot > 1 else ''} (min {cfg['min_total']})"
+                    elif ph < cfg["min_pharmaciens"]:
+                        typ = "orange"
+                        lab = f"{ph} pharmacien{'s' if ph > 1 else ''} (min {cfg['min_pharmaciens']})"
+                    else:
+                        continue
+                    if segs and segs[-1]["type"] == typ and segs[-1]["lab"] == lab and segs[-1]["fin"] == a:
+                        segs[-1]["fin"] = b            # fusion des segments contigus
+                    else:
+                        segs.append({"deb": a, "fin": b, "type": typ, "lab": lab})
+                barres_ouv = []
+                for a, b in ouv:
+                    left, width = _pos(a, b, amp_min, span)
+                    barres_ouv.append({"left": left, "width": width})
+                barres_alerte, alertes = [], []
+                for s in segs:
+                    left, width = _pos(s["deb"], s["fin"], amp_min, span)
+                    txt = f'{_hhmm(s["deb"])}–{_hhmm(s["fin"])} : {s["lab"]}'
+                    barres_alerte.append({"left": left, "width": width, "type": s["type"], "titre": txt})
+                    alertes.append({"type": s["type"], "txt": txt})
+                alertes_total += len(alertes)
+                jours_eff.append({"nom": f"{JOURS_NOMS[jiso]} {dj.strftime('%d/%m')}", "ferie": fer,
+                                  "ouverture": barres_ouv, "barres": barres_alerte,
+                                  "alertes": alertes, "ok": not alertes})
+        ctx.update(eff_cfg=cfg, eff_jours=jours_eff, eff_ticks=ticks, eff_total=alertes_total,
+                   pas_active=act is None, ref_date=ref.isoformat(),
+                   eff_semaine=f"{lundi.strftime('%d/%m')} – {(lundi + timedelta(days=6)).strftime('%d/%m/%Y')}",
+                   eff_prec=(lundi - timedelta(days=7)).isoformat(),
+                   eff_suiv=(lundi + timedelta(days=7)).isoformat(),
+                   eff_auj=date.today().isoformat())
+        return render_template("planning_equipe.html", **ctx)
+
+    if onglet == "conges":
+        absences = charger_absences()
+        changements = charger_changements()
+        conges = charger_conges()
+        try:
+            an_sel = int(request.args.get("periode", ""))
+            p1, p2 = date(an_sel, 6, 1), date(an_sel + 1, 5, 31)
+        except (ValueError, TypeError):
+            p1, p2 = periode_conges()
+        cp_lignes = []
+        for e in employes_base:
+            em = e["email"]
+            cf = conges.get(em) if isinstance(conges.get(em), dict) else {}
+            droit = cf.get("droit", CONGES_DROIT_DEFAUT)
+            report = cf.get("report", 0)
+            poses, detail, plages = 0, [], []
+            for a in absences:
+                if a.get("email") != em or a.get("motif") != "Congés payés":
+                    continue
+                try:
+                    d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
+                    d2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if d2 < p1 or d1 > p2:
+                    continue
+                n = _jours_ouvrables_cp(d1, d2, p1, p2)
+                if n:
+                    poses += n
+                    plages.append((d1, d2))
+                    detail.append((d1, f"Du {d1.strftime('%d/%m/%y')} au {d2.strftime('%d/%m/%y')} : {n} j"))
+            # Jours ponctuels « Congés payés » (jour vidé), hors plages déjà comptées.
+            for diso, parem in changements.items():
+                ch = (parem or {}).get(em)
+                if not ch or ch.get("motif") != "Congés payés" or (ch.get("creneaux") or []):
+                    continue
+                try:
+                    d0 = datetime.strptime(diso, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if not (p1 <= d0 <= p2) or d0.isoweekday() > 6 or ferie_de(d0):
+                    continue
+                if any(a1 <= d0 <= a2 for a1, a2 in plages):
+                    continue
+                poses += 1
+                detail.append((d0, f"Le {d0.strftime('%d/%m/%y')} : 1 j"))
+            cp_lignes.append({"email": em, "prenom": e["prenom"], "nom": e["nom"],
+                              "couleur": couleurs.get(em, "#888"),
+                              "droit": droit, "report": report, "poses": poses,
+                              "restant": round(droit + report - poses, 1),
+                              "detail": [t for _, t in sorted(detail)]})
+        an_cour = periode_conges()[0].year
+        cp_periodes = [{"an": a, "label": f"1 juin {a} → 31 mai {a + 1}",
+                        "actif": a == p1.year} for a in range(an_cour, an_cour - 3, -1)]
+        ctx.update(cp_lignes=cp_lignes, cp_periodes=cp_periodes, cp_annee=p1.year,
+                   cp_label=f"1er juin {p1.year} → 31 mai {p2.year}",
+                   cp_total_poses=round(sum(l["poses"] for l in cp_lignes), 1))
+        return render_template("planning_equipe.html", **ctx)
+
     if onglet == "totaux":
         from app import charger_reponses, reponse_de, MOIS_FR
         changements = charger_changements()
@@ -1173,6 +1363,46 @@ def enregistrer_options():
     sauvegarder_options(o)
     # Retour direct au planning pour voir l'effet des options.
     return redirect(url_for(".vue", onglet="planning", msg="options_ok"))
+
+
+@bp.route("/admin/planning-equipe/effectifs", methods=["POST"])
+def enregistrer_effectifs():
+    """Enregistre les minimums d'effectifs (total + pharmaciens)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    o = charger_effectifs()
+    for cle in ("min_total", "min_pharmaciens"):
+        try:
+            o[cle] = max(0, int(request.form.get(cle, o[cle])))
+        except (TypeError, ValueError):
+            pass
+    _ecrire_json(EFFECTIFS_FILE, o)
+    return redirect(url_for(".vue", onglet="effectifs",
+                            date=request.form.get("date", ""), msg="effectifs_ok"))
+
+
+@bp.route("/admin/planning-equipe/conges", methods=["POST"])
+def enregistrer_conges():
+    """Enregistre les droits CP (droit annuel + report) par collaborateur."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    conges = charger_conges()
+    for e in charger_employes():
+        em = e["email"]
+        cle_d, cle_r = f"droit_{em}", f"report_{em}"
+        if cle_d not in request.form and cle_r not in request.form:
+            continue
+        cf = conges.get(em) if isinstance(conges.get(em), dict) else {}
+        for champ, cle in (("droit", cle_d), ("report", cle_r)):
+            try:
+                v = float((request.form.get(cle) or "").replace(",", "."))
+                cf[champ] = round(v, 1) if v != int(v) else int(v)
+            except (TypeError, ValueError):
+                pass
+        conges[em] = cf
+    _ecrire_json(CONGES_FILE, conges)
+    return redirect(url_for(".vue", onglet="conges",
+                            periode=request.form.get("periode", ""), msg="conges_ok"))
 
 
 @bp.route("/admin/planning-equipe/changement", methods=["POST"])
