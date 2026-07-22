@@ -344,6 +344,20 @@ def couleurs_map(employes_base, profils):
             for i, e in enumerate(employes_base)}
 
 
+def membres_semaine(trame, employes_tous, profils, lundi):
+    """Membres de la trame à AFFICHER pour la semaine donnée. RÈGLE MÉTIER :
+    les collaborateurs archivés (ou inactifs) ne sont pas proposés dans les
+    trames ni sur le planning courant/futur, MAIS ils restent nécessaires pour
+    conserver l'historique — une semaine PASSÉE affiche tous les membres de la
+    trame de l'époque, quel que soit leur statut actuel."""
+    if lundi is not None and lundi < _lundi(date.today()):
+        base = employes_tous
+    else:
+        base = [e for e in employes_tous
+                if collaborateur_actif(profils.get(e["email"], {}))]
+    return membres_ordonnes(trame, base)
+
+
 def membres_ordonnes(trame, employes_base):
     """Emails des collaborateurs SUR la trame, dans l'ordre d'affichage.
     Migration : si la trame n'a pas de clé 'membres', défaut = ceux qui ont déjà des
@@ -758,11 +772,12 @@ def vue():
     profils = charger_profils()
     employes_tous = charger_employes()
     couleurs = couleurs_map(employes_tous, profils)        # couleurs stables (liste complète)
-    # Seuls les collaborateurs ACTIFS apparaissent au planning (ni archivés ni
-    # inactifs). Leurs heures de trame sont conservées en cas de réactivation.
+    # Seuls les collaborateurs ACTIFS sont PROPOSÉS (trames, semaines courantes).
+    # Les archivés/inactifs restent affichés sur les semaines PASSÉES (historique),
+    # cf. membres_semaine(). Leurs heures de trame sont conservées.
     employes_base = [e for e in employes_tous
                      if collaborateur_actif(profils.get(e["email"], {}))]
-    emap = {e["email"]: e for e in employes_base}
+    emap = {e["email"]: e for e in employes_tous}          # noms résolus, même archivés
 
     liste_trames = [{"id": t.get("id"), "label": _label_trame(t), "activee": t.get("activee")}
                     for t in data.get("trames", [])]
@@ -849,7 +864,8 @@ def vue():
         # Le planning suit la trame ACTIVÉE en vigueur pour la semaine consultée
         # (les trames activées se succèdent : l'historique garde ses anciennes trames).
         act = trame_active_pour(data, ref)
-        emp_base = [emap[em] for em in membres_ordonnes(act, employes_base) if em not in masques]
+        emp_base = [emap[em] for em in membres_semaine(act, employes_tous, profils, _lundi(ref))
+                    if em not in masques]
         # Lundis à afficher selon la période.
         if periode == "hebdo":
             lundis = [_lundi(ref)]
@@ -885,7 +901,7 @@ def vue():
             act_l = trame_active_pour(data, lundi)
             if act_l:
                 rot = semaine_rotation(act_l, lundi)
-                emp_sm = [emap[em] for em in membres_ordonnes(act_l, employes_base)
+                emp_sm = [emap[em] for em in membres_semaine(act_l, employes_tous, profils, lundi)
                           if em not in masques]
                 if opts.get("lignes_vides") == "masquer":
                     emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
@@ -1240,7 +1256,9 @@ def vue():
                     continue                       # jour fermé : pas de contrôle
                 fer = ferie_de(dj)
                 pres = []
-                for e in employes_base:
+                # Semaine passée : population complète (archivés inclus, historique).
+                pop = employes_tous if lundi < _lundi(date.today()) else employes_base
+                for e in pop:
                     est_ph = "pharmacien" in (poste_de(profils.get(e["email"], {})) or "").lower()
                     for c in creneaux_effectifs_jour(act, e["email"], dj, changements, absences):
                         pres.append((_minutes(c["debut"]), _minutes(c["fin"]), est_ph))
@@ -1359,7 +1377,8 @@ def vue():
         lignes, tot = [], {"trame": 0.0, "ajuste": 0.0, "solde_plan": 0.0,
                            "plus": 0.0, "moins": 0.0, "solde": 0.0, "ecart": 0.0}
         nb_releves = 0
-        for em in membres_ordonnes(act, employes_base):
+        # Membres du mois : semaine passée → tous (historique), sinon actifs.
+        for em in membres_semaine(act, employes_tous, profils, _lundi(date(an, mo, nb_jours))):
             e = emap[em]
             h_trame = h_ajuste = 0.0
             j_ponctuels = j_absents = 0
@@ -2034,10 +2053,9 @@ def imprimer_frise():
         changements = charger_changements()
         absences = charger_absences()
         masques = set(opts.get("collaborateurs_masques", []))
-        actifs = [e for e in employes_tous
-                  if collaborateur_actif(profils.get(e["email"], {}))]
         rot = semaine_rotation(act, lundi)
-        emp_inclus = [emap[em] for em in membres_ordonnes(act, actifs) if em not in masques]
+        emp_inclus = [emap[em] for em in membres_semaine(act, employes_tous, profils, lundi)
+                      if em not in masques]
         if opts.get("lignes_vides") == "masquer":
             emp_inclus = [e for e in emp_inclus
                           if total_semaine(_jours_sem(act, e["email"], rot)) > 0]

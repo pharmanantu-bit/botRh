@@ -467,12 +467,13 @@
       <details style="margin-top:6px;">
         <summary style="cursor:pointer; font-size:0.8em; color:#1F4E79;">ℹ️ Signification des permissions</summary>
         <ul style="font-size:0.8em; color:#555; margin:6px 0 0 18px; line-height:1.5;">
-          <li><strong>Pas d'accès</strong> : ne peut pas consulter le planning.</li>
-          <li><strong>Consultation</strong> : peut consulter le planning de la pharmacie.</li>
-          <li><strong>Gestionnaire</strong> : peut modifier les plannings, gérer opérateurs et trames, et les permissions (sauf admin).</li>
-          <li><strong>Administrateur</strong> : tout ça + supprimer le planning + gérer l'abonnement.</li>
+          <li><strong>Pas d'accès</strong> : l'utilisateur ne peut pas consulter le planning.</li>
+          <li><strong>Consultation</strong> : l'utilisateur peut consulter le planning de la pharmacie.</li>
+          <li><strong>Gestionnaire (gestion)</strong> : l'utilisateur peut modifier les plannings, gérer les opérateurs et les trames (supprimer/créer…), et gérer les permissions sauf niveau administrateur.</li>
+          <li><strong>Administrateur (administration)</strong> : l'utilisateur peut modifier les plannings, gérer les opérateurs, les trames et les permissions ; il peut également supprimer le planning et gérer l'abonnement.</li>
         </ul>
         <p style="font-size:0.78em; color:#889; margin:6px 0 0 18px;">« Vue du planning » : tout le planning, ou seulement son planning personnel. <em>(L'accès en ligne des salariés n'est pas encore actif dans botRh — ces réglages sont prêts pour plus tard.)</em></p>
+        <p style="font-size:0.78em; color:#889; margin:6px 0 0 18px;">À noter : les collaborateurs <strong>actifs</strong> sont proposés dans les trames et les semaines du planning ; les <strong>archivés</strong> ne sont plus proposés mais restent affichés sur les semaines passées — ils sont nécessaires pour conserver l'historique de vos plannings.</p>
       </details>
     </div>
     {% else %}
@@ -523,6 +524,7 @@
           {% if trame.activee %}<span class="meta" style="color:#1F7A3D; font-weight:bold;">● Activée — sert au planning à partir de sa date de démarrage</span>{% endif %}
           {% endif %}
           <span class="meta" style="display:block; margin-top:6px;">Les trames <strong>activées</strong> se succèdent dans le temps : chaque semaine du planning utilise la trame activée la plus récente qui avait démarré. <strong>Ne désactive pas les anciennes trames</strong> — elles portent l'historique des plannings passés.</span>
+          <span class="meta" style="display:block; margin-top:4px;">Seuls les collaborateurs <strong>actifs</strong> sont proposés ici et sur les semaines à venir ; les <strong>archivés</strong> restent affichés sur les semaines passées (historique conservé).</span>
         {% else %}
           <span class="meta">Aucune trame pour l'instant — crée-en une ci-dessus.</span>
         {% endif %}
