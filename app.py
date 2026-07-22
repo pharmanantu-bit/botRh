@@ -917,7 +917,7 @@ def admin_employes():
     # Enrichit chaque employé (poste, nb docs, alertes, documents manquants, statut)
     profils = charger_profils()
     idx_docs = charger_docs_index()
-    actifs, archives = [], []
+    actifs, inactifs, archives = [], [], []
     for e in employes:
         profil = profils.get(e["email"], {})
         info = {
@@ -931,19 +931,25 @@ def admin_employes():
             "photo": profil.get("photo"),
             "releves_actif": bool(profil.get("releves_actif", True)),
         }
-        (archives if info["statut"] == "archive" else actifs).append(info)
+        if info["statut"] == "archive":
+            archives.append(info)
+        elif info["releves_actif"]:
+            actifs.append(info)
+        else:
+            inactifs.append(info)
 
     postes = sorted({i["poste"] for i in actifs if i["poste"]})
     contrats = sorted({i["contrat"] for i in actifs if i["contrat"]})
 
-    # Synthèse RH (intégrée ici) : actifs ayant une alerte ou un document manquant
-    synthese = [i for i in actifs if i["alertes"] or i["manquants"]]
+    # Synthèse RH : en poste OU inactifs (leur dossier se prépare avant l'arrivée)
+    synthese = [i for i in actifs + inactifs if i["alertes"] or i["manquants"]]
     synthese.sort(key=lambda i: (any(a["niveau"] == "rouge" for a in i["alertes"]),
                                  len(i["alertes"]), len(i["manquants"])), reverse=True)
     nb_rouge = sum(1 for i in synthese for a in i["alertes"] if a["niveau"] == "rouge")
     nb_manquants = sum(len(i["manquants"]) for i in synthese)
 
-    return render_template("admin_employes.html", employes=actifs, archives=archives,
+    return render_template("admin_employes.html", employes=actifs, inactifs=inactifs,
+                           archives=archives,
                            message=message, postes=postes, contrats=contrats,
                            synthese=synthese, nb_rouge=nb_rouge, nb_manquants=nb_manquants)
 
