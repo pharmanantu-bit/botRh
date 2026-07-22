@@ -858,14 +858,30 @@
 </script>
 {% endif %}
 <script>
-  // Masque heure HH:MM + passage auto à la case suivante (horaires d'ouverture).
+  // Masque heure HH:MM malin + passage auto à la case suivante.
+  // Taper « 8 » donne « 08 » (un 1er chiffre 3-9 est forcément une heure à un
+  // chiffre) ; en quittant la case, l'heure est complétée : « 8 » → « 08:00 »,
+  // « 08:3 » → « 08:30 », « 830 » → « 08:30 », « 1430 » → « 14:30 ».
   (function () {
     var inputs = Array.prototype.slice.call(document.querySelectorAll('input[placeholder="HH:MM"]'));
+    function chiffres(v) {
+      var d = v.replace(/\D/g, '');
+      if (d.length && parseInt(d.charAt(0), 10) > 2) d = '0' + d;
+      return d.slice(0, 4);
+    }
     inputs.forEach(function (inp, i) {
       inp.addEventListener('input', function () {
-        var d = inp.value.replace(/\D/g, '').slice(0, 4);
+        var d = chiffres(inp.value);
         inp.value = d.length <= 2 ? d : d.slice(0, 2) + ':' + d.slice(2);
         if (d.length === 4 && inputs[i + 1]) inputs[i + 1].focus();
+      });
+      inp.addEventListener('blur', function () {
+        var d = chiffres(inp.value);
+        if (!d) { inp.value = ''; return; }
+        d = (d + '0000').slice(0, 4);
+        var h = Math.min(parseInt(d.slice(0, 2), 10), 23);
+        var m = Math.min(parseInt(d.slice(2), 10), 59);
+        inp.value = ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
       });
     });
   })();
