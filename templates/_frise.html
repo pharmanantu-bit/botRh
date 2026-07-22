@@ -7,8 +7,8 @@
     </div>
   </div>
   {% for j in frise.jours %}
-  <div class="fr-jour{% if j.aujourdhui %} fr-auj{% endif %}"{% if j.aujourdhui %} id="auj"{% endif %}>
-    <div class="fr-jour-tt">{{ j.nom }}{% if j.aujourdhui %} <span style="color:#C0392B;">• aujourd'hui</span>{% endif %}{% if j.ferie %} <span class="ferme" style="color:#9C6500;">— férié ({{ j.ferie }})</span>{% elif j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
+  <div class="fr-jour{% if j.aujourdhui %} fr-auj{% endif %}"{% if j.date_iso %} id="j-{{ j.date_iso }}"{% endif %}>
+    <div class="fr-jour-tt">{% if j.aujourdhui %}<span id="auj"></span>{% endif %}{{ j.nom }}{% if j.aujourdhui %} <span style="color:#C0392B;">• aujourd'hui</span>{% endif %}{% if j.ferie %} <span class="ferme" style="color:#9C6500;">— férié ({{ j.ferie }})</span>{% elif j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
     {% for l in j.lignes %}
     <div class="fr-row{% if j.date_iso %} fr-clic{% endif %}"
       {% if j.date_iso %}data-email="{{ l.email }}" data-date="{{ j.date_iso }}" data-jour="{{ j.nom }}" data-prenom="{{ l.prenom }}" data-creneaux='{{ l.creneaux|tojson }}' data-trame='{{ l.creneaux_trame|tojson }}' data-motif="{{ l.motif }}"{% endif %}>

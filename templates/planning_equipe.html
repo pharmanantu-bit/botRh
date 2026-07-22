@@ -1064,10 +1064,11 @@
     document.addEventListener('click', fermer);
     window.addEventListener('resize', fermer);
   })();
-  // Bouton « Aujourd'hui » (lien #auj) : centre l'écran sur le jour en cours.
-  if (location.hash === '#auj') {
-    var auj = document.getElementById('auj');
-    if (auj) setTimeout(function () { auj.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 80);
+  // Centrage : #auj (bouton « Aujourd'hui ») ou #j-AAAA-MM-JJ (retour après une
+  // modification d'horaire) → l'écran se centre sur le jour, pas en haut de page.
+  if (location.hash === '#auj' || location.hash.indexOf('#j-') === 0) {
+    var cible = document.getElementById(location.hash.slice(1));
+    if (cible) setTimeout(function () { cible.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 80);
   }
 </script>
 {% endif %}

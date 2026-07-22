@@ -1520,7 +1520,9 @@ def enregistrer_changement():
                 "creneaux": creneaux,
                 "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
         sauvegarder_changements(data)
-    return redirect(url_for(".vue", onglet="planning", date=date_iso))
+    # Retour centré sur le jour modifié (ancre #j-date), pas en haut de page.
+    return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                            _anchor=f"j-{date_iso}"))
 
 
 @bp.route("/admin/planning-equipe/changement/supprimer", methods=["POST"])
@@ -1538,7 +1540,8 @@ def supprimer_changement():
         sauvegarder_changements(data)
     if request.form.get("retour") == "changements":
         return redirect(url_for(".vue", onglet="changements", mois=request.form.get("mois", "")))
-    return redirect(url_for(".vue", onglet="planning", date=date_iso))
+    return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                            _anchor=f"j-{date_iso}"))
 
 
 @bp.route("/admin/planning-equipe/saisie-ponctuelle", methods=["POST"])
