@@ -46,19 +46,21 @@
     .btn-mini.vert { background: #1F7A3D; } .btn-mini.vert:hover { background: #176030; }
 
     /* ===== FRISE (Gantt horizontal) ===== */
-    .frise { border: 1px solid #dde3ed; border-radius: 10px; overflow: hidden; }
-    .fr-axis { display: flex; align-items: flex-end; height: 22px; border-bottom: 1px solid #e3e9f1; background: #f7f9fc; }
+    .frise { border: none; }
+    .fr-axis { display: flex; align-items: flex-end; height: 22px; border: 1px solid #aab6c8; border-radius: 8px; background: #f0f4f9; margin-bottom: 10px; }
     .fr-axis .sp { width: 140px; flex: none; }
     .fr-axis .track { position: relative; flex: 1; height: 100%; }
-    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.7em; color: #889; white-space: nowrap; }
-    .fr-jour { border-bottom: 2px solid #e3e9f1; }
-    .fr-jour-tt { background: #eef2f8; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; }
-    .fr-jour-tt .ferme { color: #b0b8c4; font-weight: normal; }
-    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #f0f3f8; min-height: 26px; }
+    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.7em; color: #556; white-space: nowrap; }
+    /* Chaque jour = un bloc séparé, espacé du suivant, bordure contrastée. */
+    .fr-jour { border: 1px solid #aab6c8; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+    .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #aab6c8; }
+    .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #ccd5e2; min-height: 26px; }
+    .fr-jour-tt + .fr-row { border-top: none; }
     .fr-label { width: 140px; flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 8px; font-size: 0.8em; }
     .fr-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-    .fr-track { position: relative; flex: 1; background-size: 100% 100%; }
-    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #eef1f6; }
+    .fr-track { position: relative; flex: 1; background-size: 100% 100%; border-left: 1px solid #ccd5e2; }
+    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #d5dce8; }
     .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
     .fr-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; color: white; font-size: 0.7em; line-height: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
     .fr-tot { width: 52px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.75em; color: #667; }
