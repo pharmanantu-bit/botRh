@@ -324,6 +324,19 @@ finally:
         A._JSON_CACHE.pop(_p, None)
     _shutil.rmtree(_td2, ignore_errors=True)
 
+# --- Mail de bienvenue candidat (recrutement.mail_bienvenue, sans envoi) ---
+_su_b, _cor_b = recrutement.mail_bienvenue(
+    {"prenom": "Léa", "poste_vise": "Préparatrice en pharmacie", "email": "lea@ex.fr"})
+_su_g, _cor_g = recrutement.mail_bienvenue({"prenom": "Léa", "poste_vise": "Rayonniste"})
+ok_mb = ("Bienvenue" in _su_b and "Léa" in _cor_b
+         and "diplôme de préparateur en pharmacie" in _cor_b
+         and "dernier diplôme" in _cor_g
+         and all(x in _cor_b for x in ("fiche signalétique", "carte Vitale", "RIB",
+                                       "carte d'identité", "ILLOUZ")))
+print(("OK " if ok_mb else "KO ") + "[--] mail de bienvenue (préparateur + cas général)")
+if not ok_mb:
+    echecs.append("mail_bienvenue KO")
+
 # --- Notifications congés : contenu des mails (conges_sender, sans SMTP) ---
 import conges_sender
 _base_cp = {"prenom": "Léa", "email": "lea@ex.fr", "debut": "03/08/2026",

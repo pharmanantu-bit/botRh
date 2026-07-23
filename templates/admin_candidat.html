@@ -93,6 +93,14 @@
     <h2>📄 Promesse d'embauche</h2>
     <a class="btn" href="/admin/recrutement/promesse?id={{ cid }}" style="background:#1c4532;">📄 Préparer la promesse d'embauche</a>
     <span class="meta" style="margin-left:8px;">Courrier pré-rempli, tous les champs modifiables, export PDF.</span>
+    {% if mail_bienvenue_url %}
+    <div style="margin-top:10px;">
+      <a class="btn" href="{{ mail_bienvenue_url }}" target="_blank" rel="noopener" style="background:#1F7A3D;">✉️ Mail de bienvenue (Gmail)</a>
+      <span class="meta" style="margin-left:8px;">Après signature : félicitations + documents à fournir (date limite J+14 modifiable). Joins la fiche signalétique avant d'envoyer.</span>
+    </div>
+    {% else %}
+    <p class="meta" style="margin-top:8px;">Renseigne l'e-mail du candidat pour activer le mail de bienvenue.</p>
+    {% endif %}
     <hr style="border:none; border-top:1px solid #eee; margin:14px 0;">
     <h2>📤 Dossier expert-comptable</h2>
     <a class="btn" href="/admin/recrutement/dossier-zip?id={{ cid }}">⬇️ Télécharger le dossier (ZIP)</a>

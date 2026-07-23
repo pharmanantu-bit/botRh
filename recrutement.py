@@ -217,6 +217,46 @@ def ajouter():
     return redirect(url_for(".candidat", id=cid))
 
 
+def mail_bienvenue(c):
+    """(sujet, corps) du mail de bienvenue après signature de la promesse
+    d'embauche : félicitations + liste des documents à fournir pour le contrat.
+    La date limite proposée (J+14) et tout le texte restent modifiables dans Gmail."""
+    prenom = c.get("prenom", "").strip() or "..."
+    poste = (c.get("poste_vise") or "").lower()
+    diplome = "Une copie de votre dernier diplôme"
+    if "prepar" in poste or "prépar" in poste:
+        diplome = "Une copie de votre diplôme de préparateur en pharmacie"
+    date_limite = (datetime.now() + timedelta(days=14)).strftime("%d/%m/%Y")
+    p = promesse_embauche.valeurs_par_defaut()
+    sujet = "Bienvenue dans l'équipe ! 🎉 — Documents pour votre contrat de travail"
+    corps = (
+        f"Bonjour {prenom},\n\n"
+        "Toutes nos félicitations pour la signature de votre promesse d'embauche !\n\n"
+        "C'est avec une grande joie que nous vous accueillons au sein de notre équipe. "
+        "Votre profil nous a convaincus et nous sommes impatients de vous voir rejoindre "
+        "l'aventure à nos côtés. Soyez assuré(e) que nous mettrons tout en œuvre pour que "
+        "votre intégration se déroule dans les meilleures conditions.\n\n"
+        "Afin de préparer votre contrat de travail, nous vous remercions de bien vouloir "
+        f"nous faire parvenir les documents suivants avant le {date_limite} :\n\n"
+        "  • La fiche signalétique complétée (en pièce jointe de ce mail)\n"
+        "  • Une copie de votre carte Vitale\n"
+        f"  • {diplome}\n"
+        "  • Un RIB\n"
+        "  • Une copie recto verso de votre carte d'identité\n\n"
+        "Vous pouvez nous les transmettre en réponse à cet e-mail, ou les déposer "
+        "directement à la pharmacie si vous préférez.\n\n"
+        "Naturellement, nous restons à votre entière disposition pour toute question "
+        "d'ici votre arrivée. N'hésitez pas à nous contacter.\n\n"
+        "Encore bienvenue parmi nous — à très bientôt !\n\n"
+        "Chaleureusement,\n\n"
+        f"{p['gerants'].replace('Messieurs ', '')}\n"
+        f"{p['gerants_titre']}\n"
+        f"{p['pharmacie_nom']}\n"
+        f"{p['pharmacie_tel']}"
+    )
+    return sujet, corps
+
+
 @bp.route("/admin/recrutement/candidat")
 def candidat():
     if not _admin():
@@ -246,12 +286,20 @@ def candidat():
         mail_accuse_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                            + urllib.parse.quote(c["email"]) + "&su=" + urllib.parse.quote(su)
                            + "&body=" + urllib.parse.quote(body))
+    # Lien Gmail pré-rempli : mail de bienvenue après signature de la promesse.
+    mail_bienvenue_url = ""
+    if c.get("email"):
+        su, body = mail_bienvenue(c)
+        mail_bienvenue_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
+                              + urllib.parse.quote(c["email"]) + "&su=" + urllib.parse.quote(su)
+                              + "&body=" + urllib.parse.quote(body))
     return render_template("admin_candidat.html", c=c, cid=cid,
                            docs=candidat_docs_de(cid), statuts=STATUTS_RECRUTEMENT,
                            types_doc=TYPES_DOC_CANDIDAT, types_note=TYPES_NOTE_ENTRETIEN,
                            journal=journal, msg=request.args.get("msg", ""),
                            mail_comptable_url=mail_comptable_url,
                            mail_accuse_url=mail_accuse_url,
+                           mail_bienvenue_url=mail_bienvenue_url,
                            cv_texte=_cv_clair(c), disclaimer_ia=rgpd_recrutement.DISCLAIMER_IA,
                            duree_conservation=rgpd_recrutement.DUREE_CONSERVATION_LIBELLE,
                            criteres=CRITERES_EVALUATION, grille=c.get("grille") or {},
