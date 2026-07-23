@@ -1,5 +1,8 @@
-<!-- Barre latérale fixe repliable — incluse sur toutes les pages admin -->
+<!-- Barre latérale fixe repliable — incluse sur toutes les pages admin.
+     Sur mobile (≤ 820px) : menu fermé par défaut, ouverture en surimpression
+     avec fond sombre cliquable, le contenu n'est jamais décalé. -->
 <button class="nav-burger" onclick="toggleNav()" aria-label="Afficher le menu">☰</button>
+<div class="nav-backdrop" onclick="toggleNav()" aria-hidden="true"></div>
 <nav class="nav-drawer" id="navDrawer" aria-label="Navigation admin">
   <div class="nav-head">
     <span class="nav-logo">💊 botRh</span>
@@ -55,22 +58,48 @@
   .nav-drawer a.actif span { font-weight: bold; }
   .nav-logout { color: #ffd5d5 !important; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.15); }
   .nav-logout:hover { background: rgba(255,255,255,0.12); }
-  @media print { .nav-burger, .nav-drawer { display: none !important; } }
+  .nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,25,40,0.5); z-index: 1100; }
+
+  /* ===== Mobile : menu en surimpression, contenu jamais décalé ===== */
+  @media (max-width: 820px) {
+    body, body.nav-collapse { padding-left: 0; padding-top: 62px; }
+    .nav-burger { display: block; top: 11px; }
+    body:not(.nav-collapse) .nav-burger { display: none; }
+    .nav-drawer { width: min(78vw, 300px); }
+    /* Liens plus hauts = cibles tactiles confortables */
+    .nav-drawer a { padding: 15px 20px; font-size: 1em; }
+    .nav-close { width: 36px; height: 36px; font-size: 1.35em; }
+    /* Menu ouvert → fond sombre cliquable pour refermer, page figée derrière */
+    body:not(.nav-collapse) .nav-backdrop { display: block; }
+    body:not(.nav-collapse) { overflow: hidden; }
+    /* Les tableaux larges défilent dans la page au lieu d'élargir tout l'écran */
+    table { display: block; overflow-x: auto; max-width: 100%; }
+  }
+  @media print { .nav-burger, .nav-drawer, .nav-backdrop { display: none !important; } }
 </style>
 
 <script>
+  var navMobile = window.matchMedia('(max-width: 820px)');
   function toggleNav() {
     var col = document.body.classList.toggle('nav-collapse');
-    try { localStorage.setItem('navCollapse', col ? '1' : '0'); } catch (e) {}
+    // L'état mémorisé ne concerne que le desktop : sur mobile le menu
+    // repart toujours fermé à la page suivante.
+    if (!navMobile.matches) {
+      try { localStorage.setItem('navCollapse', col ? '1' : '0'); } catch (e) {}
+    }
   }
   (function () {
-    // Restaure l'état (replié/ouvert) sans animation au chargement
-    try {
-      if (localStorage.getItem('navCollapse') === '1') {
-        document.body.classList.add('no-trans', 'nav-collapse');
-        requestAnimationFrame(function () { document.body.classList.remove('no-trans'); });
-      }
-    } catch (e) {}
+    // Mobile : toujours fermé au chargement. Desktop : restaure l'état mémorisé.
+    var ferme = navMobile.matches;
+    try { if (!ferme) ferme = localStorage.getItem('navCollapse') === '1'; } catch (e) {}
+    if (ferme) {
+      document.body.classList.add('no-trans', 'nav-collapse');
+      requestAnimationFrame(function () { document.body.classList.remove('no-trans'); });
+    }
+    // Échap referme le menu sur mobile
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && navMobile.matches && !document.body.classList.contains('nav-collapse')) toggleNav();
+    });
     // Surligne le lien de la page courante
     var path = window.location.pathname.replace(/\/+$/, '') || '/admin';
     var best = null;

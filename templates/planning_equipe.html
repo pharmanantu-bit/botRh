@@ -84,6 +84,21 @@
     .cre input[type=time]::-webkit-inner-spin-button { display: none; }
     .jtot { color: #889; font-size: 0.92em; }
     .stub { padding: 40px; text-align: center; color: #889; }
+
+    /* ===== Mobile ===== */
+    @media (max-width: 820px) {
+      body { padding: 8px; }
+      .carte { padding: 14px 10px; }
+      /* Onglets : une seule ligne balayable au doigt (l'actif est centré au chargement) */
+      .ongs, .ongs-sec { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .ongs::-webkit-scrollbar, .ongs-sec::-webkit-scrollbar { display: none; }
+      .ongs a, .ongs-sec a { white-space: nowrap; flex: none; }
+      .ongs a { padding: 11px 14px; }
+      /* Frise : colonne des noms réduite pour laisser la place aux barres */
+      .fr-label, .fr-axis .sp { width: 92px; }
+      .fr-label { font-size: 0.72em; }
+      .fr-tot { width: 42px; }
+    }
   </style>
 </head>
 <body>
@@ -122,6 +137,14 @@
     {% endfor %}
   </div>
   {% endif %}
+  <script>
+    // Mobile : ramène l'onglet actif au centre de la barre balayable
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      document.querySelectorAll('.ongs a.actif, .ongs-sec a.actif').forEach(function (a) {
+        a.parentElement.scrollLeft = a.offsetLeft - (a.parentElement.clientWidth - a.offsetWidth) / 2;
+      });
+    }
+  </script>
 
   {% if onglet == 'planning' and trame and nav %}
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
