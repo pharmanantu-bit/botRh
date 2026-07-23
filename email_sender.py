@@ -12,6 +12,7 @@ from config import GMAIL_USER, GMAIL_APP_PASSWORD, EMPLOYEES_FILE, DOCUMENTS_FOL
 
 BASE_URL = "https://pharmacie92000.pythonanywhere.com"
 from tokens import generer_token
+from signature_mail import SIGNATURE
 
 
 def setup_logging():
@@ -83,7 +84,8 @@ Consulter votre historique de relevés :
 {lien_espace}
 
 Belle journée,
-La direction
+
+{SIGNATURE}
 """
     msg.attach(MIMEText(body, "plain", "utf-8"))
 

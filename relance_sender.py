@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from dotenv import load_dotenv
 
+from signature_mail import SIGNATURE
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 GMAIL_USER = os.getenv("GMAIL_USER")
@@ -116,7 +118,8 @@ Remplissez-la en quelques minutes en ligne via ce lien :
 {lien}
 
 Merci d'avance,
-La direction
+
+{SIGNATURE}
 """
                 msg.attach(MIMEText(body, "plain", "utf-8"))
                 server.sendmail(GMAIL_USER, emp["email"], msg.as_string())

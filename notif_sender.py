@@ -16,6 +16,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
+from signature_mail import SIGNATURE
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -178,7 +179,7 @@ def main():
         f"  • Commentaire : {commentaire}\n\n"
         f"Une copie de votre relevé est en pièce jointe (PDF).\n"
         f"En cas d'erreur, vous pouvez le modifier jusqu'au 25 via votre lien.\n\n"
-        f"Belle journée,\nLa direction"
+        f"Belle journée,\n\n{SIGNATURE}"
     )
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:

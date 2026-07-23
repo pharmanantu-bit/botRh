@@ -23,6 +23,7 @@ import recrutement_ia
 import crypto_rh          # chiffrement au repos du cv_texte (même traitement que l'IBAN)
 import rgpd_recrutement   # durée de conservation, anonymisation, mention d'information
 import promesse_embauche  # courrier « promesse d'embauche » : défauts + PDF
+from signature_mail import SIGNATURE
 
 bp = Blueprint("recrutement", __name__)
 
@@ -227,7 +228,6 @@ def mail_bienvenue(c):
     if "prepar" in poste or "prépar" in poste:
         diplome = "Une copie de votre diplôme de préparateur en pharmacie"
     date_limite = (datetime.now() + timedelta(days=14)).strftime("%d/%m/%Y")
-    p = promesse_embauche.valeurs_par_defaut()
     sujet = "Bienvenue dans l'équipe ! 🎉 — Documents pour votre contrat de travail"
     corps = (
         f"Bonjour {prenom},\n\n"
@@ -249,10 +249,7 @@ def mail_bienvenue(c):
         "d'ici votre arrivée. N'hésitez pas à nous contacter.\n\n"
         "Encore bienvenue parmi nous — à très bientôt !\n\n"
         "Chaleureusement,\n\n"
-        f"{p['gerants'].replace('Messieurs ', '')}\n"
-        f"{p['gerants_titre']}\n"
-        f"{p['pharmacie_nom']}\n"
-        f"{p['pharmacie_tel']}"
+        f"{SIGNATURE}"
     )
     return sujet, corps
 
@@ -274,7 +271,7 @@ def candidat():
         su = f"Dossier nouvel embauché — {c.get('prenom', '')} {c.get('nom', '')}".strip()
         body = (f"Bonjour,\n\nVeuillez trouver le dossier de {c.get('prenom', '')} {c.get('nom', '')} "
                 f"({c.get('poste_vise') or 'poste'}), recruté(e) dans notre officine.\n\n"
-                "Documents en pièce jointe (ZIP à joindre depuis le téléchargement).\n\nCordialement")
+                f"Documents en pièce jointe (ZIP à joindre depuis le téléchargement).\n\nCordialement,\n\n{SIGNATURE}")
         mail_comptable_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                               + urllib.parse.quote(comptable) + "&su=" + urllib.parse.quote(su)
                               + "&body=" + urllib.parse.quote(body))
@@ -635,7 +632,8 @@ def _mail_action(args, refus=False):
         corps = (f"Bonjour {c.get('prenom')},\n\nNous vous remercions pour l'intérêt porté à notre officine et "
                  f"pour votre candidature au poste de {poste}.\n\nAprès étude attentive, nous ne donnerons pas "
                  "suite cette fois-ci. Nous conservons votre profil et reviendrons vers vous si une opportunité "
-                 "y correspond.\n\nNous vous souhaitons une pleine réussite dans vos démarches.\n\nCordialement,\nLa pharmacie")
+                  "y correspond.\n\nNous vous souhaitons une pleine réussite dans vos démarches."
+                 f"\n\nCordialement,\n\n{SIGNATURE}")
         label = f"✉️ Réponse de refus à {c.get('prenom')} {c.get('nom')}"
         quoi = "refus"
     else:
@@ -644,7 +642,7 @@ def _mail_action(args, refus=False):
         corps = (f"Bonjour {c.get('prenom')},\n\nNous avons étudié votre candidature pour {poste} et souhaitons "
                  "vous rencontrer lors d'un entretien.\n\n"
                  + (f"Proposition : {details}\n\n" if details else "Pourriez-vous nous indiquer vos disponibilités ?\n\n")
-                 + "Dans l'attente de votre retour,\n\nCordialement,\nLa pharmacie")
+                 + f"Dans l'attente de votre retour,\n\nCordialement,\n\n{SIGNATURE}")
         label = f"✉️ Convoquer {c.get('prenom')} {c.get('nom')}"
         quoi = "convocation"
     return {"resultat": f"Brouillon de {quoi} préparé pour {c.get('prenom')} {c.get('nom')} (à relire et envoyer).",

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from flask import Flask, request, render_template, abort, redirect, url_for, session, send_file
 from werkzeug.utils import secure_filename
 import promesse_embauche  # léger : n'importe PAS reportlab au chargement
+from signature_mail import SIGNATURE
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -1434,7 +1435,17 @@ def admin_employe():
                               "solde": None, "rempli": False, "valide": False, "commentaire": ""})
     cp = sum(d["plus"] for d in mois_data if d["rempli"])
     cm = sum(d["moins"] for d in mois_data if d["rempli"])
+    # Mail de bienvenue (promesse signée) — même contenu que sur la fiche candidat.
+    import urllib.parse
+    from recrutement import mail_bienvenue
+    su_b, corps_b = mail_bienvenue({"prenom": emp["prenom"],
+                                    "poste_vise": profil_de(email).get("poste", ""),
+                                    "email": email})
+    mail_bienvenue_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
+                          + urllib.parse.quote(email) + "&su=" + urllib.parse.quote(su_b)
+                          + "&body=" + urllib.parse.quote(corps_b))
     return render_template("admin_employe.html", emp=emp, annee=annee, mois_data=mois_data,
+                           mail_bienvenue_url=mail_bienvenue_url,
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
                            cumul_solde=round(cp - cm, 2),
                            profil=profil_de(email), champs_profil=CHAMPS_PROFIL,
@@ -2289,7 +2300,7 @@ def _outil_preparer_relance(args, annuaire, profils):
     corps = (f"Bonjour {label},\n\nSauf erreur de notre part, nous n'avons pas encore reçu votre "
              f"feuille d'heures du mois de {mois_annee}.\n\n{urgence}\n\n"
              f"Remplissez-la en quelques minutes en ligne via ce lien :\n{lien}\n\n"
-             f"Merci d'avance,\nLa direction")
+             "Merci d'avance,\n\n" + SIGNATURE)
     return {"resultat": f"Brouillon de relance préparé pour {label} (à relire et envoyer).",
             "action": {"type": "mailto", "label": f"✉️ Ouvrir la relance pour {label}",
                        "to": e["email"], "subject": sujet, "body": corps}}

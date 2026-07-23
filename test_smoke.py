@@ -332,7 +332,9 @@ ok_mb = ("Bienvenue" in _su_b and "Léa" in _cor_b
          and "diplôme de préparateur en pharmacie" in _cor_b
          and "dernier diplôme" in _cor_g
          and all(x in _cor_b for x in ("fiche signalétique", "carte Vitale", "RIB",
-                                       "carte d'identité", "ILLOUZ")))
+                                       "carte d'identité")))
+from signature_mail import SIGNATURE
+ok_mb = ok_mb and SIGNATURE in _cor_b and SIGNATURE in _cor_g
 print(("OK " if ok_mb else "KO ") + "[--] mail de bienvenue (préparateur + cas général)")
 if not ok_mb:
     echecs.append("mail_bienvenue KO")
@@ -351,7 +353,8 @@ ok_cs = (_m_dep is not None and _m_dep[0] == conges_sender.ADMIN_EMAIL
          and _m_ref is not None and _m_ref[0] == "lea@ex.fr"
          and "effectifs insuffisants" in _m_ref[2]
          and conges_sender.construire_mail({"action": "annulee"}) is None
-         and conges_sender.construire_mail({}) is None)
+         and conges_sender.construire_mail({}) is None
+         and SIGNATURE in _m_acc[2] and SIGNATURE in _m_ref[2])
 print(("OK " if ok_cs else "KO ") + "[--] conges_sender.construire_mail (3 actions + vides)")
 if not ok_cs:
     echecs.append("conges_sender.construire_mail KO")

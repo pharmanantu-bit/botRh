@@ -14,6 +14,8 @@ import json
 import smtplib
 from email.mime.text import MIMEText
 
+from signature_mail import SIGNATURE
+
 ADMIN_EMAIL = "pharmanantu@gmail.com"
 GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
@@ -55,7 +57,7 @@ def construire_mail(p):
             f"({duree}) est ACCEPTÉE.\n\n"
             f"Elle est posée au planning et déduite de votre solde de congés, "
             f"que vous pouvez suivre dans « Mon espace » (bloc Mes congés payés).\n\n"
-            f"Belle journée,\nLa direction"
+            f"Belle journée,\n\n{SIGNATURE}"
         )
         return (email_emp, sujet, corps)
 
@@ -68,7 +70,7 @@ def construire_mail(p):
             f"Motif : {motif_refus or 'non précisé'}\n\n"
             f"N'hésitez pas à en parler avec la direction ou à proposer d'autres "
             f"dates depuis « Mon espace ».\n\n"
-            f"Belle journée,\nLa direction"
+            f"Belle journée,\n\n{SIGNATURE}"
         )
         return (email_emp, sujet, corps)
 

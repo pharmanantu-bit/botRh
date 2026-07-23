@@ -8,6 +8,8 @@ Aucune dépendance lourde : importable côté serveur comme côté runner.
 """
 import os
 
+from signature_mail import SIGNATURE
+
 # --- Durée de conservation (CNIL : 2 ans max pour un candidat non retenu) ---
 DUREE_CONSERVATION_JOURS = 730
 DUREE_CONSERVATION_LIBELLE = "2 ans"
@@ -84,6 +86,7 @@ def texte_information(prenom="", poste=""):
         "(www.cnil.fr).",
         "",
         "Cordialement,",
-        pharma,
+        "",
+        SIGNATURE,
     ]
     return "\n".join(lignes)

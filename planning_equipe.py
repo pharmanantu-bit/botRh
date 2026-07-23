@@ -16,6 +16,8 @@ from datetime import date, datetime, timedelta
 from flask import (Blueprint, request, render_template, redirect, url_for,
                    session, abort, current_app)
 
+from signature_mail import SIGNATURE
+
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes,
                  charger_profils, sauvegarder_profils, couleur_collaborateur,
                  collaborateur_actif, poste_de, POSTES, PALETTE_PLANNING)
@@ -1143,7 +1145,7 @@ def vue():
             body = (f"Bonjour {selected['prenom']},\n\n"
                     "Tu es invité(e) à rejoindre / consulter le planning de l'équipe de la "
                     "pharmacie. Réponds à ce mail si tu as la moindre question.\n\n"
-                    "Cordialement,\nLa pharmacie")
+                    "Cordialement,\n\n" + SIGNATURE)
             selected["mail_invit"] = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                                       + urllib.parse.quote(selected["email"])
                                       + "&su=" + urllib.parse.quote(su)
