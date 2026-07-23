@@ -64,6 +64,8 @@
     .carte-emp .nom { font-weight: bold; color: #1F4E79; font-size: 1.02em; }
     .carte-emp .poste { color: #2E75B6; font-size: 0.85em; margin-top: 2px; min-height: 1em; }
     .carte-emp .email { color: #888; font-size: 0.78em; margin-top: 6px; word-break: break-all; }
+    .carte-emp .email a { color: #2E75B6; text-decoration: none; }
+    .carte-emp .email a:hover { text-decoration: underline; }
     .carte-emp .docs { display: inline-block; margin-top: 10px; background: #eaf1fb; color: #1F4E79; font-size: 0.78em; font-weight: bold; padding: 3px 10px; border-radius: 12px; }
     .carte-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
     .btn-edit { background: #2E75B6; color: white; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
@@ -181,7 +183,9 @@
       {% endif %}
       <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
       <div class="poste">{{ emp.poste or '—' }}</div>
-      <div class="email">{{ emp.email }}</div>
+      <div class="email"><a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ emp.email|urlencode }}"
+           target="_blank" rel="noopener" title="Écrire un e-mail (Gmail)"
+           onclick="event.stopPropagation();">{{ emp.email }}</a></div>
       <div class="docs">📎 {{ emp.nb_docs }} document{{ 's' if emp.nb_docs != 1 else '' }}</div>
       {% if emp.alertes or emp.manquants %}
       <div class="carte-badges">

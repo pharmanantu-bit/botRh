@@ -138,7 +138,8 @@
           {% if statut == 'archive' %}<span class="badge-archive">Archivé</span>{% endif %}
         </h1>
         <div class="contacts">
-          <a href="mailto:{{ emp.email }}">✉️ {{ emp.email }}</a>
+          <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ emp.email|urlencode }}"
+             target="_blank" rel="noopener" title="Écrire un e-mail (Gmail)">✉️ {{ emp.email }}</a>
           {% if profil.telephone %}<a href="tel:{{ profil.telephone|replace(' ','') }}">📞 {{ profil.telephone }}</a>{% endif %}
         </div>
       </div>
