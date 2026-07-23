@@ -150,6 +150,8 @@
   <div class="fiche-actions">
     <a href="/admin/employe/attestation?email={{ emp.email|urlencode }}" target="_blank" class="fa-btn fa-attest">📄 Attestation de travail</a>
     <a href="/admin/recrutement/promesse?email={{ emp.email|urlencode }}" class="fa-btn" style="background:#1c4532; color:white;">📄 Promesse d'embauche</a>
+    <a href="{{ mail_bienvenue_url }}" target="_blank" rel="noopener" class="fa-btn" style="background:#1F7A3D; color:white;"
+       title="Après signature de la promesse : félicitations + documents à fournir (date limite J+14 modifiable dans Gmail). Joins la fiche signalétique avant d'envoyer.">✉️ Mail de bienvenue</a>
     {% set rel_actif = profil.get('releves_actif', True) and statut != 'archive' %}
     <form method="POST" action="/admin/employe/releves-actif" style="display:inline;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
