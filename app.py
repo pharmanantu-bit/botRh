@@ -1896,10 +1896,11 @@ def envoyer_confirmation(sujet, message):
         server.sendmail(gmail_user, "pharmanantu@gmail.com", msg.as_string())
 
 
-def notifier_releve(donnees):
-    """Déclenche le workflow GitHub Actions 'nouveau_releve' qui génère le PDF
-    du relevé et l'envoie à l'admin. Le serveur gratuit ne pouvant pas faire de
-    SMTP, l'envoi est délégué au runner GitHub. Nécessite GITHUB_TOKEN dans le .env."""
+def declencher_workflow(event_type, donnees):
+    """Déclenche un workflow GitHub Actions (repository_dispatch). Le serveur
+    gratuit ne pouvant pas faire de SMTP, tout envoi de mail est délégué au
+    runner GitHub. Nécessite GITHUB_TOKEN dans le .env.
+    NB : client_payload est limité à 10 propriétés par l'API GitHub."""
     import urllib.request
     from dotenv import load_dotenv
     load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -1908,7 +1909,7 @@ def notifier_releve(donnees):
         return
     url = "https://api.github.com/repos/pharmanantu-bit/botRh/dispatches"
     body = json.dumps({
-        "event_type": "nouveau_releve",
+        "event_type": event_type,
         "client_payload": donnees,
     }).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
@@ -1917,6 +1918,11 @@ def notifier_releve(donnees):
     req.add_header("Content-Type", "application/json")
     req.add_header("User-Agent", "botRh")
     urllib.request.urlopen(req, timeout=15)
+
+
+def notifier_releve(donnees):
+    """Workflow 'nouveau_releve' : PDF du relevé soumis + mail à l'admin."""
+    declencher_workflow("nouveau_releve", donnees)
 
 
 @app.route("/deploy")

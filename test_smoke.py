@@ -324,6 +324,49 @@ finally:
         A._JSON_CACHE.pop(_p, None)
     _shutil.rmtree(_td2, ignore_errors=True)
 
+# --- Notifications congés : contenu des mails (conges_sender, sans SMTP) ---
+import conges_sender
+_base_cp = {"prenom": "Léa", "email": "lea@ex.fr", "debut": "03/08/2026",
+            "fin": "08/08/2026", "nb": 6, "commentaire": "été", "motif_refus": ""}
+_m_dep = conges_sender.construire_mail({**_base_cp, "action": "deposee"})
+_m_acc = conges_sender.construire_mail({**_base_cp, "action": "acceptee"})
+_m_ref = conges_sender.construire_mail({**_base_cp, "action": "refusee",
+                                        "motif_refus": "effectifs insuffisants"})
+ok_cs = (_m_dep is not None and _m_dep[0] == conges_sender.ADMIN_EMAIL
+         and "Léa" in _m_dep[1] and "6 jours ouvrables" in _m_dep[2]
+         and _m_acc is not None and _m_acc[0] == "lea@ex.fr" and "acceptés" in _m_acc[1]
+         and _m_ref is not None and _m_ref[0] == "lea@ex.fr"
+         and "effectifs insuffisants" in _m_ref[2]
+         and conges_sender.construire_mail({"action": "annulee"}) is None
+         and conges_sender.construire_mail({}) is None)
+print(("OK " if ok_cs else "KO ") + "[--] conges_sender.construire_mail (3 actions + vides)")
+if not ok_cs:
+    echecs.append("conges_sender.construire_mail KO")
+
+# --- Dépôt d'une demande de congés (store isolé) : route OK + notification
+#     best-effort silencieuse (pas de GITHUB_TOKEN → aucun appel réseau) ---
+import planning_equipe as PE
+_dcf = PE.DEMANDES_CP_FILE
+_td3 = tempfile.mkdtemp()
+PE.DEMANDES_CP_FILE = os.path.join(_td3, "demandes.json")
+try:
+    from datetime import date as _date, timedelta as _tdelta
+    _d1 = (_date.today() + _tdelta(days=30)).isoformat()
+    _d2 = (_date.today() + _tdelta(days=35)).isoformat()
+    _rc = client.post("/mon-espace/conges/demander",
+                      data={"token": tok0, "debut": _d1, "fin": _d2,
+                            "commentaire": "smoke"}).status_code
+    _nbd = len(PE.charger_demandes_cp())
+    ok_dm = _rc == 302 and _nbd == 1
+    print(("OK " if ok_dm else "KO ") + f"[--] dépôt demande congés (code={_rc}, enregistrées={_nbd})")
+    if not ok_dm:
+        echecs.append("dépôt demande congés KO")
+finally:
+    PE.DEMANDES_CP_FILE = _dcf
+    for _p in [k for k in A._JSON_CACHE if _td3.replace("\\", "/") in k.replace("\\", "/")]:
+        A._JSON_CACHE.pop(_p, None)
+    _shutil.rmtree(_td3, ignore_errors=True)
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

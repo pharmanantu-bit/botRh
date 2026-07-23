@@ -1627,6 +1627,28 @@ def enregistrer_conges():
                             periode=request.form.get("periode", ""), msg="conges_ok"))
 
 
+def _notifier_demande_cp(action, dm, prenom):
+    """Mail de congés via le runner GitHub (SMTP bloqué sur le serveur gratuit) :
+    dépôt → notification à l'admin, décision → réponse à l'employé.
+    Best-effort : ne bloque jamais le traitement de la demande."""
+    try:
+        from app import declencher_workflow
+        d1 = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
+        d2 = datetime.strptime(dm.get("fin", ""), "%Y-%m-%d").date()
+        declencher_workflow("demande_conges", {
+            "action": action,
+            "prenom": prenom,
+            "email": dm.get("email", ""),
+            "debut": d1.strftime("%d/%m/%Y"),
+            "fin": d2.strftime("%d/%m/%Y"),
+            "nb": _jours_ouvrables_cp(d1, d2, d1, d2),
+            "commentaire": dm.get("commentaire", ""),
+            "motif_refus": dm.get("motif_refus", ""),
+        })
+    except Exception:
+        current_app.logger.exception("Échec notification demande de congés")
+
+
 @bp.route("/admin/planning-equipe/conges/traiter", methods=["POST"])
 def traiter_demande_cp():
     """Accepte ou refuse une demande de congés. Accepter = créer l'absence
@@ -1656,6 +1678,9 @@ def traiter_demande_cp():
         return redirect(url_for(".vue", onglet="conges"))
     dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     sauvegarder_demandes_cp(demandes)
+    emp = next((e for e in charger_employes()
+                if e.get("email", "").lower() == dm.get("email", "").lower()), None)
+    _notifier_demande_cp(dm["statut"], dm, emp["prenom"] if emp else dm.get("email", ""))
     return redirect(url_for(".vue", onglet="conges", msg=msg))
 
 
@@ -1682,6 +1707,7 @@ def demander_conges():
                      "statut": "en_attente",
                      "demande_le": datetime.now().strftime("%d/%m/%Y %H:%M")})
     sauvegarder_demandes_cp(demandes)
+    _notifier_demande_cp("deposee", demandes[-1], emp["prenom"])
     return redirect(retour + "&cp=ok#conges")
 
 

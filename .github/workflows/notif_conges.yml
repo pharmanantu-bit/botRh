@@ -1,0 +1,26 @@
+name: Notification congés botRh
+
+# Déclenché par le serveur (repository_dispatch 'demande_conges') quand un
+# employé dépose une demande de congés (mail à l'admin) ou quand l'admin la
+# traite (mail à l'employé). Le serveur PythonAnywhere gratuit ne peut pas
+# envoyer d'e-mail, l'envoi est délégué à ce runner.
+
+on:
+  repository_dispatch:
+    types: [demande_conges]
+  workflow_dispatch:   # test manuel (payload vide → rien envoyé)
+
+jobs:
+  notif:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Envoyer la notification
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: python conges_sender.py
