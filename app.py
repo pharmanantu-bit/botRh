@@ -311,6 +311,25 @@ def formulaire():
     )
 
 
+# Documents d'embauche à compléter (liés dans le mail de bienvenue). Fichiers
+# VIERGES — aucune donnée nominative — donc téléchargeables sans authentification.
+DOCS_EMBAUCHE = {
+    "fiche-signaletique": "Fiche_signaletique_2026.docx",
+    "mutuelle": "Mutuelle_BIA_Sante.pdf",
+}
+
+
+@app.route("/docs-embauche/<doc>")
+def docs_embauche(doc):
+    nom = DOCS_EMBAUCHE.get(doc)
+    if not nom:
+        abort(404)
+    chemin = os.path.join(BASE_DIR, "documents", "embauche", nom)
+    if not os.path.exists(chemin):
+        abort(404)
+    return send_file(chemin, as_attachment=True, download_name=nom)
+
+
 def extraire_detail_jours(form, mois, annee):
     """Reconstruit le détail jour par jour saisi dans le formulaire de relevé.
     Renvoie une liste {label, plus, moins} pour les seuls jours ayant des heures.

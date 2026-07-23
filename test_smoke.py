@@ -49,6 +49,9 @@ routes_publiques = [
     (f"/export_recap?cle={cle}&mois={mois}&annee={annee}", 200),
     (f"/export_backup?cle={cle}", 200),
     ("/export_reponses?cle=mauvaise", 403),
+    ("/docs-embauche/fiche-signaletique", 200),
+    ("/docs-embauche/mutuelle", 200),
+    ("/docs-embauche/inconnu", 404),
 ]
 routes_admin = [
     "/admin/dashboard", "/admin/mois", f"/admin/mois?mois={mois}&annee={annee}",
@@ -334,7 +337,9 @@ ok_mb = ("Bienvenue" in _su_b and "Léa" in _cor_b
          and all(x in _cor_b for x in ("fiche signalétique", "carte Vitale", "RIB",
                                        "carte d'identité")))
 from signature_mail import SIGNATURE
-ok_mb = ok_mb and SIGNATURE in _cor_b and SIGNATURE in _cor_g
+ok_mb = (ok_mb and SIGNATURE in _cor_b and SIGNATURE in _cor_g
+         and "/docs-embauche/fiche-signaletique" in _cor_b
+         and "/docs-embauche/mutuelle" in _cor_b and "mutuelle" in _cor_b)
 print(("OK " if ok_mb else "KO ") + "[--] mail de bienvenue (préparateur + cas général)")
 if not ok_mb:
     echecs.append("mail_bienvenue KO")

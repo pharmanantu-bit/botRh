@@ -25,6 +25,8 @@ import rgpd_recrutement   # durée de conservation, anonymisation, mention d'inf
 import promesse_embauche  # courrier « promesse d'embauche » : défauts + PDF
 from signature_mail import SIGNATURE
 
+BASE_URL = "https://pharmacie92000.pythonanywhere.com"
+
 bp = Blueprint("recrutement", __name__)
 
 CANDIDATS_FILE = os.path.join(BASE_DIR, "candidats.json")
@@ -238,11 +240,15 @@ def mail_bienvenue(c):
         "votre intégration se déroule dans les meilleures conditions.\n\n"
         "Afin de préparer votre contrat de travail, nous vous remercions de bien vouloir "
         f"nous faire parvenir les documents suivants avant le {date_limite} :\n\n"
-        "  • La fiche signalétique complétée (en pièce jointe de ce mail)\n"
+        "  • La fiche signalétique complétée (à télécharger via le lien ci-dessous)\n"
+        "  • Le dossier d'adhésion à la mutuelle complété (à télécharger ci-dessous)\n"
         "  • Une copie de votre carte Vitale\n"
         f"  • {diplome}\n"
         "  • Un RIB\n"
         "  • Une copie recto verso de votre carte d'identité\n\n"
+        "Documents à télécharger, compléter et nous retourner :\n"
+        f"  – Fiche signalétique : {BASE_URL}/docs-embauche/fiche-signaletique\n"
+        f"  – Dossier d'adhésion mutuelle (BIA Santé) : {BASE_URL}/docs-embauche/mutuelle\n\n"
         "Vous pouvez nous les transmettre en réponse à cet e-mail, ou les déposer "
         "directement à la pharmacie si vous préférez.\n\n"
         "Naturellement, nous restons à votre entière disposition pour toute question "
