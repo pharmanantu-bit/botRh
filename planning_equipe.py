@@ -118,6 +118,17 @@ def absence_active(absences, email, date_obj):
     return None
 
 
+def ponctuel_redondant(absences, email, date_obj, motif, creneaux):
+    """True si un changement ponctuel « non travaillé » est déjà couvert par une
+    absence prolongée au même motif : il n'apporte rien (l'absence vide déjà le
+    jour) et encombrerait le journal. Un ponctuel avec des horaires, ou avec un
+    motif différent de l'absence, reste une vraie information."""
+    if creneaux:
+        return False
+    a = absence_active(absences, email, date_obj)
+    return a is not None and a.get("motif") == motif
+
+
 def creneaux_effectifs_jour(trame, email, d, changements, absences):
     """Créneaux réellement travaillés à une date : trame surchargée par le
     changement ponctuel, annulée par une absence prolongée ou un jour férié."""
@@ -1018,6 +1029,10 @@ def vue():
                         # modif : on ne l'affiche pas dans « Modifications apportées ».
                         if crs and meme_que_trame(crs, creneaux_trame_jour(tr_sem, em, dt)):
                             continue
+                        # Jour vidé déjà couvert par une absence prolongée au même
+                        # motif (ancien doublon) : l'absence suffit, on le masque.
+                        if ponctuel_redondant(absences, em, dt, ch.get("motif"), crs):
+                            continue
                         txt = " · ".join(f'{c["debut"]}–{c["fin"]}' for c in crs) if crs else "Non travaillé"
                         recap_chg.append({
                             "date": dt, "date_iso": dt.isoformat(),
@@ -1191,6 +1206,10 @@ def vue():
                     crs = ch.get("creneaux", []) or []
                     cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
                     if meme_que_trame(crs, cr_tr):           # rétabli à la trame → pas une modif
+                        continue
+                    # Jour vidé déjà couvert par une absence prolongée au même
+                    # motif (doublon) : l'absence suffit, on le masque du journal.
+                    if ponctuel_redondant(absences, em, d, ch.get("motif"), crs):
                         continue
                     out.append({"type": "ponctuel", "prenom": emap[em]["prenom"],
                                 "couleur": couleurs.get(em, "#888"),
@@ -1758,18 +1777,23 @@ def enregistrer_changement():
         except ValueError:
             d_obj = None
         act = trame_active_pour(charger_trames(), d_obj) if d_obj else None
+        motif_norm = motif if motif in MOTIFS else "Non catégorisé"
         # Sur un jour FÉRIÉ, saisir les horaires de trame note la personne
         # PRÉSENTE (censée travailler) : pas de retour-trame dans ce cas.
         retour_trame = bool(creneaux) and d_obj is not None and not ferie_de(d_obj) and \
             meme_que_trame(creneaux, creneaux_trame_jour(act, email, d_obj))
-        if retour_trame:
+        # Jour vidé déjà couvert par une absence prolongée au même motif :
+        # doublon sans intérêt → on ne crée rien (et on nettoie l'existant).
+        redondant = d_obj is not None and \
+            ponctuel_redondant(charger_absences(), email, d_obj, motif_norm, creneaux)
+        if retour_trame or redondant:
             if date_iso in data and email in data[date_iso]:
                 del data[date_iso][email]
                 if not data[date_iso]:
                     del data[date_iso]
         else:
             data.setdefault(date_iso, {})[email] = {
-                "motif": motif if motif in MOTIFS else "Non catégorisé",
+                "motif": motif_norm,
                 "creneaux": creneaux,
                 "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
         sauvegarder_changements(data)
@@ -1814,6 +1838,7 @@ def saisie_ponctuelle():
     act = trame_active_pour(charger_trames(), d_obj)
     fer = ferie_de(d_obj)
     data = charger_changements()
+    absences = charger_absences()
     for em in request.form.getlist("email"):
         creneaux = []
         for s in (1, 2):
@@ -1828,8 +1853,11 @@ def saisie_ponctuelle():
         present = date_iso in data and em in data.get(date_iso, {})
         # Retour à la trame (mêmes horaires) OU jour de repos laissé vide → pas de
         # changement. Sur un FÉRIÉ : vide = défaut (personne ne travaille) ; des
-        # horaires, même de trame, notent la personne présente.
-        if (not creneaux and (fer or not cr_tr)) or (not fer and meme_que_trame(creneaux, cr_tr)):
+        # horaires, même de trame, notent la personne présente. Jour vidé déjà
+        # couvert par une absence prolongée au même motif : doublon → rien.
+        if (not creneaux and (fer or not cr_tr)) \
+                or (not fer and meme_que_trame(creneaux, cr_tr)) \
+                or ponctuel_redondant(absences, em, d_obj, motif, creneaux):
             if present:
                 del data[date_iso][em]
         else:
