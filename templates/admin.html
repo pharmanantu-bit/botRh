@@ -20,8 +20,10 @@
     th { background: #1F4E79; color: white; padding: 10px 6px; text-align: center; white-space: nowrap; }
     tr.recu td { background: #eafaf1 !important; }
     tr.attente td { background: #fffbe6 !important; }
+    tr.valide td { background: #e4eefb !important; }
     tr.recu td.nom { border-left: 4px solid #27ae60; }
     tr.attente td.nom { border-left: 4px solid #f39c12; }
+    tr.valide td.nom { border-left: 4px solid #2E75B6; }
     td { padding: 7px 6px; border: 1px solid #ddd; vertical-align: middle; text-align: center; }
     td.nom { text-align: left; font-weight: bold; }
     .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
@@ -81,6 +83,7 @@
       .entete { margin-bottom: 10px; }
       tr.recu td { background: #eafaf1 !important; -webkit-print-color-adjust: exact; }
       tr.attente td { background: #fffbe6 !important; -webkit-print-color-adjust: exact; }
+      tr.valide td { background: #e4eefb !important; -webkit-print-color-adjust: exact; }
       th { -webkit-print-color-adjust: exact; }
     }
   </style>
@@ -127,7 +130,7 @@
     </thead>
     <tbody>
       {% for r in resultats %}
-      <tr class="{% if r.repondu %}recu{% else %}attente{% endif %}">
+      <tr class="{% if r.repondu and r.valide %}valide{% elif r.repondu %}recu{% else %}attente{% endif %}">
         <td class="nom"><a href="/admin/employe?email={{ r.email|urlencode }}" style="color:#1F4E79; text-decoration:none;" title="Voir la fiche annuelle">{{ r.prenom }} {{ r.nom|upper }}</a></td>
         <td>
           {% if r.repondu %}
