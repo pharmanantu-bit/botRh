@@ -132,6 +132,7 @@
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>
+          {% if r.saisi_admin %}<br><span class="badge-corrige" title="Relevé saisi par la pharmacie (le collaborateur ne l'a pas soumis)">🏥 saisi pharmacie</span>{% endif %}
           {% if r.correction %}<br><span class="badge-corrige" title="Corrigé par la pharmacie le {{ r.correction.le }}">✏️ corrigé</span>{% endif %}
           {% else %}
           <span class="badge-attente">En attente</span>
@@ -159,6 +160,13 @@
               data-moins="{{ r.heures_moins }}"
               onclick="ouvrirCorrection(this)">✏️ Corriger</button>
           {% endif %}
+          {% elif est_courant %}
+          <button type="button" class="btn-detail btn-corriger"
+              data-email="{{ r.email }}"
+              data-nom="{{ r.prenom }} {{ r.nom|upper }}"
+              data-plus="0" data-moins="0" data-saisie="1"
+              title="Le collaborateur n'a pas soumis son relevé : saisissez-le vous-même"
+              onclick="ouvrirCorrection(this)">✏️ Saisir</button>
           {% else %}-{% endif %}
         </td>
         <td>
@@ -198,7 +206,7 @@
     <div class="modal-head" style="background:#e67e22;">
       <div>
         <h3 id="mc-nom">—</h3>
-        <span class="periode">Correction du relevé — {{ mois_annee }}</span>
+        <span class="periode" id="mc-sous-titre">Correction du relevé — {{ mois_annee }}</span>
       </div>
       <button class="modal-close" onclick="fermerCorrection()" title="Fermer">&times;</button>
     </div>
@@ -218,8 +226,8 @@
           <label for="mc-motif">Motif de la correction (recommandé)</label>
           <input type="text" name="motif" id="mc-motif" maxlength="200" placeholder="Ex. : erreur de saisie, oubli du 15/07…">
         </div>
-        <div class="corr-note">Les heures déclarées par le collaborateur sont conservées dans le détail (traçabilité). Une correction annule la validation : pensez à re-valider le relevé.</div>
-        <button type="submit" class="btn-valider-corr">Enregistrer la correction</button>
+        <div class="corr-note" id="mc-note">Les heures déclarées par le collaborateur sont conservées dans le détail (traçabilité). Une correction annule la validation : pensez à re-valider le relevé.</div>
+        <button type="submit" class="btn-valider-corr" id="mc-bouton">Enregistrer la correction</button>
       </form>
     </div>
   </div>
@@ -295,11 +303,22 @@ function voirDetail(btn) {
 
 function ouvrirCorrection(btn) {
   const d = btn.dataset;
+  const saisie = d.saisie === '1';
   document.getElementById('mc-nom').textContent = d.nom;
   document.getElementById('mc-email').value = d.email;
   document.getElementById('mc-plus').value = d.plus;
   document.getElementById('mc-moins').value = d.moins;
   document.getElementById('mc-motif').value = '';
+  document.getElementById('mc-motif').placeholder = saisie
+    ? 'Ex. : heures communiquées oralement'
+    : 'Ex. : erreur de saisie, oubli du 15/07…';
+  document.getElementById('mc-sous-titre').textContent = saisie
+    ? 'Saisie du relevé par la pharmacie — {{ mois_annee }}'
+    : 'Correction du relevé — {{ mois_annee }}';
+  document.getElementById('mc-note').textContent = saisie
+    ? "Le collaborateur n'a pas soumis son relevé : cette saisie est tracée « saisi par la pharmacie » (badge + signature dans l'Excel paie) et validée d'office."
+    : 'Les heures déclarées par le collaborateur sont conservées dans le détail (traçabilité). Une correction annule la validation : pensez à re-valider le relevé.';
+  document.getElementById('mc-bouton').textContent = saisie ? 'Enregistrer le relevé' : 'Enregistrer la correction';
   document.getElementById('modalCorrection').classList.add('ouvert');
 }
 

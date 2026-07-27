@@ -566,6 +566,7 @@ def admin_mois():
             "commentaire": reponse.get("commentaire", "") if reponse else "",
             "date": reponse["date"] if reponse else "-",
             "correction": reponse.get("correction") if reponse else None,
+            "saisi_admin": reponse.get("saisi_par_admin", False) if reponse else False,
             "lien": f"/releve?token={token}&prenom={emp['prenom']}",
         })
 
@@ -1338,6 +1339,7 @@ def admin_releve_corriger():
     if not emp:
         abort(404)
     reponses = charger_reponses()
+    trouve = False
     for t in tokens_valides(emp["prenom"], emp["email"]):
         r = reponses.get(t)
         if r is None:
@@ -1354,8 +1356,30 @@ def admin_releve_corriger():
         }
         r["valide"] = False
         r["date_validation"] = ""
-        ecrire_reponses(reponses)
+        trouve = True
         break
+    if not trouve:
+        # Relevé jamais soumis par le collaborateur : l'admin le saisit
+        # lui-même. Tracé « saisi par la pharmacie » (visible dans l'admin ET
+        # dans la colonne Signature de l'Excel paie) et validé d'office —
+        # c'est l'admin qui vient de le saisir.
+        now = datetime.now()
+        reponses[generer_token(emp["prenom"], emp["email"])] = {
+            "prenom": emp["prenom"],
+            "heures_plus": h_plus,
+            "heures_moins": h_moins,
+            "commentaire": request.form.get("motif", "").strip(),
+            "date_signature": now.strftime("%d/%m/%Y"),
+            "signature": "Saisie pharmacie (admin)",
+            "date": now.strftime("%d/%m/%Y %H:%M"),
+            "mois": now.month,
+            "annee": now.year,
+            "jours": [],
+            "saisi_par_admin": True,
+            "valide": True,
+            "date_validation": now.strftime("%d/%m/%Y %H:%M"),
+        }
+    ecrire_reponses(reponses)
     return redirect(url_for("admin_mois"))
 
 
