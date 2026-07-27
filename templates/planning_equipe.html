@@ -991,7 +991,7 @@
         </tr>
         {% for l in tot_lignes %}
         <tr>
-          <td class="collab"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}</td>
+          <td class="collab"><button type="button" onclick="basculerTotDetail('totdet-{{ loop.index }}', this)" title="Voir le détail du calcul" style="border:1px solid #d4deeb; background:#eef2f8; color:#1F4E79; border-radius:6px; cursor:pointer; padding:2px 7px; font-size:0.85em; margin-right:7px;">🔍</button><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}</td>
           <td>{{ "%g"|format(l.trame) }}</td>
           <td>{{ "%g"|format(l.ajuste) }}</td>
           <td style="{% if l.solde_plan > 0 %}color:#1F7A3D;{% elif l.solde_plan < 0 %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }}</td>
@@ -1006,6 +1006,72 @@
           <td class="meta">—</td><td class="meta">—</td><td class="meta">—</td><td class="meta">—</td>
           <td><span class="meta">⏳ Relevé en attente</span></td>
           {% endif %}
+        </tr>
+        <tr id="totdet-{{ loop.index }}" style="display:none;">
+          <td colspan="10" style="background:#f7fafd; padding:14px 18px; text-align:left;">
+            <div style="display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start;">
+
+              <div style="min-width:250px; flex:1;">
+                <div style="color:#1F4E79; font-weight:bold; font-size:0.85em; margin-bottom:6px;">🗓️ Planning — écarts à la trame</div>
+                {% if l.detail_plan %}
+                <table style="border-collapse:collapse; font-size:0.82em; width:100%;">
+                  {% for dp in l.detail_plan %}
+                  <tr>
+                    {% if dp.type == 'absence' %}
+                    <td style="padding:3px 8px 3px 0; white-space:nowrap;">{{ dp.label }}{% if dp.au != dp.label %} → {{ dp.au }}{% endif %}</td>
+                    <td style="padding:3px 8px; color:#556;">{{ dp.motif }} ({{ dp.jours }} jour{{ 's' if dp.jours > 1 else '' }} prévu{{ 's' if dp.jours > 1 else '' }} non travaillé{{ 's' if dp.jours > 1 else '' }})</td>
+                    <td style="padding:3px 0; font-weight:bold; color:#C0392B; white-space:nowrap;">{{ "%+g"|format(dp.delta) }} h</td>
+                    {% else %}
+                    <td style="padding:3px 8px 3px 0; white-space:nowrap;">{{ dp.label }}</td>
+                    <td style="padding:3px 8px; color:#556;">{{ dp.motif }} · {{ "%g"|format(dp.avant) }} h prévues → {{ "%g"|format(dp.apres) }} h</td>
+                    <td style="padding:3px 0; font-weight:bold; color:{{ '#1F7A3D' if dp.delta > 0 else '#C0392B' if dp.delta < 0 else '#556' }}; white-space:nowrap;">{{ "%+g"|format(dp.delta) if dp.delta else "0" }} h</td>
+                    {% endif %}
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% else %}
+                <div class="meta" style="font-size:0.82em;">Aucun écart : le mois suit exactement la trame.</div>
+                {% endif %}
+              </div>
+
+              <div style="min-width:220px; flex:1;">
+                <div style="color:#1F4E79; font-weight:bold; font-size:0.85em; margin-bottom:6px;">📋 Relevé — jours déclarés par le collaborateur</div>
+                {% if l.detail_releve %}
+                <table style="border-collapse:collapse; font-size:0.82em;">
+                  {% for jr in l.detail_releve %}
+                  <tr>
+                    <td style="padding:3px 10px 3px 0; white-space:nowrap;">{{ jr.label }}</td>
+                    <td style="padding:3px 0; white-space:nowrap;">{% if jr.plus %}<span style="color:#1F7A3D; font-weight:bold;">+{{ "%g"|format(jr.plus) }} h</span>{% endif %}{% if jr.plus and jr.moins %} / {% endif %}{% if jr.moins %}<span style="color:#C0392B; font-weight:bold;">−{{ "%g"|format(jr.moins) }} h</span>{% endif %}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% elif l.solde is none %}
+                <div class="meta" style="font-size:0.82em;">Pas de relevé reçu ce mois-ci.</div>
+                {% else %}
+                <div class="meta" style="font-size:0.82em;">Relevé reçu sans détail jour par jour (totaux seuls : +{{ "%g"|format(l.plus) }} h / −{{ "%g"|format(l.moins) }} h).</div>
+                {% endif %}
+              </div>
+
+              <div style="min-width:240px; flex:1; background:#fff; border:1px solid #dde3ed; border-radius:8px; padding:10px 14px; font-size:0.82em;">
+                <div style="color:#1F4E79; font-weight:bold; margin-bottom:6px;">🧮 Le calcul</div>
+                <div style="margin-bottom:3px;">Solde planning = Ajusté − Trame = {{ "%g"|format(l.ajuste) }} − {{ "%g"|format(l.trame) }} = <strong>{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }} h</strong></div>
+                {% if l.solde is not none %}
+                <div style="margin-bottom:3px;">Solde relevé = H+ − H− = {{ "%g"|format(l.plus) }} − {{ "%g"|format(l.moins) }} = <strong>{{ "%+g"|format(l.solde) if l.solde else "0" }} h</strong></div>
+                <div style="margin-bottom:6px;">Écart = Solde relevé − Solde planning = <strong style="color:{{ '#1F7A3D' if l.coherent else '#C0392B' }};">{{ "%+g"|format(l.ecart) if l.ecart else "0" }} h</strong></div>
+                {% if l.coherent %}
+                <div style="color:#1F7A3D;">✅ Le collaborateur a déclaré exactement ce que le planning prévoit.</div>
+                {% elif l.ecart > 0 %}
+                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ "%g"|format(l.ecart|abs) }} h de plus</strong> que ce que le planning explique — comparer les deux colonnes ci-contre pour repérer le(s) jour(s) en cause.</div>
+                {% else %}
+                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ "%g"|format(l.ecart|abs) }} h de moins</strong> que ce que le planning prévoit — un changement du planning n'a peut-être pas été reporté dans son relevé (ou l'inverse).</div>
+                {% endif %}
+                {% else %}
+                <div class="meta">L'écart se calculera à la réception du relevé.</div>
+                {% endif %}
+              </div>
+
+            </div>
+          </td>
         </tr>
         {% endfor %}
         <tr style="background:#f5f8fc; font-weight:bold;">
@@ -1022,7 +1088,15 @@
         </tr>
       </table>
     </div>
-    <p class="meta" style="margin-top:10px;">💡 Les relevés sont déclarés par les collaborateurs jusqu'au 25 du mois — avant cette date, la colonne Relevé peut être incomplète. Consulte <a href="{{ url_for('admin_mois') }}" style="color:#1F4E79;">Relevés du mois</a> pour relancer.</p>
+    <p class="meta" style="margin-top:10px;">💡 Clique sur <strong>🔍</strong> devant un collaborateur pour voir le détail du calcul (jours modifiés au planning, jours déclarés au relevé, explication de l'écart). Les relevés sont déclarés jusqu'au 25 du mois — avant cette date, la colonne Relevé peut être incomplète. Consulte <a href="{{ url_for('admin_mois') }}" style="color:#1F4E79;">Relevés du mois</a> pour relancer.</p>
+    <script>
+    function basculerTotDetail(id, btn) {
+      const tr = document.getElementById(id);
+      const ouvre = tr.style.display === 'none';
+      tr.style.display = ouvre ? '' : 'none';
+      btn.textContent = ouvre ? '▲' : '🔍';
+    }
+    </script>
     {% endif %}
 
   {# ===================== SOUS-ONGLETS À VENIR ===================== #}

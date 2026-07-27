@@ -1432,24 +1432,51 @@ def vue():
             e = emap[em]
             h_trame = h_ajuste = 0.0
             j_ponctuels = j_absents = 0
+            # Détail des écarts à la trame pour le panneau dépliable : ponctuels
+            # listés jour par jour, absences regroupées en plages consécutives.
+            detail_plan = []
+            abs_en_cours = None
             for k in range(1, nb_jours + 1):
                 d = date(an, mo, k)
+                lbl = f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m')}"
                 cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
                 ht = total_jour(cr_tr)
                 chg = changement_de(changements, d.isoformat(), em)
+                a = absence_active(absences, em, d) if chg is None else None
                 if chg is not None:
                     crs = chg.get("creneaux", []) or []
                     ha = total_jour(crs)
                     if not meme_que_trame(crs, cr_tr):
                         j_ponctuels += 1
-                elif absence_active(absences, em, d) is not None:
+                        if abs_en_cours:
+                            detail_plan.append(abs_en_cours)
+                            abs_en_cours = None
+                        detail_plan.append({
+                            "type": "ponctuel", "label": lbl,
+                            "motif": chg.get("motif", "Non catégorisé"),
+                            "avant": round(ht, 2), "apres": round(ha, 2),
+                            "delta": round(ha - ht, 2)})
+                elif a is not None:
                     ha = 0.0
                     if ht > 0:
                         j_absents += 1
+                        motif_a = a.get("motif", "Absence")
+                        if abs_en_cours and abs_en_cours["motif"] == motif_a:
+                            abs_en_cours["au"] = lbl
+                            abs_en_cours["jours"] += 1
+                            abs_en_cours["delta"] = round(abs_en_cours["delta"] - ht, 2)
+                        else:
+                            if abs_en_cours:
+                                detail_plan.append(abs_en_cours)
+                            abs_en_cours = {"type": "absence", "label": lbl,
+                                            "au": lbl, "motif": motif_a,
+                                            "jours": 1, "delta": round(-ht, 2)}
                 else:
                     ha = ht
                 h_trame += ht
                 h_ajuste += ha
+            if abs_en_cours:
+                detail_plan.append(abs_en_cours)
             h_trame, h_ajuste = round(h_trame, 2), round(h_ajuste, 2)
             solde_plan = round(h_ajuste - h_trame, 2)
             r = reponse_de(reps, e["prenom"], em)
@@ -1475,7 +1502,9 @@ def vue():
                            "j_ponctuels": j_ponctuels, "j_absents": j_absents,
                            "plus": plus, "moins": moins, "solde": solde,
                            "ecart": ecart,
-                           "coherent": ecart is not None and abs(ecart) <= 0.01})
+                           "coherent": ecart is not None and abs(ecart) <= 0.01,
+                           "detail_plan": detail_plan,
+                           "detail_releve": (r.get("jours") or []) if r else []})
         tot = {k: round(v, 2) for k, v in tot.items()}
         # Sélecteur : les 12 derniers mois + le mois sélectionné.
         mois_set = {(_ajoute_mois(today.replace(day=1), -k)).strftime("%Y-%m")
