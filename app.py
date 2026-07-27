@@ -127,10 +127,15 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
 # définie dans le .env (anti-lock-out : la retirer = retour au mot de passe seul).
 ADMIN_TOTP_SECRET = (os.getenv("ADMIN_TOTP_SECRET", "") or "").strip()
 API_CLE = os.getenv("API_CLE") or "botRh-trigger-2026"  # .env vide -> défaut (évite un blocage total)
-# Jour de clôture RÉELLE de la saisie (côté interne) : au-delà, le formulaire
-# est fermé. On communique le 25 aux employés (mails + formulaire) mais on
-# accepte en réalité jusqu'au 28, pour garder une marge. Surchargeable par env.
-JOUR_CLOTURE = int(os.getenv("JOUR_CLOTURE", "28"))
+# Jour de clôture de la saisie : identique à la date annoncée aux employés (le
+# 25), pour que le récap paie du 26 soit complet et que la paie parte entre le
+# 25 et la fin du mois. Surchargeable par env.
+JOUR_CLOTURE = int(os.getenv("JOUR_CLOTURE", "25"))
+# Période couverte par le relevé : du 26 du mois précédent au 25 du mois
+# courant INCLUS (le 25 compte dans le mois payé, le relevé suivant reprend au
+# 26 — aucun jour compté deux fois).
+JOUR_DEBUT_PERIODE = 26
+JOUR_FIN_PERIODE = 25
 # employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
 # = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
 # lui qui fait foi (évite tout conflit de déploiement avec git).
@@ -267,10 +272,9 @@ def formulaire():
     mois_prec = 12 if mois == 1 else mois - 1
     annee_prec = annee - 1 if mois == 1 else annee
     nb_jours_prec = calendar.monthrange(annee_prec, mois_prec)[1]
-    nb_jours_mois = calendar.monthrange(annee, mois)[1]
 
-    jours_prec = list(range(24, nb_jours_prec + 1))
-    jours_mois = list(range(1, nb_jours_mois + 1))
+    jours_prec = list(range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1))
+    jours_mois = list(range(1, JOUR_FIN_PERIODE + 1))
 
     JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     from datetime import date as dt_date
@@ -285,8 +289,8 @@ def formulaire():
     token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
     deja_rempli = (reponse_de(reponses, emp["prenom"], emp["email"]) is not None) if emp else (token_canon in reponses)
     modifiable = datetime.now().day <= JOUR_CLOTURE
-    # Date limite communiquée aux employés (le blocage réel n'a lieu qu'au JOUR_CLOTURE).
-    DATE_LIMITE_COM = 25
+    # Date limite communiquée = jour de clôture (une seule source de vérité).
+    DATE_LIMITE_COM = JOUR_CLOTURE
     jours_restants = DATE_LIMITE_COM - datetime.now().day
 
     return render_template("form.html",
@@ -331,15 +335,16 @@ def docs_embauche(doc):
 def extraire_detail_jours(form, mois, annee):
     """Reconstruit le détail jour par jour saisi dans le formulaire de relevé.
     Renvoie une liste {label, plus, moins} pour les seuls jours ayant des heures.
-    La période couvre du 24 du mois précédent à la fin du mois courant
-    (mêmes champs que form.html : prec_plus_J / prec_moins_J / mois_plus_J / mois_moins_J)."""
+    La période couvre du JOUR_DEBUT_PERIODE (26) du mois précédent au
+    JOUR_FIN_PERIODE (25) du mois courant inclus — les champs hors période sont
+    ignorés (mêmes champs que form.html : prec_plus_J / prec_moins_J /
+    mois_plus_J / mois_moins_J)."""
     import calendar
     from datetime import date as dt_date
     JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     mois_prec = 12 if mois == 1 else mois - 1
     annee_prec = annee - 1 if mois == 1 else annee
     nb_jours_prec = calendar.monthrange(annee_prec, mois_prec)[1]
-    nb_jours_mois = calendar.monthrange(annee, mois)[1]
 
     def lire(champ):
         try:
@@ -348,12 +353,12 @@ def extraire_detail_jours(form, mois, annee):
             return 0.0
 
     jours = []
-    for j in range(24, nb_jours_prec + 1):
+    for j in range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1):
         p, m = lire(f"prec_plus_{j}"), lire(f"prec_moins_{j}")
         if p or m:
             nom = JOURS_FR[dt_date(annee_prec, mois_prec, j).weekday()]
             jours.append({"label": f"{nom} {j:02d}/{mois_prec:02d}", "plus": p, "moins": m})
-    for j in range(1, nb_jours_mois + 1):
+    for j in range(1, JOUR_FIN_PERIODE + 1):
         p, m = lire(f"mois_plus_{j}"), lire(f"mois_moins_{j}")
         if p or m:
             nom = JOURS_FR[dt_date(annee, mois, j).weekday()]
@@ -379,10 +384,10 @@ def envoyer():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
-    # Blocage réel au JOUR_CLOTURE (28, côté interne) mais on communique le 25
-    # aux employés : ce message ne s'affiche qu'au-delà du 28 (saisie vraiment close).
+    # Clôture au JOUR_CLOTURE (le 25, identique à la date annoncée) : au-delà,
+    # les heures basculent sur le relevé du mois suivant (période 26 → 25).
     if datetime.now().day > JOUR_CLOTURE:
-        return ("La période de saisie de ce mois est clôturée (date limite : le 25). "
+        return (f"La période de saisie de ce mois est clôturée (date limite : le {JOUR_CLOTURE}). "
                 "Vos heures effectuées seront comptabilisées le mois suivant."), 403
     prenom = emp["prenom"]
     token = generer_token(prenom, emp["email"])
@@ -991,7 +996,7 @@ def mon_espace():
     rempli_courant = (reponse_de(reponses_courant, emp["prenom"], emp["email"]) is not None) \
         if emp else (token_canon in reponses_courant)
     modifiable = datetime.now().day <= JOUR_CLOTURE
-    jours_restants = 25 - datetime.now().day  # date limite communiquée aux employés
+    jours_restants = JOUR_CLOTURE - datetime.now().day  # date limite = jour de clôture
 
     # Congés payés : solde + demandes de l'employé (module planning).
     cp, demandes_cp = None, []
@@ -1766,13 +1771,13 @@ def construire_recap_xlsx(mois, annee):
     thin = Side(style="thin")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:J1")
     ws["A1"] = f"Relevés d'heures — {mois_annee}"
     ws["A1"].font = Font(bold=True, size=13, color="FFFFFF")
     ws["A1"].fill = PatternFill("solid", fgColor="1F4E79")
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    headers = ["Prénom", "Nom", "H+", "H−", "Signature", "Date signature", "Commentaire", "Date envoi", "Statut"]
+    headers = ["Prénom", "Nom", "H+", "H−", "Signature", "Date signature", "Commentaire", "Date envoi", "Statut", "Validé"]
     ws.append(headers)
     for cell in ws[2]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -1786,18 +1791,26 @@ def construire_recap_xlsx(mois, annee):
         if r:
             statut = "Reçu"
             fill = PatternFill("solid", fgColor="C6EFCE")
-            row = [emp["prenom"], emp["nom"], r.get("heures_plus", "-"), r.get("heures_moins", "-"), r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r.get("date", "-"), statut]
+            if r.get("valide"):
+                valide = f"Oui ({r.get('date_validation', '')})".replace(" ()", "")
+                fill_valide = PatternFill("solid", fgColor="C6EFCE")
+            else:
+                valide = "Non"
+                fill_valide = PatternFill("solid", fgColor="FFEB9C")
+            row = [emp["prenom"], emp["nom"], r.get("heures_plus", "-"), r.get("heures_moins", "-"), r.get("signature", ""), r.get("date_signature", ""), r.get("commentaire", ""), r.get("date", "-"), statut, valide]
         else:
             statut = "En attente"
             fill = PatternFill("solid", fgColor="FFEB9C")
-            row = [emp["prenom"], emp["nom"], "-", "-", "", "", "", "-", statut]
+            fill_valide = fill
+            row = [emp["prenom"], emp["nom"], "-", "-", "", "", "", "-", statut, "-"]
         ws.append(row)
         for cell in ws[ws.max_row]:
             cell.border = border
             cell.alignment = Alignment(horizontal="center")
-        ws[ws.max_row][6].fill = fill
+        ws[ws.max_row][8].fill = fill
+        ws[ws.max_row][9].fill = fill_valide
 
-    for i, w in enumerate([14, 16, 8, 8, 20, 14, 30, 16, 12], 1):
+    for i, w in enumerate([14, 16, 8, 8, 20, 14, 30, 16, 12, 20], 1):
         ws.column_dimensions[chr(64+i)].width = w
 
     output = io.BytesIO()
@@ -2203,13 +2216,13 @@ def _outil_preparer_relance(args, annuaire, profils):
     token = generer_token(e["prenom"], e["email"])
     lien = f"{BASE_URL_PUBLIC}/releve?token={token}&prenom={e['prenom']}"
     mois_annee = f"{MOIS_FR[datetime.now().month]} {datetime.now().year}"
-    jr = max(0, 25 - datetime.now().day)
+    jr = max(0, JOUR_CLOTURE - datetime.now().day)
     if jr <= 0:
-        urgence, delai = "C'est le dernier jour : la saisie est clôturée le 25.", "dernier jour"
+        urgence, delai = f"C'est le dernier jour : la saisie est clôturée le {JOUR_CLOTURE}.", "dernier jour"
     elif jr == 1:
-        urgence, delai = "⏰ Plus qu'un jour : à remplir avant le 25 (clôture demain).", "plus qu'1 jour"
+        urgence, delai = f"⏰ Plus qu'un jour : à remplir avant le {JOUR_CLOTURE} (clôture demain).", "plus qu'1 jour"
     else:
-        urgence, delai = f"⏰ Il vous reste {jr} jours : à remplir avant le 25.", f"plus que {jr} jours"
+        urgence, delai = f"⏰ Il vous reste {jr} jours : à remplir avant le {JOUR_CLOTURE}.", f"plus que {jr} jours"
     sujet = f"Rappel ({delai}) — Feuille d'heures {mois_annee}"
     corps = (f"Bonjour {label},\n\nSauf erreur de notre part, nous n'avons pas encore reçu votre "
              f"feuille d'heures du mois de {mois_annee}.\n\n{urgence}\n\n"

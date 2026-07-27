@@ -102,6 +102,72 @@ for url in routes_admin_redirect:
     if not ok:
         echecs.append(f"{url} (attendu 302, reçu {code})")
 
+# --- Cycle de paie : clôture au 25, période 26→25, Excel « Validé », rappel validation ---
+if A.JOUR_CLOTURE == 25:
+    print("OK [--] clôture : JOUR_CLOTURE = 25")
+else:
+    echecs.append(f"JOUR_CLOTURE = {A.JOUR_CLOTURE} (attendu 25 — .env local surchargé ?)")
+    print(f"KO [--] JOUR_CLOTURE = {A.JOUR_CLOTURE}")
+
+# Grille du formulaire : du 26 du mois précédent au 25 du mois courant inclus.
+if employes and datetime.now().day <= A.JOUR_CLOTURE:
+    html_releve = client.get(f"/releve?token={tok0}&prenom={prenom0}").data.decode("utf-8")
+    attendus = ['name="prec_plus_26"', 'name="mois_plus_25"']
+    interdits = ['name="prec_plus_24"', 'name="prec_plus_25"', 'name="mois_plus_26"', 'name="mois_plus_31"']
+    grille_ok = (all(a in html_releve for a in attendus)
+                 and not any(i in html_releve for i in interdits))
+    if grille_ok:
+        print("OK [--] grille /releve : période 26 (mois préc.) → 25 (mois courant)")
+    else:
+        echecs.append("grille /releve : bornes de période incorrectes")
+        print("KO [--] grille /releve : bornes de période incorrectes")
+
+# extraire_detail_jours ignore les champs hors période (24-25 préc., 26+ courant).
+detail = A.extraire_detail_jours(
+    {"prec_plus_24": "5", "prec_plus_26": "2", "mois_plus_25": "1", "mois_plus_26": "3"},
+    mois, annee)
+labels = [d["label"] for d in detail]
+if len(detail) == 2 and any("26/" in l for l in labels) and any("25/" in l for l in labels):
+    print("OK [--] extraire_detail_jours : champs hors période ignorés")
+else:
+    echecs.append(f"extraire_detail_jours : attendu 2 jours (26 préc. + 25 courant), reçu {labels}")
+    print(f"KO [--] extraire_detail_jours : {labels}")
+
+# Excel paie : colonne « Validé » en 10e position, titre fusionné A1:J1.
+from openpyxl import load_workbook
+wb = load_workbook(A.construire_recap_xlsx(mois, annee))
+ws = wb.active
+entetes = [c.value for c in ws[2]]
+fusion_ok = "A1:J1" in [str(r) for r in ws.merged_cells.ranges]
+if len(entetes) == 10 and entetes[-1] == "Validé" and fusion_ok:
+    print("OK [--] récap Excel : 10 colonnes dont « Validé », titre A1:J1")
+else:
+    echecs.append(f"récap Excel : en-têtes={entetes}, fusion A1:J1={fusion_ok}")
+    print("KO [--] récap Excel : colonne Validé / fusion incorrecte")
+
+# Mail de rappel de validation (constructeur pur, sans SMTP).
+import validation_sender
+_emps = [{"prenom": "Alice", "nom": "Un", "email": "a@t.fr"},
+         {"prenom": "Bob", "nom": "Deux", "email": "b@t.fr"},
+         {"prenom": "Chloe", "nom": "Trois", "email": "c@t.fr"}]
+_reps = {
+    tokens.generer_token("Alice", "a@t.fr"): {"prenom": "Alice", "valide": True,
+                                              "date": "20/07/2026 10:00"},
+    tokens.generer_token("Bob", "b@t.fr"): {"prenom": "Bob", "date": "21/07/2026 11:00"},
+}
+_sujet, _corps = validation_sender.construire_mail_rappel(_emps, _reps, "Juillet 2026")
+rappel_ok = ("1 relevé(s) non validé(s)" in _sujet and "1 manquant(s)" in _sujet
+             and "Bob Deux" in _corps and "Chloe Trois" in _corps
+             and "Alice" not in _corps and "/admin/mois" in _corps)
+_sujet_ok, _corps_ok = validation_sender.construire_mail_rappel(
+    _emps[:1], {k: v for k, v in _reps.items() if v.get("valide")}, "Juillet 2026")
+rappel_ok = rappel_ok and "tout est validé" in _sujet_ok
+if rappel_ok:
+    print("OK [--] rappel validation : sections non validés/manquants + cas tout validé")
+else:
+    echecs.append(f"rappel validation : sujet={_sujet!r}")
+    print("KO [--] rappel validation : contenu incorrect")
+
 # --- Agent RH outillé : chaîne complète hors-ligne (moteur fake, coût nul) ---
 # Vérifie : qu'un outil est déclenché, que le prénom tapé par l'utilisateur est
 # pseudonymisé (étiquette « Employé X ») AVANT d'atteindre l'outil — donc le modèle

@@ -51,7 +51,7 @@
   {% else %}
   <div class="statut-mois statut-attente">
     ⏰ Vous n'avez pas encore rempli votre relevé de <strong>{{ mois_courant }}</strong>.
-    {% if jours_restants > 0 %}Il vous reste <strong>{{ jours_restants }} jour{{ 's' if jours_restants > 1 else '' }}</strong> (avant le 25).{% else %}Dernier délai : clôture le {{ jour_cloture }} !{% endif %}
+    {% if jours_restants > 0 %}Il vous reste <strong>{{ jours_restants }} jour{{ 's' if jours_restants > 1 else '' }}</strong> (avant le {{ jour_cloture }}).{% else %}Dernier délai : clôture le {{ jour_cloture }} !{% endif %}
   </div>
   {% endif %}
 

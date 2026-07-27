@@ -110,7 +110,7 @@ def send_relances():
 
                 body = f"""Bonjour {emp['prenom']},
 
-Sauf erreur de notre part, nous n'avons pas encore reçu votre feuille d'heures du mois de {mois_annee}.
+Sauf erreur de notre part, nous n'avons pas encore reçu votre feuille d'heures du mois de {mois_annee} (période du 26 du mois dernier au 25 de ce mois inclus).
 
 {urgence}
 

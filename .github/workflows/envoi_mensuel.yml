@@ -9,7 +9,8 @@ on:
     # Heures en UTC. 06:00 UTC = 08:00 Paris (été) / 07:00 (hiver).
     - cron: '0 6 20 * *'   # le 20 : relevés
     - cron: '0 6 22 * *'   # le 22 : relances
-    - cron: '0 7 26 * *'   # le 26 : récap paie (après la date limite du 25)
+    - cron: '0 17 25 * *'  # le 25 à 18h/19h Paris : rappel de validation à l'admin (clôture le soir même)
+    - cron: '0 7 26 * *'   # le 26 : récap paie (saisie clôturée le 25 -> récap complet)
   workflow_dispatch:
     inputs:
       mode:
@@ -17,7 +18,7 @@ on:
         required: false
         default: "test"
         type: choice
-        options: [test, auto, releves, relances, recap]
+        options: [test, auto, releves, relances, rappel_validation, recap]
       intro:
         description: "Ajouter l'annonce du nouveau système en haut du mail ?"
         required: false
@@ -41,5 +42,9 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           # Clé API serveur (vide si secret absent -> défaut côté script).
           API_CLE: ${{ secrets.API_CLE }}
+          # NB : TOKEN_SECRET n'est pas passé — runner et serveur utilisent le
+          # même défaut (tokens.py). Si un jour il est personnalisé côté
+          # serveur, l'ajouter ici, sinon relances et rappel de validation
+          # classeraient tout le monde en « manquant ».
           INTRO: ${{ github.event.inputs.intro }}
         run: python run_send.py "${{ github.event.inputs.mode }}"

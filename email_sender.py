@@ -50,6 +50,12 @@ MOIS_FICHIER = {
     9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Decembre"
 }
 
+MOIS_FR = {
+    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
+    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
+    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
+}
+
 def get_documents():
     mois = datetime.now().month
     annee = datetime.now().year
@@ -73,9 +79,12 @@ def build_email(employee, documents, mois_annee, intro=None):
     lien_espace = f"{BASE_URL}/mon-espace?token={token}&prenom={employee['prenom']}"
 
     bloc_intro = f"{intro}\n\n" if intro else ""
+    mois_actuel = datetime.now().month
+    mois_prec_nom = MOIS_FR[12 if mois_actuel == 1 else mois_actuel - 1]
     body = f"""Bonjour {employee['prenom']},
 
 {bloc_intro}Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
+Le relevé couvre la période du 26 {mois_prec_nom} au 25 {MOIS_FR[mois_actuel]} inclus (les heures effectuées après le 25 comptent pour le mois suivant).
 
 Remplir votre relevé en ligne :
 {lien}

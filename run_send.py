@@ -5,10 +5,13 @@ est donc fait ici, sur le runner GitHub (qui a un accès Internet complet).
 Le serveur ne sert plus qu'à héberger les pages web et à fournir les réponses.
 
 Modes :
-- auto      : relevés le 20, relances le 22, rien sinon (défaut planifié)
-- test      : envoie un seul mail de test à l'admin (validation du pipeline)
-- releves   : force l'envoi des relevés à tous
-- relances  : force l'envoi des relances
+- auto              : relevés le 20, relances le 22, rappel de validation le 25,
+                      récap paie le 26, rien sinon (défaut planifié)
+- test              : envoie un seul mail de test à l'admin (validation du pipeline)
+- releves           : force l'envoi des relevés à tous
+- relances          : force l'envoi des relances
+- rappel_validation : force le mail à l'admin listant les relevés non validés/manquants
+- recap             : force l'envoi du récap Excel paie à l'admin
 """
 import sys
 import os
@@ -59,16 +62,12 @@ if mode == "auto":
         mode = "releves"
     elif jour == 22:
         mode = "relances"
+    elif jour == 25:
+        mode = "rappel_validation"
     elif jour == 26:
         mode = "recap"
     else:
         mode = "rien"
-
-# Exception ponctuelle : pas de relance le 22 juin 2026 — les relevés ont été
-# envoyés manuellement le 21, une relance le lendemain serait prématurée.
-if mode == "relances" and datetime.now().strftime("%Y-%m-%d") == "2026-06-22":
-    print("Relance du 22/06/2026 sautée (envoi manuel la veille).")
-    mode = "rien"
 
 print(f"run_send.py — mode={mode} (jour du mois={jour}) intro={'oui' if intro else 'non'}")
 
@@ -100,6 +99,33 @@ elif mode == "relances":
         print(f"Avertissement : réponses non récupérées ({e}). Tout le monde sera relancé.")
     relance_sender.send_relances()
     print("Relances envoyées.")
+
+elif mode == "rappel_validation":
+    # Le 25 au soir (saisie clôturée) : mail à l'admin listant les relevés
+    # reçus non validés et les manquants, pour tout valider avant le départ
+    # automatique du récap paie le 26 au matin. Consomme les exports JSON du
+    # serveur en mémoire — pas besoin d'écrire le CSV local.
+    import smtplib
+    from email.mime.text import MIMEText
+    import validation_sender
+    now = datetime.now()
+    mois_annee = f"{MOIS_FR[now.month]} {now.year}"
+    with urllib.request.urlopen(f"{BASE_URL}/export_employes?cle={CLE}", timeout=30) as r:
+        employes = json.loads(r.read().decode("utf-8"))
+    with urllib.request.urlopen(
+            f"{BASE_URL}/export_reponses?cle={CLE}&mois={now.month}&annee={now.year}", timeout=30) as r:
+        reponses = json.loads(r.read().decode("utf-8"))
+    sujet, corps = validation_sender.construire_mail_rappel(employes, reponses, mois_annee)
+    gmail_user = os.environ["GMAIL_USER"]
+    gmail_pwd = os.environ["GMAIL_APP_PASSWORD"]
+    msg = MIMEText(corps, "plain", "utf-8")
+    msg["From"] = gmail_user
+    msg["To"] = ADMIN_EMAIL
+    msg["Subject"] = sujet
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(gmail_user, gmail_pwd)
+        server.sendmail(gmail_user, ADMIN_EMAIL, msg.as_string())
+    print(f"Rappel de validation envoyé à l'admin : {sujet}")
 
 elif mode == "recap":
     # Récap paie : récupère le classeur Excel du mois auprès du serveur et

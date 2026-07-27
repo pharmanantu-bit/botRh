@@ -33,10 +33,11 @@ def generer_releve(mois):
     nb_jours_prec = calendar.monthrange(2000 + annee_prec, mois_precedent)[1]
     nb_jours_mois = calendar.monthrange(2000 + ANNEE, mois)[1]
 
-    # Derniers jours du mois précédent (à partir du 24)
-    jours_prec = list(range(24, nb_jours_prec + 1))
-    # Tous les jours du mois courant
-    jours_mois = list(range(1, nb_jours_mois + 1))
+    # Période du relevé : du 26 du mois précédent au 25 du mois courant inclus
+    # (alignée sur le formulaire en ligne — NB : script legacy, les mails
+    # n'attachent plus de document Word).
+    jours_prec = list(range(26, nb_jours_prec + 1))
+    jours_mois = list(range(1, 25 + 1))
 
     doc = Document(SOURCE)
 

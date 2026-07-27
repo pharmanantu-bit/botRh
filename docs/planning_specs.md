@@ -111,7 +111,7 @@ Sous-onglets internes (un seul blueprint, sous-routes type `?onglet=` ou `/admin
 - **Équipe** : réglages planning par collaborateur (couleur, fonction, inclusion/exclusion de la trame, accès à ses horaires). *(Comme l'Équipe de MPP.)*
 - **Effectifs** : rôles comptés + effectifs mini par créneau/jour + contrôle pharmacien.
 - **Changements** : journal mensuel (absences, heures sup, etc.).
-- **Totaux / Fin de mois** : récap période (25→24) planifié vs réel + clôture payer.
+- **Totaux / Fin de mois** : récap période (26→25) planifié vs réel + clôture payer.
 - **Options** : filtres (collaborateurs, jours), période, mode d'affichage, masquer/afficher.
 
 ### 4.3 Double affichage du planning d'un collaborateur (DÉCISION)
@@ -133,15 +133,15 @@ Colonnes (comme MPP) : Collaborateur · **Trame (planifié)** · **Heures travai
 
 ### 5.2 Période de paie (DÉCISION — ancrée sur le 25, pas le mois civil)
 **Confirmé dans le code botRh** (`app.py`, route `/releve` + `extraire_detail_jours`) :
-- La période d'un relevé court **du 24 du mois précédent à la fin du mois** (`jours_prec = range(24, …)`).
-- **Clôture communiquée le 25** (`DATE_LIMITE_COM = 25`) ; **blocage réel le 28** (`JOUR_CLOTURE = 28`).
+- La période d'un relevé court **du 26 du mois précédent au 25 du mois courant inclus** (`JOUR_DEBUT_PERIODE = 26`, `JOUR_FIN_PERIODE = 25`) — aucun jour compté deux fois, aucun oublié.
+- **Clôture unique le 25** (`JOUR_CLOTURE = 25`, identique à la date annoncée — plus de tolérance cachée au 28).
 - Les heures faites **après le 25 sont payées le mois suivant**.
-- Fenêtre administrative **25 → 30** : validation des heures, envoi expert-comptable, génération des paies.
+- Fenêtre administrative **25 → 30** : rappel de validation le 25 au soir (runner), récap paie le 26 au matin, envoi expert-comptable, génération des paies, virements reçus avant la fin du mois.
 
-➡️ **Conséquence pour le planning** : les **Totaux horaires** et la **Fin de mois** doivent utiliser **la même période que les relevés** (ancrée sur le 24/25), **pas le mois calendaire**. Le rapprochement planifié/réel se fait jour à jour sur cette même fenêtre. *(MPP raisonne en mois civil → incompatible. botRh est déjà calé dessus : avantage décisif.)*
+➡️ **Conséquence pour le planning** : les **Totaux horaires** et la **Fin de mois** doivent utiliser **la même période que les relevés** (26 → 25), **pas le mois calendaire**. Le rapprochement planifié/réel se fait jour à jour sur cette même fenêtre. *(MPP raisonne en mois civil → incompatible. botRh est déjà calé dessus : avantage décisif.)*
 
 **Coupure de paie au 25 (RÈGLE) :** pour les **paiements**, toutes les heures **+ / −** faites **après le 25 sont reportées sur la paie du mois suivant** (elles appartiennent, par date, à la période suivante). Ce n'est **pas une banque d'heures** (pas de solde discrétionnaire) : c'est une **coupure de date déterministe**. Le moteur affecte donc chaque jour à la bonne période de paie selon qu'il est avant/après le 25.
-> À **verrouiller au moment de coder** : la correspondance exacte entre la fenêtre du relevé (24 M-1 → fin M, dans `reponses_{mois}_{annee}.json`) et la **fenêtre de paie** (coupure au 25), pour que rien ne soit compté deux fois ni oublié.
+> La fenêtre du relevé (26 M-1 → 25 M, dans `reponses_{mois}_{annee}.json`) et la **fenêtre de paie** (coupure au 25) coïncident désormais exactement : rien n'est compté deux fois ni oublié.
 
 ### 5.3 Fin de mois = heures sup/moins PAYÉES chaque période (pas de banque annuelle)
 **DÉCISION (Q3)** : pas de compteur d'heures cumulé sur l'année. À chaque clôture, les heures **+ / −** sont **payées** (ou ajustées) sur la période, point. Donc **pas de report/banque** à gérer.
@@ -151,7 +151,7 @@ Colonnes (comme MPP) : Collaborateur · **Trame (planifié)** · **Heures travai
 ### 5.4 Modèle de confiance & réconciliation (PRINCIPE CLÉ — anti-abus)
 - **Source de vérité = le planning du GESTIONNAIRE** (trame + changements saisis **par le gestionnaire**). C'est lui qui détermine les heures dues/payées — **PAS** le relevé du salarié.
 - Le **relevé du salarié = déclaration de contrôle**, **croisée** avec le planning. On **ne paie que ce que le planning du gestionnaire justifie**.
-- Réconciliation par salarié et par période (25→24) : comparer **h+/h− du planning (gestionnaire)** vs **h+/h− du relevé (salarié)**. Trois cas :
+- Réconciliation par salarié et par période (26→25) : comparer **h+/h− du planning (gestionnaire)** vs **h+/h− du relevé (salarié)**. Trois cas :
   1. **Concordance** → OK, on paie les heures sup **validées**.
   2. **Salarié > planning** (déclare plus que l'enregistré) → 🚩 : soit **surévaluation** (malveillance → on **ne paie pas** l'injustifié), soit **oubli du gestionnaire** d'inscrire un vrai changement → le **gestionnaire tranche**.
   3. **Planning > salarié** (retard/absence noté par le gestionnaire mais non déclaré par le salarié) → le salarié **ne peut pas masquer** retard/absence → la valeur du gestionnaire **fait foi**.
@@ -177,7 +177,7 @@ IA génératrice/réparatrice · Pont relevés (totaux + fin de mois automatique
 ## 7. Phasage proposé (cœur d'abord, IA ensuite)
 
 - **Phase 0** — Équipe : ajouter `couleur` + `fonction` à la fiche existante.
-- **Phase 1** — Modèle trames **avec rotation dès le départ** (2 semaines A/B, généralisable à N) + moteur de calcul d'heures (créneaux, totaux, rotation, cumul sur la période de paie 25→24).
+- **Phase 1** — Modèle trames **avec rotation dès le départ** (2 semaines A/B, généralisable à N) + moteur de calcul d'heures (créneaux, totaux, rotation, cumul sur la période de paie 26→25).
 - **Phase 2** — Frise (rendu) + saisie des horaires de trame.
 - **Phase 3** — Effectifs (rôles + mini par créneau + contrôle pharmacien) + alertes sur la frise.
 - **Phase 4** — Changements ponctuels (absences/heures sup typées) → planning = trame + changements.
@@ -214,6 +214,6 @@ Chaque phase est livrable et testable seule (tests de fumée comme le reste de b
 ## 10. Questions ouvertes (à trancher ensemble)
 1. ✅ **DÉCIDÉ** — Couleurs : **palette imposée** (pas de choix libre par salarié).
 2. ✅ **DÉCIDÉ** — Amplitude de la frise : **auto selon les horaires d'ouverture**.
-3. ✅ **DÉCIDÉ** — Pas de banque d'heures annuelle : les h+/h− sont **payées chaque période**. Période **ancrée sur le 25** (clôture 25, blocage 28), comme les relevés (voir §5.2/§5.3).
+3. ✅ **DÉCIDÉ** — Pas de banque d'heures annuelle : les h+/h− sont **payées chaque période**. Période **ancrée sur le 25** (clôture unique le 25, période 26→25), comme les relevés (voir §5.2/§5.3).
 4. ✅ **DÉCIDÉ** — Pas de module de dispos séparé : la **trame = l'accord/disponibilité** de chaque collaborateur ; les **congés se notent en Changements**. L'IA = trame + absences + effectifs (voir §3).
 5. ✅ **DÉCIDÉ** — **Rotation indispensable dès la V1** : l'officine tourne en **Semaine A / Semaine B (2 semaines tournantes)**, car les semaines ne sont pas identiques. Le modèle reste généralisable à N semaines (jusqu'à 15), mais **2** est le cas réel par défaut.
