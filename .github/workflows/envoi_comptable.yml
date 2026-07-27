@@ -1,0 +1,29 @@
+name: Envoi comptable botRh
+
+# Déclenché par le serveur (repository_dispatch 'envoi_comptable') quand
+# l'admin clique « Envoyer au comptable » une fois tous les relevés validés.
+# Le serveur PythonAnywhere gratuit ne peut pas envoyer d'e-mail : ce runner
+# récupère le récap Excel + les relevés et envoie le dossier paie à
+# l'expert-comptable (destinataires dans le payload), copie à l'admin.
+
+on:
+  repository_dispatch:
+    types: [envoi_comptable]
+  workflow_dispatch:   # test manuel (payload vide → rien envoyé)
+
+jobs:
+  envoi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Envoyer le dossier paie au comptable
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # Clé API serveur (vide si secret absent -> défaut côté script).
+          API_CLE: ${{ secrets.API_CLE }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: python comptable_sender.py

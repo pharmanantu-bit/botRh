@@ -1383,6 +1383,42 @@ def admin_releve_corriger():
     return redirect(url_for("admin_mois"))
 
 
+@app.route("/admin/comptable/envoyer", methods=["POST"])
+def admin_envoyer_comptable():
+    """Envoi du dossier paie du mois à l'expert-comptable, en un clic une fois
+    tous les relevés reçus VALIDÉS : le serveur (sans SMTP) déclenche le
+    workflow GitHub `envoi_comptable`, qui récupère le récap Excel + les
+    relevés et envoie le mail (résumé par collaborateur + Excel joint) à
+    COMPTA_EMAILS, copie à l'admin."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    mois, annee = datetime.now().month, datetime.now().year
+    reponses = charger_reponses(mois, annee)
+    profils = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
+    recus = [r for r in (reponse_de(reponses, e["prenom"], e["email"]) for e in employes)
+             if r is not None]
+    if not recus:
+        return redirect(url_for("admin_mois", msg="comptable_vide"))
+    non_valides = sum(1 for r in recus if not r.get("valide"))
+    if non_valides:
+        return redirect(url_for("admin_mois", msg="comptable_non_valides", nb=non_valides))
+    destinataires = (os.getenv("COMPTA_EMAILS") or "").strip()
+    if not destinataires:
+        return redirect(url_for("admin_mois", msg="comptable_sans_dest"))
+    if not os.getenv("GITHUB_TOKEN"):
+        return redirect(url_for("admin_mois", msg="comptable_erreur"))
+    try:
+        declencher_workflow("envoi_comptable", {
+            "mois": mois, "annee": annee, "destinataires": destinataires})
+    except Exception:
+        app.logger.exception("Échec du déclenchement de l'envoi comptable")
+        return redirect(url_for("admin_mois", msg="comptable_erreur"))
+    return redirect(url_for("admin_mois", msg="comptable_ok"))
+
+
 @app.route("/admin/employe")
 def admin_employe():
     """I — fiche annuelle d'un employé : 12 mois (H+/H−/solde) + tendance."""
@@ -1780,6 +1816,124 @@ def admin_synthese():
     if not session.get("admin"):
         return redirect(url_for("admin"))
     return redirect(url_for("admin_employes") + "#synthese")
+
+
+def _heures_hebdo(s):
+    """Heures contractuelles hebdo de la fiche salarié (champ texte libre) en
+    décimal : « 35 », « 35h », « 28h30 », « 28,5 » ; 0.0 si vide/illisible."""
+    s = str(s or "").strip().lower().replace(",", ".").replace(" ", "")
+    if not s:
+        return 0.0
+    try:
+        if "h" in s:
+            h, _, m = s.partition("h")
+            return round(float(h or 0) + float(m or 0) / 60, 2)
+        return round(float(s), 2)
+    except ValueError:
+        return 0.0
+
+
+def _semaine_de(label, mois, annee):
+    """Clé de semaine civile (lundi ISO) d'un label de jour de relevé
+    (« Lun 28/07 ») ; None si le label est illisible."""
+    from datetime import date as dt_date
+    try:
+        jm = label.split()[-1]                       # « 28/07 »
+        j, m = int(jm[:2]), int(jm[3:5])
+    except (ValueError, IndexError):
+        return None
+    a = annee - 1 if m > mois else annee             # mois précédent d'un relevé de janvier
+    try:
+        d = dt_date(a, m, j)
+    except ValueError:
+        return None
+    lundi = d - timedelta(days=d.weekday())
+    return lundi.isoformat()
+
+
+def calculer_majorations(jours, contrat_hebdo, mois, annee):
+    """Ventile les heures d'un relevé pour la paie, par SEMAINE CIVILE, selon
+    le régime de la convention collective de la pharmacie d'officine :
+    - temps plein (contrat >= 35 h) : heures au-delà de 35 h/semaine = heures
+      supplémentaires, majorées +25 % de la 36e à la 43e heure (8 premières),
+      +50 % à partir de la 44e ;
+    - temps partiel (contrat < 35 h) : heures au-delà du contrat = heures
+      COMPLÉMENTAIRES (majoration 10 % / 25 %, ventilées par le comptable).
+    Hypothèse de calcul : le collaborateur effectue ses heures contractuelles,
+    ajustées des H+ / H− déclarés jour par jour dans le relevé.
+    Renvoie {"sup25", "sup50", "complementaires"} (heures décimales)."""
+    semaines = {}
+    for jr in jours or []:
+        cle = _semaine_de(jr.get("label", ""), mois, annee)
+        if cle is None:
+            continue
+        s = semaines.setdefault(cle, {"plus": 0.0, "moins": 0.0})
+        s["plus"] += float(jr.get("plus") or 0)
+        s["moins"] += float(jr.get("moins") or 0)
+    sup25 = sup50 = comp = 0.0
+    for s in semaines.values():
+        travaille = contrat_hebdo + s["plus"] - s["moins"]
+        if contrat_hebdo >= 35:
+            sup = max(0.0, travaille - 35.0)
+            sup25 += min(sup, 8.0)
+            sup50 += max(0.0, sup - 8.0)
+        else:
+            comp += max(0.0, travaille - contrat_hebdo)
+    return {"sup25": round(sup25, 2), "sup50": round(sup50, 2),
+            "complementaires": round(comp, 2)}
+
+
+def construire_resume_paie(mois, annee):
+    """Résumé paie par collaborateur pour l'expert-comptable : totaux du
+    relevé + ventilation des majorations (calculer_majorations). `statut` :
+    ok / sans_detail (pas de détail jour par jour, ventilation impossible) /
+    sans_contrat (heures contractuelles non renseignées) / manquant."""
+    reponses = charger_reponses(mois, annee)
+    profils = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
+    resume = []
+    for e in employes:
+        r = reponse_de(reponses, e["prenom"], e["email"])
+        prof = profils.get(e["email"], {})
+        contrat = _heures_hebdo(prof.get("heures_contractuelles_hebdo", ""))
+        item = {"prenom": e["prenom"], "nom": e["nom"], "contrat_hebdo": contrat}
+        if r is None:
+            item["statut"] = "manquant"
+            resume.append(item)
+            continue
+        plus = float(r.get("heures_plus") or 0)
+        moins = float(r.get("heures_moins") or 0)
+        item.update({
+            "plus": plus, "moins": moins, "solde": round(plus - moins, 2),
+            "valide": bool(r.get("valide")),
+            "saisi_par_admin": bool(r.get("saisi_par_admin")),
+            "corrige": bool(r.get("correction")),
+            "commentaire": (r.get("commentaire") or "").strip(),
+        })
+        if not contrat:
+            item["statut"] = "sans_contrat"
+        elif not r.get("jours"):
+            item["statut"] = "sans_detail"
+        else:
+            item["statut"] = "ok"
+            item.update(calculer_majorations(r["jours"], contrat, mois, annee))
+        resume.append(item)
+    return resume
+
+
+@app.route("/export_resume_paie")
+def export_resume_paie():
+    """Résumé paie JSON du mois (majorations 25/50 par collaborateur), pour le
+    runner GitHub qui construit le mail à l'expert-comptable. Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
+    return json.dumps(construire_resume_paie(mois, annee), ensure_ascii=False), \
+        200, {"Content-Type": "application/json; charset=utf-8"}
 
 
 def construire_recap_xlsx(mois, annee):
