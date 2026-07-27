@@ -560,6 +560,7 @@ def admin_mois():
             "solde": solde if solde is not None else "-",
             "commentaire": reponse.get("commentaire", "") if reponse else "",
             "date": reponse["date"] if reponse else "-",
+            "correction": reponse.get("correction") if reponse else None,
             "lien": f"/releve?token={token}&prenom={emp['prenom']}",
         })
 
@@ -575,6 +576,8 @@ def admin_mois():
                 "date_signature": reponse.get("date_signature", ""),
                 "date": reponse.get("date", ""),
                 "jours": reponse.get("jours", []),
+                "correction": reponse.get("correction"),
+                "declare": reponse.get("declare"),
             }
 
     repondus = sum(1 for r in resultats if r["repondu"])
@@ -1308,6 +1311,46 @@ def admin_valider():
                     datetime.now().strftime("%d/%m/%Y %H:%M") if valide else "")
                 ecrire_reponses(reponses)
                 break
+    return redirect(url_for("admin_mois"))
+
+
+@app.route("/admin/releve/corriger", methods=["POST"])
+def admin_releve_corriger():
+    """L'admin corrige un relevé reçu (erreur de saisie du salarié) avant la
+    paie. Les heures déclarées à l'origine sont conservées (traçabilité) et la
+    validation éventuelle est annulée : un relevé corrigé doit être re-validé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    try:
+        h_plus = round(float(request.form.get("heures_plus", "0") or 0), 2)
+        h_moins = round(float(request.form.get("heures_moins", "0") or 0), 2)
+    except ValueError:
+        abort(400)
+    if h_plus < 0 or h_moins < 0:
+        abort(400)
+    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    if not emp:
+        abort(404)
+    reponses = charger_reponses()
+    for t in tokens_valides(emp["prenom"], emp["email"]):
+        r = reponses.get(t)
+        if r is None:
+            continue
+        # Conserver la toute première déclaration du salarié, même après
+        # plusieurs corrections successives.
+        r.setdefault("declare", {"heures_plus": r.get("heures_plus"),
+                                 "heures_moins": r.get("heures_moins")})
+        r["heures_plus"] = h_plus
+        r["heures_moins"] = h_moins
+        r["correction"] = {
+            "le": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "motif": request.form.get("motif", "").strip(),
+        }
+        r["valide"] = False
+        r["date_validation"] = ""
+        ecrire_reponses(reponses)
+        break
     return redirect(url_for("admin_mois"))
 
 

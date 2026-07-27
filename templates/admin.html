@@ -26,10 +26,19 @@
     td.nom { text-align: left; font-weight: bold; }
     .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .badge-attente { background: #FFEB9C; color: #9C6500; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
+    .badge-corrige { background: #e8f0fe; color: #1F4E79; padding: 2px 8px; border-radius: 12px; font-weight: bold; font-size: 0.75em; display: inline-block; margin-top: 3px; }
     .lien { color: #2E75B6; font-size: 0.8em; text-decoration: none; }
     .lien:hover { text-decoration: underline; }
     .btn-detail { border:none; cursor:pointer; background:#1F4E79; color:white; padding:4px 10px; border-radius:6px; font-size:0.78em; font-weight:bold; margin-top:4px; }
     .btn-detail:hover { background:#163d60; }
+    .btn-corriger { background:#e67e22; }
+    .btn-corriger:hover { background:#c96712; }
+    .corr-champ { margin-bottom:12px; }
+    .corr-champ label { display:block; font-size:0.82em; color:#1F4E79; font-weight:bold; margin-bottom:4px; }
+    .corr-champ input { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:0.95em; }
+    .corr-note { font-size:0.8em; color:#888; margin-bottom:14px; }
+    .btn-valider-corr { width:100%; border:none; cursor:pointer; background:#e67e22; color:white; padding:10px; border-radius:8px; font-size:0.95em; font-weight:bold; }
+    .btn-valider-corr:hover { background:#c96712; }
 
     /* Fenêtre de détail */
     .modal-overlay { display:none; position:fixed; inset:0; z-index:1000; background:rgba(31,78,121,0.45); align-items:center; justify-content:center; padding:20px; }
@@ -123,6 +132,7 @@
         <td>
           {% if r.repondu %}
           <span class="badge-ok">Reçu</span>
+          {% if r.correction %}<br><span class="badge-corrige" title="Corrigé par la pharmacie le {{ r.correction.le }}">✏️ corrigé</span>{% endif %}
           {% else %}
           <span class="badge-attente">En attente</span>
           {% endif %}
@@ -141,6 +151,14 @@
               data-moins="{{ r.heures_moins }}"
               data-solde="{{ r.solde }}"
               onclick="voirDetail(this)">🔍 Détail</button>
+          {% if est_courant %}
+          <button type="button" class="btn-detail btn-corriger"
+              data-email="{{ r.email }}"
+              data-nom="{{ r.prenom }} {{ r.nom|upper }}"
+              data-plus="{{ r.heures_plus }}"
+              data-moins="{{ r.heures_moins }}"
+              onclick="ouvrirCorrection(this)">✏️ Corriger</button>
+          {% endif %}
           {% else %}-{% endif %}
         </td>
         <td>
@@ -174,6 +192,39 @@
 
 </div>
 
+<!-- Fenêtre de correction d'un relevé -->
+<div class="modal-overlay" id="modalCorrection" onclick="if(event.target===this)fermerCorrection()">
+  <div class="modal-box">
+    <div class="modal-head" style="background:#e67e22;">
+      <div>
+        <h3 id="mc-nom">—</h3>
+        <span class="periode">Correction du relevé — {{ mois_annee }}</span>
+      </div>
+      <button class="modal-close" onclick="fermerCorrection()" title="Fermer">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form method="POST" action="/admin/releve/corriger">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="email" id="mc-email" value="">
+        <div class="corr-champ">
+          <label for="mc-plus">Heures en plus (H+)</label>
+          <input type="number" name="heures_plus" id="mc-plus" step="0.25" min="0" required>
+        </div>
+        <div class="corr-champ">
+          <label for="mc-moins">Heures en moins (H−)</label>
+          <input type="number" name="heures_moins" id="mc-moins" step="0.25" min="0" required>
+        </div>
+        <div class="corr-champ">
+          <label for="mc-motif">Motif de la correction (recommandé)</label>
+          <input type="text" name="motif" id="mc-motif" maxlength="200" placeholder="Ex. : erreur de saisie, oubli du 15/07…">
+        </div>
+        <div class="corr-note">Les heures déclarées par le collaborateur sont conservées dans le détail (traçabilité). Une correction annule la validation : pensez à re-valider le relevé.</div>
+        <button type="submit" class="btn-valider-corr">Enregistrer la correction</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Fenêtre de détail du relevé -->
 <div class="modal-overlay" id="modalDetail" onclick="if(event.target===this)fermerDetail()">
   <div class="modal-box">
@@ -194,6 +245,7 @@
       <div class="detail-ligne"><span class="k">Signature</span><span class="val" id="md-signature">—</span></div>
       <div class="detail-ligne"><span class="k">Date signature</span><span class="val" id="md-datesign">—</span></div>
       <div class="detail-ligne"><span class="k">Envoyé le</span><span class="val" id="md-envoi">—</span></div>
+      <div class="detail-ligne" id="md-ligne-correction" style="display:none;"><span class="k">Correction</span><span class="val" id="md-correction">—</span></div>
       <div style="margin-top:18px;">
         <div style="font-size:0.82em; color:#1F4E79; font-weight:bold; margin-bottom:4px;">Détail jour par jour</div>
         <div id="md-jours"></div>
@@ -227,9 +279,31 @@ function voirDetail(btn) {
   setVal('md-signature', det.signature);
   setVal('md-datesign', det.date_signature);
   setVal('md-envoi', det.date);
+  const ligneCorr = document.getElementById('md-ligne-correction');
+  if (det.correction) {
+    let txt = 'le ' + det.correction.le;
+    if (det.correction.motif) txt += ' — ' + det.correction.motif;
+    if (det.declare) txt += ' (déclaré : +' + det.declare.heures_plus + ' h / -' + det.declare.heures_moins + ' h)';
+    document.getElementById('md-correction').textContent = txt;
+    ligneCorr.style.display = '';
+  } else {
+    ligneCorr.style.display = 'none';
+  }
   afficherJours(det.jours);
   document.getElementById('modalDetail').classList.add('ouvert');
 }
+
+function ouvrirCorrection(btn) {
+  const d = btn.dataset;
+  document.getElementById('mc-nom').textContent = d.nom;
+  document.getElementById('mc-email').value = d.email;
+  document.getElementById('mc-plus').value = d.plus;
+  document.getElementById('mc-moins').value = d.moins;
+  document.getElementById('mc-motif').value = '';
+  document.getElementById('modalCorrection').classList.add('ouvert');
+}
+
+function fermerCorrection() { document.getElementById('modalCorrection').classList.remove('ouvert'); }
 
 function setVal(id, v) {
   const el = document.getElementById(id);
@@ -258,7 +332,7 @@ function afficherJours(jours) {
 }
 
 function fermerDetail() { document.getElementById('modalDetail').classList.remove('ouvert'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerDetail(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fermerDetail(); fermerCorrection(); } });
 </script>
 </body>
 </html>
