@@ -86,18 +86,6 @@ OUTILS_SPECS = [
         "requis": [],
     },
     {
-        "nom": "comparer_heures",
-        "description": "Compare les heures déclarées (relevé) au planning prévu et "
-                       "signale les écarts (OK / À VÉRIFIER). Sans « employe » : toute "
-                       "l'équipe. Sans mois/année : mois en cours.",
-        "params": {
-            "employe": ("string", "Étiquette du salarié (optionnel)"),
-            "mois": ("integer", "Mois 1-12 (optionnel)"),
-            "annee": ("integer", "Année (optionnel)"),
-        },
-        "requis": [],
-    },
-    {
         "nom": "lister_employes",
         "description": "Annuaire des salariés actifs (étiquette, poste, type de contrat).",
         "params": {},
@@ -269,8 +257,8 @@ def _boucle_fake(msgs, annuaire, table, executer):
         nom, args = "releves_manquants", {}
     elif any(k in d for k in ("visite", "échéan", "echean", "cdd", "essai", "expir")):
         nom, args = "echeances_a_venir", {}
-    elif any(k in d for k in ("heure", "écart", "ecart", "planning")):
-        nom, args = "comparer_heures", {}
+    elif any(k in d for k in ("heure", "écart", "ecart")):
+        nom, args = "releves_manquants", {}
     elif any(k in d for k in ("fiche", "profil")):
         nom, args = ("profil_salarie", {"employe": label}) if label else ("lister_employes", {})
     else:

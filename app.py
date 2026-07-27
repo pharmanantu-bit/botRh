@@ -148,8 +148,6 @@ def reponses_file(mois=None, annee=None):
     if annee is None:
         annee = datetime.now().year
     return os.path.join(BASE_DIR, f"reponses_{mois}_{annee}.json")
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "planning_img")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 MOIS_FR = {
     1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -430,28 +428,6 @@ def envoyer():
     )
 
 
-def planning_file(mois=None, annee=None):
-    if mois is None:
-        mois = datetime.now().month
-    if annee is None:
-        annee = datetime.now().year
-    return os.path.join(BASE_DIR, f"planning_{mois}_{annee}.json")
-
-def charger_planning(mois=None, annee=None):
-    return _lire_json(planning_file(mois, annee))
-
-def sauvegarder_planning(data):
-    _ecrire_json(planning_file(), data)
-
-def hm_to_float(s):
-    s = s.strip().replace("min", "").replace(" ", "")
-    if "h" in s:
-        parts = s.split("h")
-        h = float(parts[0] or 0)
-        m = float(parts[1] or 0) if len(parts) > 1 else 0
-        return round(h + m / 60, 2)
-    return 0.0
-
 def charger_employes():
     employes = []
     chemin = employees_path()
@@ -543,7 +519,7 @@ def admin_securite():
 
 @app.route("/admin/mois")
 def admin_mois():
-    """Vue mensuelle : relevés + planning d'un mois, navigable mois par mois."""
+    """Vue mensuelle : relevés d'heures d'un mois, navigable mois par mois."""
     if not session.get("admin"):
         return redirect(url_for("admin"))
 
@@ -559,7 +535,6 @@ def admin_mois():
     employes = [e for e in charger_employes()
                 if collaborateur_actif(profils_mois.get(e["email"], {}))
                 or reponse_de(reponses, e["prenom"], e["email"])]
-    planning = charger_planning(mois, annee)
 
     # Navigation mois précédent / suivant (sans dépasser le mois courant)
     mois_prec = 12 if mois == 1 else mois - 1
@@ -568,32 +543,11 @@ def admin_mois():
     annee_suiv = annee + 1 if mois == 12 else annee
     peut_suivant = not (annee > annee_courante or (annee == annee_courante and mois >= mois_courant))
 
-    # Image de planning du mois
-    img_nom = f"planning_{mois}_{annee}.png"
-    img_url = f"/static/planning_img/{img_nom}" if os.path.exists(os.path.join(UPLOAD_FOLDER, img_nom)) else None
-
     resultats = []
     for emp in employes:
         token = generer_token(emp["prenom"], emp["email"])
         reponse = reponse_de(reponses, emp["prenom"], emp["email"])
-        plan = planning.get(emp["prenom"], {})
-        plan_total = plan.get("total", None)
-
-        if reponse:
-            solde = round(reponse["heures_plus"] - reponse["heures_moins"], 2)
-            if plan_total is not None:
-                ecart = round(solde - plan_total, 2)
-                if abs(ecart) <= 0.5:
-                    statut_comp = "OK"
-                else:
-                    statut_comp = "A VERIFIER"
-            else:
-                ecart = None
-                statut_comp = None
-        else:
-            solde = None
-            ecart = None
-            statut_comp = None
+        solde = round(reponse["heures_plus"] - reponse["heures_moins"], 2) if reponse else None
 
         resultats.append({
             "prenom": emp["prenom"],
@@ -606,12 +560,6 @@ def admin_mois():
             "solde": solde if solde is not None else "-",
             "commentaire": reponse.get("commentaire", "") if reponse else "",
             "date": reponse["date"] if reponse else "-",
-            "plan_trame": plan.get("trame", "-"),
-            "plan_total": plan_total if plan_total is not None else "-",
-            "plan_absences": plan.get("absences", ""),
-            "plan_jours": plan.get("jours", "-"),
-            "ecart": ecart if ecart is not None else "-",
-            "statut_comp": statut_comp,
             "lien": f"/releve?token={token}&prenom={emp['prenom']}",
         })
 
@@ -633,8 +581,7 @@ def admin_mois():
     return render_template("admin.html", resultats=resultats, repondus=repondus,
                            total=len(resultats), mois=mois, annee=annee,
                            mois_annee=f"{MOIS_FR[mois]} {annee}",
-                           est_courant=est_courant, planning=planning, img_url=img_url,
-                           a_planning=(planning != {}),
+                           est_courant=est_courant,
                            nav_prec={"mois": mois_prec, "annee": annee_prec},
                            nav_suiv=({"mois": mois_suiv, "annee": annee_suiv} if peut_suivant else None),
                            releves_detail=releves_detail)
@@ -1319,72 +1266,6 @@ def admin_historique_export(mois, annee):
     filename = f"Releves_{MOIS_FR[mois]}_{annee}.xlsx"
     return send_file(output, as_attachment=True, download_name=filename,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-
-@app.route("/admin/planning", methods=["GET", "POST"])
-def admin_planning():
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-
-    employes = charger_employes()
-    planning = charger_planning()
-    mois = datetime.now().month
-    annee = datetime.now().year
-
-    img_name = f"planning_{mois}_{annee}.png"
-    img_path = os.path.join(UPLOAD_FOLDER, img_name)
-    img_url = f"/static/planning_img/{img_name}" if os.path.exists(img_path) else None
-
-    if request.method == "POST":
-        # Sauvegarde image si uploadée
-        if "image" in request.files:
-            img = request.files["image"]
-            if img and img.filename:
-                img.save(img_path)
-                img_url = f"/static/planning_img/{img_name}"
-
-        nouveau = {}
-        for emp in employes:
-            p = emp["prenom"]
-            trame = request.form.get(f"trame_{p}", "").strip()
-            total = request.form.get(f"total_{p}", "").strip()
-            absences = request.form.get(f"absences_{p}", "").strip()
-            jours = request.form.get(f"jours_{p}", "").strip()
-            nouveau[p] = {
-                "trame": hm_to_float(trame) if trame else 0,
-                "total": hm_to_float(total) if total else 0,
-                "absences": absences,
-                "jours": int(jours) if jours.isdigit() else 0,
-            }
-        sauvegarder_planning(nouveau)
-        return redirect(url_for("admin_mois"))
-
-    return render_template("admin_planning.html", employes=employes, planning=planning,
-                           mois_annee=f"{MOIS_FR[mois]} {annee}", img_url=img_url)
-
-
-@app.route("/admin/planning/supprimer-image", methods=["POST"])
-def admin_planning_supprimer_image():
-    """Supprime l'image de planning chargée pour le mois en cours."""
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-    mois, annee = datetime.now().month, datetime.now().year
-    img_path = os.path.join(UPLOAD_FOLDER, f"planning_{mois}_{annee}.png")
-    try:
-        if os.path.exists(img_path):
-            os.remove(img_path)
-    except OSError:
-        app.logger.exception("Échec suppression image planning")
-    return redirect(url_for("admin_planning"))
-
-
-@app.route("/admin/planning/reset", methods=["POST"])
-def admin_planning_reset():
-    """Réinitialise le remplissage du planning (les données saisies) du mois en cours."""
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
-    sauvegarder_planning({})
-    return redirect(url_for("admin_planning"))
 
 
 @app.route("/admin/logout")
@@ -2193,7 +2074,7 @@ def admin_employe_document_valider():
 # (construit par assistant_rh.annuaire_pseudo) et renvoient un texte où chaque
 # salarié est désigné par son étiquette « Employé X » — jamais par son vrai nom.
 # Réutilisent les helpers de données déjà présents (charger_*, reponse_de,
-# profil_de, alertes_completes, docs_manquants, charger_planning).
+# profil_de, alertes_completes, docs_manquants).
 
 def _est_actif(email, profils):
     return profils.get(email, {}).get("statut") != "archive"
@@ -2255,35 +2136,6 @@ def _outil_echeances(args, annuaire, profils):
     if not lignes:
         return "Aucune échéance à venir détectée sur les salariés actifs."
     return f"{len(lignes)} échéance(s) à venir :\n" + "\n".join(lignes)
-
-def _outil_comparer_heures(args, annuaire, profils):
-    mois = int(args.get("mois") or datetime.now().month)
-    annee = int(args.get("annee") or datetime.now().year)
-    cible = (args.get("employe") or "").strip()
-    reps = charger_reponses(mois, annee)
-    planning = charger_planning(mois, annee)
-    lignes = []
-    for label, e in annuaire.items():
-        if not _est_actif(e["email"], profils):
-            continue
-        if cible and label != cible:
-            continue
-        r = reponse_de(reps, e["prenom"], e["email"])
-        if not r:
-            lignes.append(f"- {label} : pas de relevé pour {MOIS_FR[mois]} {annee}")
-            continue
-        solde = round(r["heures_plus"] - r["heures_moins"], 2)
-        plan_total = planning.get(e["prenom"], {}).get("total")
-        if plan_total is not None:
-            ecart = round(solde - plan_total, 2)
-            statut = "OK" if abs(ecart) <= 0.5 else "À VÉRIFIER"
-            lignes.append(f"- {label} : relevé {solde}h vs planning {plan_total}h "
-                          f"(écart {ecart:+}h) → {statut}")
-        else:
-            lignes.append(f"- {label} : relevé {solde}h (pas de planning saisi)")
-    if not lignes:
-        return "Aucun salarié correspondant."
-    return f"Comparaison heures/planning — {MOIS_FR[mois]} {annee} :\n" + "\n".join(lignes)
 
 def _outil_lister_employes(args, annuaire, profils):
     lignes = [f"- {label} : {profils.get(e['email'], {}).get('poste') or '—'} "
@@ -2364,7 +2216,6 @@ _OUTILS_AGENT = {
     "releves_manquants": _outil_releves_manquants,
     "profil_salarie": _outil_profil_salarie,
     "echeances_a_venir": _outil_echeances,
-    "comparer_heures": _outil_comparer_heures,
     "lister_employes": _outil_lister_employes,
     "preparer_relance": _outil_preparer_relance,
     "preparer_attestation": _outil_preparer_attestation,

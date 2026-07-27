@@ -56,7 +56,7 @@ routes_publiques = [
 routes_admin = [
     "/admin/dashboard", "/admin/mois", f"/admin/mois?mois={mois}&annee={annee}",
     "/admin/historique", f"/admin/historique/{mois}/{annee}",
-    "/admin/employes", "/admin/planning", "/admin/export", "/admin/erreurs",
+    "/admin/employes", "/admin/export", "/admin/erreurs",
     "/admin/sauvegarde", "/admin/sauvegarde/telecharger", "/admin/assistant", "/admin/securite",
     "/admin/recrutement",
     "/admin/planning-equipe",

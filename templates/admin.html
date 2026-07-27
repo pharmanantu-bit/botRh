@@ -14,13 +14,10 @@
     .compteur { background: #e8f0fe; color: #1F4E79; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.95em; }
     .btn-export { background: #2E75B6; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
     .btn-export:hover { background: #1F4E79; }
-    .btn-planning { background: #5c7a3e; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; text-decoration: none; font-weight: bold; }
-    .btn-planning:hover { background: #445c2e; }
     .deconnexion { color: #888; font-size: 0.85em; text-decoration: none; }
     .deconnexion:hover { color: #333; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
     th { background: #1F4E79; color: white; padding: 10px 6px; text-align: center; white-space: nowrap; }
-    .th-planning { background: #5c7a3e; }
     tr.recu td { background: #eafaf1 !important; }
     tr.attente td { background: #fffbe6 !important; }
     tr.recu td.nom { border-left: 4px solid #27ae60; }
@@ -29,11 +26,8 @@
     td.nom { text-align: left; font-weight: bold; }
     .badge-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .badge-attente { background: #FFEB9C; color: #9C6500; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
-    .badge-verif { background: #FFCCCC; color: #9C0006; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
-    .badge-comp-ok { background: #C6EFCE; color: #276221; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .lien { color: #2E75B6; font-size: 0.8em; text-decoration: none; }
     .lien:hover { text-decoration: underline; }
-    .sep { background: #5c7a3e !important; }
     .btn-detail { border:none; cursor:pointer; background:#1F4E79; color:white; padding:4px 10px; border-radius:6px; font-size:0.78em; font-weight:bold; margin-top:4px; }
     .btn-detail:hover { background:#163d60; }
 
@@ -70,14 +64,6 @@
     .mn-btn:hover { background:#163d60; }
     .mn-disabled { background:#ccc; cursor:not-allowed; }
     .mn-courant { font-weight:bold; color:#1F4E79; font-size:1.05em; }
-    .planning-bloc { margin-top:30px; border-top:2px solid #dde3ed; padding-top:20px; }
-    .pb-tete { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-    .pb-tete h2 { color:#1F4E79; font-size:1.1em; }
-    .planning-img { width:100%; border-radius:8px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
-    .table-planning { width:100%; border-collapse:collapse; font-size:0.85em; }
-    .table-planning th { background:#5c7a3e; color:white; padding:8px; }
-    .table-planning td { padding:6px 8px; border:1px solid #ddd; text-align:center; }
-    .table-planning td.nom { text-align:left; font-weight:bold; color:#1F4E79; }
 
     @media print {
       body { background: white; padding: 0; }
@@ -126,12 +112,6 @@
         <th>Solde déclaré</th>
         <th>Commentaire</th>
         <th>Date envoi</th>
-        <th class="th-planning">Trame</th>
-        <th class="th-planning">Total planning</th>
-        <th class="th-planning">Absences</th>
-        <th class="th-planning">Jours</th>
-        <th class="th-planning">Écart</th>
-        <th class="th-planning">Comparaison</th>
         <th>Détail</th>
         <th>Validation</th>
       </tr>
@@ -152,22 +132,6 @@
         <td>{{ r.solde }}</td>
         <td>{{ r.commentaire }}</td>
         <td>{{ r.date }}</td>
-        <td>{{ r.plan_trame }}</td>
-        <td>{{ r.plan_total }}</td>
-        <td>{{ r.plan_absences }}</td>
-        <td>{{ r.plan_jours }}</td>
-        <td>
-          {% if r.ecart != "-" %}
-            {% if r.ecart > 0 %}+{{ r.ecart }}h{% else %}{{ r.ecart }}h{% endif %}
-          {% else %}-{% endif %}
-        </td>
-        <td>
-          {% if r.statut_comp == "OK" %}
-          <span class="badge-comp-ok">OK</span>
-          {% elif r.statut_comp == "A VERIFIER" %}
-          <span class="badge-verif">A VÉRIFIER</span>
-          {% else %}-{% endif %}
-        </td>
         <td>
           {% if r.repondu %}
           <button type="button" class="btn-detail"
@@ -208,35 +172,6 @@
     </tbody>
   </table>
 
-  <!-- Planning du mois -->
-  <div class="planning-bloc">
-    <div class="pb-tete">
-      <h2>🗓️ Planning — {{ mois_annee }}</h2>
-      {% if est_courant %}<a href="/admin/planning" class="btn-export" style="background:#5c7a3e;">✏️ Saisir / éditer le planning</a>{% endif %}
-    </div>
-    {% if img_url %}
-    <img src="{{ img_url }}" class="planning-img" alt="Planning {{ mois_annee }}">
-    {% endif %}
-    {% if a_planning %}
-    <table class="table-planning">
-      <thead><tr><th>Collaborateur</th><th>Trame</th><th>Total</th><th>Absences</th><th>Jours</th></tr></thead>
-      <tbody>
-        {% for r in resultats %}
-        {% set p = planning.get(r.prenom, {}) %}
-        <tr>
-          <td class="nom">{{ r.prenom }} {{ r.nom|upper }}</td>
-          <td>{{ p.get('trame', '—') }}</td>
-          <td>{{ p.get('total', '—') }}</td>
-          <td>{{ p.get('absences', '') or '—' }}</td>
-          <td>{{ p.get('jours', '—') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p style="color:#888; font-style:italic; font-size:0.9em;">Aucun planning enregistré pour ce mois.{% if est_courant %} Cliquez sur « Saisir le planning ».{% endif %}</p>
-    {% endif %}
-  </div>
 </div>
 
 <!-- Fenêtre de détail du relevé -->
