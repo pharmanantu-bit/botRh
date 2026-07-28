@@ -117,7 +117,7 @@ if employes and datetime.now().day <= A.JOUR_CLOTURE:
     grille_ok = (all(a in html_releve for a in attendus)
                  and not any(i in html_releve for i in interdits))
     if grille_ok:
-        print("OK [--] grille /releve : période 26 (mois préc.) → 25 (mois courant)")
+        print("OK [--] grille /releve : période 26 (mois préc.) - 25 (mois courant)")
     else:
         echecs.append("grille /releve : bornes de période incorrectes")
         print("KO [--] grille /releve : bornes de période incorrectes")
@@ -132,6 +132,16 @@ if len(detail) == 2 and any("26/" in l for l in labels) and any("25/" in l for l
 else:
     echecs.append(f"extraire_detail_jours : attendu 2 jours (26 préc. + 25 courant), reçu {labels}")
     print(f"KO [--] extraire_detail_jours : {labels}")
+
+# Transition août 2026 : relevé du 1er au 25 (les jours de juillet, déjà
+# couverts par l'ancienne grille de juillet, ne sont plus proposés ni lus).
+d_aout = A.extraire_detail_jours({"prec_plus_28": "5", "mois_plus_10": "2"}, 8, 2026)
+if (A.sans_jours_prec(8, 2026) and not A.sans_jours_prec(9, 2026)
+        and len(d_aout) == 1 and "10/08" in d_aout[0]["label"]):
+    print("OK [--] transition août 2026 : 1er-25, jours de juillet ignorés, régime normal en sept.")
+else:
+    echecs.append(f"transition août 2026 : {d_aout}")
+    print(f"KO [--] transition août 2026 : {d_aout}")
 
 # Excel paie : colonne « Validé » en 10e position, titre fusionné A1:J1.
 from openpyxl import load_workbook

@@ -146,8 +146,10 @@
         </tr>
       </thead>
       <tbody>
-        <!-- Mois précédent -->
+        <!-- Mois précédent (absent le mois de transition : déjà couvert) -->
+        {% if jours_prec %}
         <tr><td colspan="3" class="section-mois">{{ mois_prec_nom }}</td></tr>
+        {% endif %}
         {% for j in jours_prec %}
         <tr{% if j in weekend_prec %} class="weekend"{% endif %}>
           <td class="jour">{{ noms_jours_prec[j] }} {{ j }}</td>
@@ -192,7 +194,7 @@
     <textarea name="commentaire" placeholder="Commentaire (optionnel) : absences, congés, remarques..."></textarea>
 
     <button type="submit" class="btn">Envoyer mon relevé ✓</button>
-    <p class="legende">Le relevé couvre la période du 26 {{ mois_prec_nom|capitalize }} au {{ jour_cloture }} {{ mois_nom|capitalize }} inclus — les heures effectuées après le {{ jour_cloture }} seront comptabilisées le mois suivant.</p>
+    <p class="legende">Le relevé couvre la période du {{ periode_debut|capitalize }} au {{ jour_cloture }} {{ mois_nom|capitalize }} inclus — les heures effectuées après le {{ jour_cloture }} seront comptabilisées le mois suivant.</p>
   </form>
   {% endif %}
 </div>

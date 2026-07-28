@@ -136,6 +136,16 @@ JOUR_CLOTURE = int(os.getenv("JOUR_CLOTURE", "25"))
 # 26 — aucun jour compté deux fois).
 JOUR_DEBUT_PERIODE = 26
 JOUR_FIN_PERIODE = 25
+# Transition (une seule fois) : les relevés de juillet 2026 couvraient encore
+# jusqu'au 31/07 (ancienne grille 24 → fin de mois). Pour ne payer aucun jour
+# deux fois, le relevé d'août 2026 va du 1er au 25 août (pas de jours de
+# juillet) ; régime normal 26 → 25 dès septembre (26/08 → 25/09).
+MOIS_SANS_JOURS_PREC = "2026-08"
+
+def sans_jours_prec(mois, annee):
+    """True si la grille de ce mois ne doit pas proposer les jours du mois
+    précédent (mois de transition : déjà couverts par l'ancien relevé)."""
+    return f"{annee}-{mois:02d}" == MOIS_SANS_JOURS_PREC
 # employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
 # = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
 # lui qui fait foi (évite tout conflit de déploiement avec git).
@@ -273,8 +283,11 @@ def formulaire():
     annee_prec = annee - 1 if mois == 1 else annee
     nb_jours_prec = calendar.monthrange(annee_prec, mois_prec)[1]
 
-    jours_prec = list(range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1))
+    jours_prec = [] if sans_jours_prec(mois, annee) \
+        else list(range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1))
     jours_mois = list(range(1, JOUR_FIN_PERIODE + 1))
+    periode_debut = f"1er {MOIS_FR[mois]}" if not jours_prec \
+        else f"{JOUR_DEBUT_PERIODE} {MOIS_FR[mois_prec]}"
 
     JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     from datetime import date as dt_date
@@ -303,6 +316,7 @@ def formulaire():
         mois_prec_nom=MOIS_FR[mois_prec].upper(),
         jours_prec=jours_prec,
         jours_mois=jours_mois,
+        periode_debut=periode_debut,
         noms_jours_prec=noms_jours_prec,
         noms_jours_mois=noms_jours_mois,
         weekend_prec=weekend_prec,
@@ -353,11 +367,12 @@ def extraire_detail_jours(form, mois, annee):
             return 0.0
 
     jours = []
-    for j in range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1):
-        p, m = lire(f"prec_plus_{j}"), lire(f"prec_moins_{j}")
-        if p or m:
-            nom = JOURS_FR[dt_date(annee_prec, mois_prec, j).weekday()]
-            jours.append({"label": f"{nom} {j:02d}/{mois_prec:02d}", "plus": p, "moins": m})
+    if not sans_jours_prec(mois, annee):
+        for j in range(JOUR_DEBUT_PERIODE, nb_jours_prec + 1):
+            p, m = lire(f"prec_plus_{j}"), lire(f"prec_moins_{j}")
+            if p or m:
+                nom = JOURS_FR[dt_date(annee_prec, mois_prec, j).weekday()]
+                jours.append({"label": f"{nom} {j:02d}/{mois_prec:02d}", "plus": p, "moins": m})
     for j in range(1, JOUR_FIN_PERIODE + 1):
         p, m = lire(f"mois_plus_{j}"), lire(f"mois_moins_{j}")
         if p or m:

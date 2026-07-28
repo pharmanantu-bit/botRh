@@ -79,12 +79,19 @@ def build_email(employee, documents, mois_annee, intro=None):
     lien_espace = f"{BASE_URL}/mon-espace?token={token}&prenom={employee['prenom']}"
 
     bloc_intro = f"{intro}\n\n" if intro else ""
-    mois_actuel = datetime.now().month
-    mois_prec_nom = MOIS_FR[12 if mois_actuel == 1 else mois_actuel - 1]
+    maintenant = datetime.now()
+    mois_actuel = maintenant.month
+    # Transition août 2026 : les relevés de juillet couvraient déjà jusqu'au
+    # 31/07 (ancienne grille) → le relevé d'août va du 1er au 25 août ;
+    # régime normal 26 → 25 dès septembre.
+    if maintenant.strftime("%Y-%m") == "2026-08":
+        periode_debut = f"1er {MOIS_FR[mois_actuel]}"
+    else:
+        periode_debut = f"26 {MOIS_FR[12 if mois_actuel == 1 else mois_actuel - 1]}"
     body = f"""Bonjour {employee['prenom']},
 
 {bloc_intro}Merci de bien vouloir remplir votre feuille d'heures du mois de {mois_annee} en ligne, via le lien ci-dessous, au plus tard le 25 de ce mois.
-Le relevé couvre la période du 26 {mois_prec_nom} au 25 {MOIS_FR[mois_actuel]} inclus (les heures effectuées après le 25 comptent pour le mois suivant).
+Le relevé couvre la période du {periode_debut} au 25 {MOIS_FR[mois_actuel]} inclus (les heures effectuées après le 25 comptent pour le mois suivant).
 
 Remplir votre relevé en ligne :
 {lien}
