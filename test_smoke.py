@@ -133,6 +133,23 @@ else:
     echecs.append(f"extraire_detail_jours : attendu 2 jours (26 préc. + 25 courant), reçu {labels}")
     print(f"KO [--] extraire_detail_jours : {labels}")
 
+# periode_paie : la référence unique planning/relevé pour chaque mois.
+from datetime import date as _d
+cas_periodes = [
+    ((6, 2026), (_d(2026, 5, 24), _d(2026, 6, 30))),    # historique 24 -> fin
+    ((7, 2026), (_d(2026, 6, 24), _d(2026, 7, 31))),    # fin juin + tout juillet (voulu)
+    ((8, 2026), (_d(2026, 8, 1), _d(2026, 8, 25))),     # transition
+    ((9, 2026), (_d(2026, 8, 26), _d(2026, 9, 25))),    # régime de croisière
+    ((1, 2027), (_d(2026, 12, 26), _d(2027, 1, 25))),   # passage d'année
+]
+rates_p = [(m, a, A.periode_paie(m, a)) for (m, a), attendu in cas_periodes
+           if A.periode_paie(m, a) != attendu]
+if not rates_p:
+    print("OK [--] periode_paie : historique / transition août / croisière / passage d'année")
+else:
+    echecs.append(f"periode_paie : {rates_p}")
+    print(f"KO [--] periode_paie : {rates_p}")
+
 # Transition août 2026 : relevé du 1er au 25 (les jours de juillet, déjà
 # couverts par l'ancienne grille de juillet, ne sont plus proposés ni lus).
 d_aout = A.extraire_detail_jours({"prec_plus_28": "5", "mois_plus_10": "2"}, 8, 2026)

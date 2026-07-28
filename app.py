@@ -146,6 +146,26 @@ def sans_jours_prec(mois, annee):
     """True si la grille de ce mois ne doit pas proposer les jours du mois
     précédent (mois de transition : déjà couverts par l'ancien relevé)."""
     return f"{annee}-{mois:02d}" == MOIS_SANS_JOURS_PREC
+
+
+def periode_paie(mois, annee):
+    """Bornes (début, fin) INCLUSES de la période couverte par le relevé d'un
+    mois — la référence unique pour toute comparaison planning/relevé :
+    - depuis septembre 2026 : du 26 du mois précédent au 25 du mois courant ;
+    - août 2026 (transition) : du 1er au 25 août ;
+    - jusqu'à juillet 2026 (relevés historiques) : du 24 du mois précédent à
+      la fin du mois (ancienne grille)."""
+    from datetime import date as dt_date
+    import calendar
+    m_prec = 12 if mois == 1 else mois - 1
+    a_prec = annee - 1 if mois == 1 else annee
+    if (annee, mois) >= (2026, 9):
+        return (dt_date(a_prec, m_prec, JOUR_DEBUT_PERIODE),
+                dt_date(annee, mois, JOUR_FIN_PERIODE))
+    if sans_jours_prec(mois, annee):
+        return dt_date(annee, mois, 1), dt_date(annee, mois, JOUR_FIN_PERIODE)
+    return (dt_date(a_prec, m_prec, 24),
+            dt_date(annee, mois, calendar.monthrange(annee, mois)[1]))
 # employees.csv (versionné) = liste de départ ; employees_live.csv (gitignore)
 # = liste gérée par l'admin sur le serveur. On lit le live s'il existe, et c'est
 # lui qui fait foi (évite tout conflit de déploiement avec git).

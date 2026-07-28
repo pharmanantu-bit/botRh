@@ -1397,7 +1397,7 @@ def vue():
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "totaux":
-        from app import charger_reponses, reponse_de, MOIS_FR
+        from app import charger_reponses, reponse_de, MOIS_FR, periode_paie
         changements = charger_changements()
         absences = charger_absences()
         today = date.today()
@@ -1408,21 +1408,26 @@ def vue():
         except (ValueError, TypeError):
             an, mo = today.year, today.month
             mois_sel = today.strftime("%Y-%m")
-        nb_jours = calendar.monthrange(an, mo)[1]
+        # PÉRIODE DU RELEVÉ (et non le mois calendaire) : le planning et le
+        # relevé doivent couvrir les MÊMES jours pour que l'écart ait un sens.
+        # periode_paie (app.py) est la source unique : 24→fin de mois jusqu'à
+        # juillet 2026 (l'utilisateur a volontairement compté fin juin + tout
+        # juillet), 1er→25 en août 2026, 26→25 ensuite.
+        p1, p2 = periode_paie(mo, an)
         # Trame de référence pour la liste des membres = celle en vigueur au
-        # dernier jour du mois ; les heures se calculent jour par jour avec la
-        # trame en vigueur à chaque date (succession des trames conservée).
-        act = trame_active_pour(data, date(an, mo, nb_jours))
+        # dernier jour de la période ; les heures se calculent jour par jour
+        # avec la trame en vigueur à chaque date (succession conservée).
+        act = trame_active_pour(data, p2)
         reps = charger_reponses(mo, an) or {}
         lignes, tot = [], {"trame": 0.0, "ajuste": 0.0, "solde_plan": 0.0,
                            "plus": 0.0, "moins": 0.0, "solde": 0.0, "ecart": 0.0}
         nb_releves = 0
         # Membres du mois : semaine passée → tous (historique), sinon actifs ;
-        # + les remplaçants hors trame ayant des horaires ponctuels dans le mois.
-        membres_mois = membres_semaine(act, employes_tous, profils, _lundi(date(an, mo, nb_jours)))
+        # + les remplaçants hors trame ayant des horaires ponctuels dans la période.
+        membres_mois = membres_semaine(act, employes_tous, profils, _lundi(p2))
         vus_mois = set(membres_mois)
         for diso, parem in changements.items():
-            if diso[:7] != mois_sel:
+            if not (p1.isoformat() <= diso <= p2.isoformat()):
                 continue
             for em2, ch in (parem or {}).items():
                 if em2 not in vus_mois and em2 in emap and (ch.get("creneaux") or []):
@@ -1436,8 +1441,8 @@ def vue():
             # listés jour par jour, absences regroupées en plages consécutives.
             detail_plan = []
             abs_en_cours = None
-            for k in range(1, nb_jours + 1):
-                d = date(an, mo, k)
+            for k in range((p2 - p1).days + 1):
+                d = p1 + timedelta(days=k)
                 lbl = f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m')}"
                 cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
                 ht = total_jour(cr_tr)
@@ -1515,6 +1520,7 @@ def vue():
         ctx.update(tot_lignes=lignes, tot_totaux=tot, tot_nb_releves=nb_releves,
                    tot_mois_list=mois_list, tot_mois_sel=mois_sel,
                    tot_mois_label=f"{MOIS_FR[mo]} {an}",
+                   tot_periode=f"du {p1.strftime('%d/%m/%Y')} au {p2.strftime('%d/%m/%Y')}",
                    pas_active=act is None)
         return render_template("planning_equipe.html", **ctx)
 

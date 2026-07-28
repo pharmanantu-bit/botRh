@@ -958,7 +958,9 @@
       </h2>
     </div>
     <p class="meta" style="margin:0 0 14px;">
-      <strong>Planning</strong> = trame du mois ajustée des horaires ponctuels et absences ;
+      Calcul sur la <strong>période du relevé de {{ tot_mois_label }}</strong> : <strong>{{ tot_periode }}</strong> —
+      planning et relevé couvrent exactement les mêmes jours, l'écart est donc comparable.<br>
+      <strong>Planning</strong> = trame de la période ajustée des horaires ponctuels et absences ;
       <strong>Relevé</strong> = heures déclarées par le collaborateur (H+ − H− = solde) ;
       <strong>Écart</strong> = solde du relevé − solde du planning. Un écart nul signifie que le relevé
       colle aux modifications du planning ; sinon, à vérifier ensemble à la fin du mois.
@@ -979,7 +981,7 @@
       <table class="saisie" style="min-width:900px;">
         <tr>
           <th style="text-align:left;">Collaborateur</th>
-          <th title="Heures de la trame sur le mois">Trame (h)</th>
+          <th title="Heures de la trame sur la période du relevé">Trame (h)</th>
           <th title="Trame ajustée des horaires ponctuels et absences">Ajusté (h)</th>
           <th title="Ajusté − Trame">Solde planning</th>
           <th>Jours modifiés</th>
