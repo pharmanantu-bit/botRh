@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aperçu avant envoi au comptable — {{ mois_annee }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 980px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.3em; }
+    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
+    .avert { background: #FFF3D6; color: #9C6500; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 18px; }
+    .info { background: #e9f1f8; color: #1F4E79; padding: 10px 14px; border-radius: 8px; font-size: 0.85em; margin-bottom: 18px; }
+    h2 { font-size: 1.02em; color: #1c4e2e; border-bottom: 2px solid #1c4e2e; padding-bottom: 4px; margin: 26px 0 4px; }
+    h2 .contrat { font-weight: normal; font-size: 0.8em; color: #555; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0 4px; }
+    th, td { border: 1px solid #444; padding: 5px 8px; text-align: center; font-size: 0.86em; }
+    th { background: #1c4e2e; color: #fff; }
+    th.hplus { background: #2e6da4; }
+    th.suj { background: #b56a1e; }
+    td.sem { text-align: left; }
+    td.hplus { background: #e9f1f8; }
+    td.suj { background: #fdf1e3; }
+    tr.total td { background: #eaf3ec; font-weight: bold; }
+    input[type=number] { width: 76px; padding: 4px 6px; border: 1px solid #b8c2d0; border-radius: 6px; text-align: center; font-size: 1em; background: #fff; }
+    input[type=number]:focus { outline: 2px solid #2e6da4; }
+    .jours-suj { display: block; font-size: 0.78em; color: #777; margin-top: 2px; }
+    .statut-ko { background: #FFD6D6; color: #9C0006; padding: 8px 12px; border-radius: 8px; font-size: 0.85em; margin: 6px 0; }
+    .pied { margin-top: 26px; padding-top: 16px; border-top: 1px solid #dde3ed; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .dest { font-size: 0.88em; color: #555; }
+    .btn-envoyer { background: #27ae60; color: #fff; border: none; cursor: pointer; padding: 13px 26px; border-radius: 8px; font-size: 1em; font-weight: bold; }
+    .btn-envoyer:hover { background: #1f8b4c; }
+    .btn-annuler { color: #888; font-size: 0.9em; text-decoration: none; margin-right: 14px; }
+    @media (max-width: 820px) { table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <div class="entete">
+    <h1>📤 Aperçu avant envoi au comptable — {{ mois_annee }}</h1>
+    <a href="/admin/mois" class="btn-retour">← Retour aux relevés</a>
+  </div>
+
+  <div class="avert">⚠️ <strong>Rien n'a été envoyé.</strong> Vérifiez les chiffres ci-dessous — c'est
+    exactement ce que recevra l'expert-comptable. Vous pouvez corriger n'importe quelle case avant
+    d'envoyer ; un collaborateur modifié sera signalé « chiffres ajustés par la pharmacie » dans le mail.</div>
+  <div class="info">🕐 Heures en <strong>décimal</strong> : 2.25 = 2h15 · 2.5 = 2h30 · 2.75 = 2h45.
+    Case vide = valeur calculée conservée. Les totaux (mois, équipe) sont recalculés à l'envoi.
+    Les heures de sujétion = heures déclarées un dimanche ou jour férié (garde) ; le comptable
+    applique lui-même le barème (1,5 × point conventionnel × heures).</div>
+
+  <form method="POST" action="/admin/comptable/envoyer"
+        onsubmit="return confirm('Envoyer le dossier paie de {{ mois_annee }} à l\'expert-comptable ?\nDestinataires : {{ destinataires }} (copie à vous).\n\nLes chiffres affichés (avec vos corrections) seront envoyés tels quels.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% for it in resume if it.statut != 'manquant' %}
+    {% set email = it.email %}
+    {% set temps_plein = (it.contrat_hebdo or 0) >= 35 %}
+    <h2>{{ it.prenom }} {{ it.nom|upper }}
+      {% if it.contrat_hebdo %}<span class="contrat">— contrat {{ '%g'|format(it.contrat_hebdo) }}h/sem</span>{% endif %}
+      {% if it.saisi_par_admin %}<span class="contrat">· 🏥 saisi pharmacie</span>{% endif %}
+      {% if it.corrige %}<span class="contrat">· ✏️ corrigé</span>{% endif %}
+    </h2>
+
+    {% if it.statut == 'ok' and it.semaines %}
+    <table>
+      <tr>
+        <th style="width:28%">Semaine</th>
+        <th class="hplus">Total H+ de la semaine</th>
+        {% if temps_plein %}
+        <th>H. sup à 25 %</th>
+        <th>H. sup à 50 %</th>
+        {% else %}
+        <th>H. complémentaires (10/25 %)</th>
+        {% endif %}
+        <th class="suj">H. indemnité de sujétion (garde dim./férié)</th>
+      </tr>
+      {% for s in it.semaines %}
+      <tr>
+        <td class="sem">{{ s.libelle }}</td>
+        <td class="hplus"><input type="number" step="0.25" min="0" name="v_{{ email }}_{{ s.lundi }}_plus" value="{{ '%g'|format(s.plus) if s.plus else '' }}" placeholder="0"></td>
+        {% if temps_plein %}
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_{{ s.lundi }}_sup25" value="{{ '%g'|format(s.sup25) if s.sup25 else '' }}" placeholder="0"></td>
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_{{ s.lundi }}_sup50" value="{{ '%g'|format(s.sup50) if s.sup50 else '' }}" placeholder="0"></td>
+        {% else %}
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_{{ s.lundi }}_complementaires" value="{{ '%g'|format(s.complementaires) if s.complementaires else '' }}" placeholder="0"></td>
+        {% endif %}
+        <td class="suj"><input type="number" step="0.25" min="0" name="v_{{ email }}_{{ s.lundi }}_sujetion" value="{{ '%g'|format(s.sujetion) if s.sujetion else '' }}" placeholder="0">
+          {% if s.sujetion_jours %}<span class="jours-suj">{{ s.sujetion_jours|join(', ') }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td class="sem">Total du mois (recalculé à l'envoi)</td>
+        <td>{{ '%g'|format(it.plus) }}h</td>
+        {% if temps_plein %}
+        <td>{{ '%g'|format(it.sup25) }}h</td>
+        <td>{{ '%g'|format(it.sup50) }}h</td>
+        {% else %}
+        <td>{{ '%g'|format(it.complementaires) }}h</td>
+        {% endif %}
+        <td>{{ '%g'|format(it.sujetion) }}h</td>
+      </tr>
+    </table>
+    {% else %}
+    <div class="statut-ko">
+      {% if it.statut == 'sans_contrat' %}Heures contractuelles non renseignées sur la fiche salarié
+      {% else %}Pas de détail jour par jour dans le relevé{% endif %}
+      — total déclaré : +{{ '%g'|format(it.plus) }}h / -{{ '%g'|format(it.moins) }}h.
+      Ventilez vous-même ci-dessous (sinon le mail indiquera « ventilation à faire ») :
+    </div>
+    <table>
+      <tr>
+        <th class="hplus">Total H+ du mois</th>
+        <th>H. sup à 25 %</th>
+        <th>H. sup à 50 %</th>
+        <th>H. complémentaires</th>
+        <th class="suj">H. sujétion</th>
+      </tr>
+      <tr>
+        <td class="hplus"><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_plus" value="{{ '%g'|format(it.plus) if it.plus else '' }}" placeholder="0"></td>
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_sup25" placeholder="0"></td>
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_sup50" placeholder="0"></td>
+        <td><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_complementaires" placeholder="0"></td>
+        <td class="suj"><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_sujetion" placeholder="0"></td>
+      </tr>
+    </table>
+    {% endif %}
+    {% endfor %}
+
+    {% if manquants %}
+    <p style="margin-top:18px;font-size:0.88em;color:#9C6500">
+      Sans relevé ce mois ({{ manquants|length }}) : {{ manquants|join(', ') }} — signalés dans le mail.</p>
+    {% endif %}
+
+    <div class="pied">
+      <div class="dest">📧 Destinataires : <strong>{{ destinataires }}</strong> · copie à vous ·
+        récap Excel joint automatiquement</div>
+      <div>
+        <a href="/admin/mois" class="btn-annuler">Annuler</a>
+        <button type="submit" class="btn-envoyer">📤 Envoyer au comptable maintenant</button>
+      </div>
+    </div>
+  </form>
+</div>
+</body>
+</html>

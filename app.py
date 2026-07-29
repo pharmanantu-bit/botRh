@@ -184,6 +184,14 @@ def reponses_file(mois=None, annee=None):
         annee = datetime.now().year
     return os.path.join(BASE_DIR, f"reponses_{mois}_{annee}.json")
 
+
+def paie_envoi_file(mois, annee):
+    """Résumé paie validé (et éventuellement ajusté) par l'admin depuis
+    l'aperçu, figé au moment du clic « Envoyer au comptable » — c'est CETTE
+    version que le runner envoie (jamais un recalcul silencieux)."""
+    return os.path.join(BASE_DIR, f"paie_envoi_{mois}_{annee}.json")
+
+
 MOIS_FR = {
     1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
     5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
@@ -1418,15 +1426,9 @@ def admin_releve_corriger():
     return redirect(url_for("admin_mois"))
 
 
-@app.route("/admin/comptable/envoyer", methods=["POST"])
-def admin_envoyer_comptable():
-    """Envoi du dossier paie du mois à l'expert-comptable, en un clic une fois
-    tous les relevés reçus VALIDÉS : le serveur (sans SMTP) déclenche le
-    workflow GitHub `envoi_comptable`, qui récupère le récap Excel + les
-    relevés et envoie le mail (résumé par collaborateur + Excel joint) à
-    COMPTA_EMAILS, copie à l'admin."""
-    if not session.get("admin"):
-        return redirect(url_for("admin"))
+def _garde_envoi_comptable():
+    """Vérifications communes à l'aperçu et à l'envoi comptable. Renvoie
+    (redirection_ou_None, mois, annee, destinataires)."""
     mois, annee = datetime.now().month, datetime.now().year
     reponses = charger_reponses(mois, annee)
     profils = charger_profils()
@@ -1436,15 +1438,110 @@ def admin_envoyer_comptable():
     recus = [r for r in (reponse_de(reponses, e["prenom"], e["email"]) for e in employes)
              if r is not None]
     if not recus:
-        return redirect(url_for("admin_mois", msg="comptable_vide"))
+        return redirect(url_for("admin_mois", msg="comptable_vide")), mois, annee, ""
     non_valides = sum(1 for r in recus if not r.get("valide"))
     if non_valides:
-        return redirect(url_for("admin_mois", msg="comptable_non_valides", nb=non_valides))
+        return (redirect(url_for("admin_mois", msg="comptable_non_valides", nb=non_valides)),
+                mois, annee, "")
     destinataires = (os.getenv("COMPTA_EMAILS") or "").strip()
     if not destinataires:
-        return redirect(url_for("admin_mois", msg="comptable_sans_dest"))
+        return redirect(url_for("admin_mois", msg="comptable_sans_dest")), mois, annee, ""
+    return None, mois, annee, destinataires
+
+
+# Champs modifiables sur l'aperçu comptable (heures décimales).
+CHAMPS_PAIE_AJUSTABLES = ("plus", "sup25", "sup50", "complementaires", "sujetion")
+
+
+def _appliquer_ajustements_comptable(resume, form):
+    """Applique les corrections saisies par l'admin sur l'aperçu (champs
+    v_<email>_<lundi|tot>_<champ>). Champ vide ou illisible = valeur calculée
+    conservée. Un collaborateur modifié est marqué `ajuste` (signalé au
+    comptable) et ses totaux sont recalculés depuis ses semaines."""
+    def val(nom):
+        v = (form.get(nom) or "").strip().replace(",", ".")
+        if not v:
+            return None
+        try:
+            return max(0.0, round(float(v), 2))
+        except ValueError:
+            return None
+
+    for it in resume:
+        if it.get("statut") == "manquant":
+            continue
+        email = it.get("email") or ""
+        modifie = False
+        if it.get("semaines"):
+            for s in it["semaines"]:
+                for ch in CHAMPS_PAIE_AJUSTABLES:
+                    v = val(f"v_{email}_{s['lundi']}_{ch}")
+                    if v is not None and abs(v - (s.get(ch) or 0)) > 0.001:
+                        s[ch] = v
+                        modifie = True
+            if modifie:
+                for ch in CHAMPS_PAIE_AJUSTABLES:
+                    it[ch] = round(sum(s.get(ch) or 0 for s in it["semaines"]), 2)
+                it["solde"] = round(it["plus"] - (it.get("moins") or 0), 2)
+        else:
+            # Pas de détail par semaine (sans_detail / sans_contrat) : l'admin
+            # peut ventiler lui-même les totaux du mois.
+            for ch in CHAMPS_PAIE_AJUSTABLES:
+                v = val(f"v_{email}_tot_{ch}")
+                if v is not None and abs(v - (it.get(ch) or 0)) > 0.001:
+                    it[ch] = v
+                    modifie = True
+            if modifie and it.get("statut") != "ok":
+                it["statut"] = "ok"
+                it.setdefault("semaines", [])
+                for ch in CHAMPS_PAIE_AJUSTABLES:
+                    it.setdefault(ch, 0.0)
+        if modifie:
+            it["ajuste"] = True
+
+
+@app.route("/admin/comptable/apercu")
+def admin_comptable_apercu():
+    """Aperçu AVANT envoi du dossier paie : le mail que recevra le comptable,
+    collaborateur par collaborateur, avec chaque chiffre modifiable. RIEN ne
+    part d'ici — l'envoi n'a lieu qu'au clic sur le bouton de cette page."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    err, mois, annee, destinataires = _garde_envoi_comptable()
+    if err is not None:
+        return err
+    from datetime import date as dt_date
+    resume = construire_resume_paie(mois, annee)
+    for it in resume:
+        for s in it.get("semaines") or []:
+            lundi = dt_date.fromisoformat(s["lundi"])
+            dim = lundi + timedelta(days=6)
+            s["libelle"] = f"du lun {lundi.strftime('%d/%m')} au dim {dim.strftime('%d/%m')}"
+    return render_template(
+        "admin_comptable_apercu.html", resume=resume, mois=mois, annee=annee,
+        mois_annee=f"{MOIS_FR[mois]} {annee}", destinataires=destinataires,
+        manquants=[f"{it['prenom']} {it['nom'].upper()}" for it in resume
+                   if it.get("statut") == "manquant"])
+
+
+@app.route("/admin/comptable/envoyer", methods=["POST"])
+def admin_envoyer_comptable():
+    """Envoi du dossier paie à l'expert-comptable — UNIQUEMENT depuis le
+    bouton de l'aperçu (/admin/comptable/apercu), jamais automatique. Fige le
+    résumé validé/ajusté par l'admin (paie_envoi_file, servi tel quel par
+    /export_resume_paie) puis déclenche le workflow GitHub `envoi_comptable`
+    qui envoie le mail (tables par collaborateur + Excel joint) à
+    COMPTA_EMAILS, copie à l'admin."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    err, mois, annee, destinataires = _garde_envoi_comptable()
+    if err is not None:
+        return err
     if not os.getenv("GITHUB_TOKEN"):
         return redirect(url_for("admin_mois", msg="comptable_erreur"))
+    resume = construire_resume_paie(mois, annee)
+    _appliquer_ajustements_comptable(resume, request.form)
+    _ecrire_json(paie_envoi_file(mois, annee), resume)
     try:
         declencher_workflow("envoi_comptable", {
             "mois": mois, "annee": annee, "destinataires": destinataires})
@@ -1965,7 +2062,8 @@ def construire_resume_paie(mois, annee):
         r = reponse_de(reponses, e["prenom"], e["email"])
         prof = profils.get(e["email"], {})
         contrat = _heures_hebdo(prof.get("heures_contractuelles_hebdo", ""))
-        item = {"prenom": e["prenom"], "nom": e["nom"], "contrat_hebdo": contrat}
+        item = {"prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
+                "contrat_hebdo": contrat}
         if r is None:
             item["statut"] = "manquant"
             resume.append(item)
@@ -1992,14 +2090,18 @@ def construire_resume_paie(mois, annee):
 
 @app.route("/export_resume_paie")
 def export_resume_paie():
-    """Résumé paie JSON du mois (majorations 25/50 par collaborateur), pour le
-    runner GitHub qui construit le mail à l'expert-comptable. Clé requise."""
+    """Résumé paie JSON du mois (majorations 25/50 + sujétion par semaine),
+    pour le runner GitHub qui construit le mail à l'expert-comptable. Sert en
+    priorité la version FIGÉE à l'envoi (aperçu validé/ajusté par l'admin,
+    paie_envoi_file) : ce que l'admin a vu est ce qui part. Clé requise."""
     cle = request.args.get("cle", "")
     if cle != API_CLE:
         abort(403)
     mois = int(request.args.get("mois", datetime.now().month))
     annee = int(request.args.get("annee", datetime.now().year))
-    return json.dumps(construire_resume_paie(mois, annee), ensure_ascii=False), \
+    fige = _lire_json(paie_envoi_file(mois, annee), [])
+    donnees = fige if fige else construire_resume_paie(mois, annee)
+    return json.dumps(donnees, ensure_ascii=False), \
         200, {"Content-Type": "application/json; charset=utf-8"}
 
 

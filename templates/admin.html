@@ -98,11 +98,8 @@
       <a href="/admin/export?mois={{ mois }}&annee={{ annee }}" class="btn-export">Télécharger Excel</a>
       <button onclick="window.print()" class="btn-export" style="background:#555; border:none; cursor:pointer;">Imprimer</button>
       {% if est_courant %}
-      <form method="POST" action="/admin/comptable/envoyer" style="display:inline"
-            onsubmit="return confirm('Envoyer le dossier paie de {{ mois_annee }} à l\'expert-comptable ?\n(récap Excel + résumé par collaborateur, copie à vous)');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-export" style="background:#27ae60; border:none; cursor:pointer;">📤 Envoyer au comptable</button>
-      </form>
+      <a href="/admin/comptable/apercu" class="btn-export" style="background:#27ae60;"
+         title="Ouvre d'abord un aperçu modifiable — rien ne part sans votre confirmation">📤 Envoyer au comptable…</a>
       {% endif %}
     </div>
   </div>

@@ -104,6 +104,8 @@ def construire_mail_comptable(resume, mois_annee):
             extras.append("saisi par la pharmacie")
         if it.get("corrige"):
             extras.append("corrigé par la pharmacie")
+        if it.get("ajuste"):
+            extras.append("chiffres ajustés par la pharmacie")
         if it.get("commentaire"):
             extras.append(f"commentaire : {it['commentaire']}")
         note_extras = f" [{' ; '.join(extras)}]" if extras else ""

@@ -505,6 +505,36 @@ print(("OK " if ok_pv else "KO ") + "[--] paie : semaines + sujétion + mail com
 if not ok_pv:
     echecs.append("paie semaines/sujétion/mail comptable KO")
 
+# --- Aperçu comptable : la page répond (200) ou renvoie vers /admin/mois avec
+#     un motif (302 — relevés non validés/vides selon les données du poste) ;
+#     ajustements : champ modifié appliqué + totaux recalculés + flag ajuste,
+#     champ vide/illisible ignoré, statut sans_contrat ventilé à la main ---
+_ca = client.get("/admin/comptable/apercu")
+ok_ap = _ca.status_code in (200, 302)
+_it1 = {"prenom": "Test", "nom": "Un", "email": "t1@ex.fr", "contrat_hebdo": 35.0,
+        "statut": "ok", "plus": 20.0, "moins": 0.0, "solde": 20.0,
+        **A.calculer_majorations([{"label": "Mar 07/07", "plus": 10, "moins": 0},
+                                  {"label": "Dim 12/07", "plus": 10, "moins": 0}], 35.0, 7, 2026)}
+_it2 = {"prenom": "Test", "nom": "Trois", "email": "t3@ex.fr", "contrat_hebdo": 0,
+        "statut": "sans_contrat", "plus": 4.0, "moins": 0.0, "solde": 4.0}
+_resume2 = [_it1, _it2]
+A._appliquer_ajustements_comptable(_resume2, {
+    "v_t1@ex.fr_2026-07-06_sujetion": "8",      # correction d'une garde surévaluée
+    "v_t1@ex.fr_2026-07-06_plus": "",            # vide -> conservé
+    "v_t1@ex.fr_2026-07-06_sup50": "abc",        # illisible -> conservé
+    "v_t3@ex.fr_tot_sup25": "4",                 # ventilation manuelle
+})
+ok_aj = (_it1["ajuste"] and _it1["semaines"][0]["sujetion"] == 8.0
+         and _it1["sujetion"] == 8.0 and _it1["plus"] == 20.0
+         and _it1["semaines"][0]["sup50"] == 12.0
+         and _it2["ajuste"] and _it2["statut"] == "ok" and _it2["sup25"] == 4.0)
+_sj2, _txt2, _html2 = CS.construire_mail_comptable(_resume2, "Juillet 2026")
+ok_aj = ok_aj and "chiffres ajustés par la pharmacie" in _html2
+print(("OK " if ok_ap and ok_aj else "KO ")
+      + f"[{_ca.status_code}] aperçu comptable + ajustements (flag ajuste dans le mail)")
+if not (ok_ap and ok_aj):
+    echecs.append("aperçu/ajustements comptable KO")
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

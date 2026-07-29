@@ -12,6 +12,7 @@ processed_emails.json
 contacts*.csv
 employees_live.csv
 reponses_*.json
+paie_envoi_*.json
 profils_rh.json
 assistant_resumes.json
 documents_rh/
