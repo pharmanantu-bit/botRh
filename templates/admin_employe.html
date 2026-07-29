@@ -221,6 +221,24 @@
   </div>
   {% endif %}
 
+  {% if profil.controle_promesse %}
+  {% set cp = profil.controle_promesse %}
+  <div class="suggestions-bloc" style="border-left:4px solid {{ '#27ae60' if cp.conforme else '#e67e22' }}">
+    <div class="suggestions-titre">{{ '✅' if cp.conforme else '⚠️' }} Contrôle contrat ↔ promesse d'embauche
+      <span style="font-weight:normal;color:#888;font-size:0.85em">({{ cp.date }})</span></div>
+    {% for pt in cp.points %}
+    <div class="suggestion">
+      <span class="suggestion-txt">{{ '✅' if pt.ok else '⚠️' }} <strong>{{ pt.champ }}</strong> —
+        contrat : {{ pt.contrat }} · promesse : {{ pt.promesse }}</span>
+    </div>
+    {% endfor %}
+    {% if not cp.conforme %}
+    <div style="font-size:0.8em;color:#9C6500;margin-top:4px">Écart(s) détecté(s) : vérifiez avec
+      l'expert-comptable avant signature. Contrôle purement informatif (rien n'est modifié).</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if iban %}
   <div class="iban-line">💳 RIB enregistré — IBAN : {{ iban }}</div>
   {% endif %}

@@ -581,6 +581,37 @@ print(("OK " if ok_cg else "KO ") + "[--] congés payés période de paie (calcu
 if not ok_cg:
     echecs.append("congés payés période de paie KO")
 
+# --- Contrôle contrat <-> promesse d'embauche (profils isolés) : 4 champs
+#     conformes, salaire différent -> verdict non conforme ---
+_tp2 = tempfile.mkdtemp()
+_pf0 = A.PROFILS_FILE
+A.PROFILS_FILE = os.path.join(_tp2, "profils.json")
+try:
+    with open(A.PROFILS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"x@ex.fr": {"promesse": {
+            "poste": "Conseillère", "type_contrat": "CDD",
+            "heures_mensuelles": "151,67", "salaire_brut": "2 000,00",
+            "date_debut": "01/09/2026"}}}, f)
+    A._controle_promesse("x@ex.fr", "Contrat de travail", [
+        {"cible": "profil:poste", "valeur": "Conseillère"},
+        {"cible": "profil:type_contrat", "valeur": "CDD"},
+        {"cible": "profil:heures_contractuelles_hebdo", "valeur": "35"},
+        {"cible": "profil:date_entree", "valeur": "01/09/2026"},
+    ], "rémunération mensuelle brute de 2100 euros pour 151,67 heures par mois")
+    _cpv = A.charger_profils()["x@ex.fr"]["controle_promesse"]
+finally:
+    A.PROFILS_FILE = _pf0
+    for _p in [k for k in A._JSON_CACHE if _tp2.replace("\\", "/") in k.replace("\\", "/")]:
+        A._JSON_CACHE.pop(_p, None)
+    _shutil.rmtree(_tp2, ignore_errors=True)
+_sal = next((p for p in _cpv["points"] if p["champ"] == "Salaire mensuel brut"), {})
+ok_cp2 = (len(_cpv["points"]) == 5 and _cpv["conforme"] is False
+          and _sal.get("ok") is False
+          and all(p["ok"] for p in _cpv["points"] if p["champ"] != "Salaire mensuel brut"))
+print(("OK " if ok_cp2 else "KO ") + "[--] contrôle contrat ↔ promesse (écart salaire signalé)")
+if not ok_cp2:
+    echecs.append(f"contrôle promesse KO ({_cpv})")
+
 # --- Correction JOUR PAR JOUR d'un relevé (cas garde du dimanche déclarée
 #     12 h au lieu de 10) — UNIQUEMENT sur la donnée de test créée par ce
 #     script, jamais sur de vraies réponses ---

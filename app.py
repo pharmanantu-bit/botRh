@@ -251,6 +251,71 @@ def _propositions_affichage(props):
     return out
 
 
+def _nombre_fr(s):
+    """« 4 611,07 € » / « 151,67 » -> float ; None si illisible."""
+    import re as _re
+    s = _re.sub(r"[^\d,.\-]", "", str(s or "")).replace(",", ".")
+    try:
+        return float(s) if s else None
+    except ValueError:
+        return None
+
+
+def _controle_promesse(email, type_doc, extraction, texte=""):
+    """Compare un contrat reçu à la PROMESSE D'EMBAUCHE enregistrée sur la
+    fiche (si elle existe) : poste, type de contrat, durée du travail, date de
+    début, salaire (dépôt manuel seulement — la voie mail ne transmet pas le
+    texte). Verdict stocké dans profil['controle_promesse'] et affiché sur la
+    fiche — purement informatif, aucune écriture dans les champs du profil."""
+    if type_doc not in ("Contrat de travail", "Avenant"):
+        return
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    promesse = prof.get("promesse") or {}
+    if not promesse:
+        return
+    ex = {e.get("cible"): e.get("valeur") for e in extraction or []}
+    points = []
+
+    def point(champ, v_contrat, v_promesse, ok):
+        points.append({"champ": champ, "contrat": str(v_contrat),
+                       "promesse": str(v_promesse), "ok": bool(ok)})
+
+    c_poste = (ex.get("profil:poste") or "").strip()
+    p_poste = (promesse.get("poste") or "").strip()
+    if c_poste and p_poste:
+        point("Poste", c_poste, p_poste, c_poste.lower() == p_poste.lower())
+    c_tc = (ex.get("profil:type_contrat") or "").strip().upper()
+    p_tc = (promesse.get("type_contrat") or "").strip().upper()
+    if c_tc and p_tc:
+        point("Type de contrat", c_tc, p_tc, c_tc == p_tc)
+    c_h = _nombre_fr(ex.get("profil:heures_contractuelles_hebdo"))
+    p_hm = _nombre_fr(promesse.get("heures_mensuelles"))
+    if c_h and p_hm:
+        p_hebdo = round(p_hm * 12 / 52, 2)
+        point("Durée du travail", f"{c_h:g} h/sem",
+              f"{p_hm:g} h/mois (= {p_hebdo:g} h/sem)", abs(p_hebdo - c_h) <= 0.1)
+    c_deb = parse_date_fr(ex.get("profil:date_entree") or "")
+    p_deb = parse_date_fr(promesse.get("date_debut") or "")
+    if c_deb and p_deb:
+        point("Date de début", f"{c_deb:%d/%m/%Y}", f"{p_deb:%d/%m/%Y}", c_deb == p_deb)
+    if texte:
+        c_sal = extraction_pj.extraire_salaire_mensuel(texte)
+        p_sal = _nombre_fr(promesse.get("salaire_brut"))
+        if c_sal and p_sal:
+            point("Salaire mensuel brut", f"{c_sal:g} €", f"{p_sal:g} €",
+                  abs(c_sal - p_sal) < 0.01)
+    if not points:
+        return
+    prof["controle_promesse"] = {
+        "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "points": points,
+        "conforme": all(p["ok"] for p in points),
+    }
+    profils[email] = prof
+    sauvegarder_profils(profils)
+
+
 # --- Cache mémoire des fichiers JSON (invalidé par date de modification) ---
 # Le dashboard relit jusqu'à 12 mois de réponses à chaque affichage ; sur
 # PythonAnywhere gratuit (mono-thread) ces lectures disque répétées sont lentes.
@@ -1745,9 +1810,12 @@ def admin_employe_document():
     sauvegarder_docs_index(idx)
     # Pré-remplissage du dossier : les champs extraits (contrat -> type/poste/
     # heures/dates, RIB -> IBAN) deviennent des PROPOSITIONS à valider sur la
-    # fiche — jamais d'écriture automatique dans le profil.
+    # fiche — jamais d'écriture automatique dans le profil. Un contrat est en
+    # plus comparé à la promesse d'embauche enregistrée (verdict sur la fiche).
     try:
-        _ajouter_propositions(email, extraction_pj.extraire_champs(type_final, texte), doc_id)
+        extraction = extraction_pj.extraire_champs(type_final, texte)
+        _ajouter_propositions(email, extraction, doc_id)
+        _controle_promesse(email, type_final, extraction, texte)
     except Exception:
         app.logger.exception("Extraction de champs au dépôt de document")
     return redirect(url_for("admin_employe", email=email))
@@ -2518,8 +2586,13 @@ def document_push():
         "sha": sha,
     })
     sauvegarder_docs_index(idx)
-    # Champs extraits par le runner (OCR) -> propositions « à confirmer » (IBAN chiffré).
+    # Champs extraits par le runner (OCR) -> propositions « à confirmer » (IBAN chiffré)
+    # + contrôle contrat/promesse (sans salaire : le texte n'est pas transmis).
     _ajouter_propositions(email, data.get("extraction"), doc_id)
+    try:
+        _controle_promesse(email, data.get("type", ""), data.get("extraction"))
+    except Exception:
+        app.logger.exception("Contrôle promesse (document_push)")
     return app.response_class(json.dumps({"status": "ajoute", "id": doc_id}),
                               mimetype="application/json")
 

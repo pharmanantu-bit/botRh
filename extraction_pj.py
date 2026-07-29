@@ -145,6 +145,24 @@ _EMPLOI_RE = re.compile(
 _ADRESSE_RE = re.compile(r"demeurant\s+(.{10,90}?)\s*(?:\n|$)", re.I)
 
 
+_SALAIRE_RE = re.compile(
+    r"r[ée]mun[ée]ration\s+mensuelle\s+brute\s+de\s*([\d\s]+(?:[.,]\d{1,2})?)\s*(?:euros|€)",
+    re.I)
+
+
+def extraire_salaire_mensuel(texte):
+    """Salaire mensuel brut (float) mentionné dans un contrat, ou None. Utilisé
+    UNIQUEMENT pour le contrôle contrat/promesse d'embauche — jamais proposé ni
+    stocké dans les champs du profil (minimisation)."""
+    mo = _SALAIRE_RE.search(texte or "")
+    if not mo:
+        return None
+    try:
+        return float(mo.group(1).replace(" ", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
 def _prop(champ, valeur, apercu, libelle):
     return {"cible": f"profil:{champ}", "valeur": valeur, "apercu": apercu,
             "libelle": libelle, "chiffre": False}
