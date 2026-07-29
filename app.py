@@ -849,8 +849,8 @@ EXT_DOCS_OK = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".doc"}
 # et au classement des documents par famille dans la fiche.
 FAMILLES_DOCS = {
     "Contractuel & paie": [
-        "Contrat de travail", "Avenant", "Bulletin de paie",
-        "Solde de tout compte", "RIB / coordonnées bancaires",
+        "Promesse d'embauche", "Contrat de travail", "Avenant",
+        "Bulletin de paie", "Solde de tout compte", "RIB / coordonnées bancaires",
     ],
     "Identité & administratif": [
         "Fiche signalétique", "Pièce d'identité", "Titre de séjour",
@@ -1665,6 +1665,7 @@ _CLASSIF_DOC = [
     (("attestation de formation", "formation", "dpc"), "Attestation de formation"),
     (("entretien annuel", "entretien professionnel"), "Entretien annuel / professionnel"),
     (("avertissement", "mise en demeure", "sanction disciplinaire"), "Avertissement"),
+    (("promesse d'embauche", "promesse d embauche", "promesse unilatérale", "promesse unilaterale"), "Promesse d'embauche"),
     (("contrat de travail", "contrat à durée", "contrat a duree", "cdi", "cdd"), "Contrat de travail"),
     (("courrier", "lettre"), "Courrier"),
 ]
