@@ -1649,6 +1649,10 @@ _CLASSIF_DOC = [
     (("avenant",), "Avenant"),
     (("bulletin", "fiche de paie", "fiche de paye", "bulletin de salaire"), "Bulletin de paie"),
     (("solde de tout compte", "reçu pour solde", "recu pour solde"), "Solde de tout compte"),
+    # Promesse et contrat AVANT les règles générales : un contrat cite souvent
+    # « sécurité sociale », « domicile »… qui matcheraient d'autres types.
+    (("promesse d'embauche", "promesse d embauche", "promesse unilatérale", "promesse unilaterale"), "Promesse d'embauche"),
+    (("contrat de travail", "contrat à durée", "contrat a duree", "cdi", "cdd"), "Contrat de travail"),
     (("rib", "iban", "coordonnées bancaires", "coordonnees bancaires", "relevé d'identité bancaire"), "RIB / coordonnées bancaires"),
     (("titre de séjour", "titre de sejour"), "Titre de séjour"),
     (("carte vitale", "vitale"), "Carte vitale"),
@@ -1665,18 +1669,23 @@ _CLASSIF_DOC = [
     (("attestation de formation", "formation", "dpc"), "Attestation de formation"),
     (("entretien annuel", "entretien professionnel"), "Entretien annuel / professionnel"),
     (("avertissement", "mise en demeure", "sanction disciplinaire"), "Avertissement"),
-    (("promesse d'embauche", "promesse d embauche", "promesse unilatérale", "promesse unilaterale"), "Promesse d'embauche"),
-    (("contrat de travail", "contrat à durée", "contrat a duree", "cdi", "cdd"), "Contrat de travail"),
     (("courrier", "lettre"), "Courrier"),
 ]
 
 def deviner_type_doc(filename, texte=""):
     """Devine le type (parmi les sous-types FAMILLES_DOCS) depuis le nom de fichier
-    et, si disponible, le texte extrait. 'Autre / divers' par défaut."""
+    et, si disponible, le texte extrait. 'Autre / divers' par défaut. Les mots-clés
+    courts (rib, cdi, cni…) exigent une frontière de mot — sinon « contribuera »
+    matcherait « rib »."""
+    import re as _re
     base = ((filename or "") + " " + (texte or "")).lower()
     for mots, typ in _CLASSIF_DOC:
-        if any(m in base for m in mots):
-            return typ
+        for m in mots:
+            if len(m) <= 4:
+                if _re.search(r"(?<![a-zà-ÿ0-9])" + _re.escape(m) + r"(?![a-zà-ÿ0-9])", base):
+                    return typ
+            elif m in base:
+                return typ
     return "Autre / divers"
 
 def _detecter_type_fichier(chemin, nom_original):
@@ -1711,9 +1720,17 @@ def admin_employe_document():
     stored = f"{doc_id}_{secure_filename(f.filename)}"
     chemin = os.path.join(DOCS_DIR, stored)
     f.save(chemin)
+    # Texte lu une seule fois : sert à la détection du type ET à l'extraction
+    # de champs (best-effort — PDF texte OK partout ; scanné = OCR runner only).
+    texte = ""
+    try:
+        with open(chemin, "rb") as fp:
+            texte = extraction_pj.extraire_texte(f.filename, fp.read())
+    except Exception:
+        texte = ""
     # Type choisi par l'admin, ou détecté automatiquement (option « 🪄 Détection »).
     type_choisi = request.form.get("type", "")
-    type_final = _detecter_type_fichier(chemin, f.filename) if type_choisi in ("", "__auto__") else type_choisi
+    type_final = deviner_type_doc(f.filename, texte) if type_choisi in ("", "__auto__") else type_choisi
     idx = charger_docs_index()
     idx.setdefault(email, []).append({
         "id": doc_id,
@@ -1726,6 +1743,13 @@ def admin_employe_document():
         "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
     })
     sauvegarder_docs_index(idx)
+    # Pré-remplissage du dossier : les champs extraits (contrat -> type/poste/
+    # heures/dates, RIB -> IBAN) deviennent des PROPOSITIONS à valider sur la
+    # fiche — jamais d'écriture automatique dans le profil.
+    try:
+        _ajouter_propositions(email, extraction_pj.extraire_champs(type_final, texte), doc_id)
+    except Exception:
+        app.logger.exception("Extraction de champs au dépôt de document")
     return redirect(url_for("admin_employe", email=email))
 
 

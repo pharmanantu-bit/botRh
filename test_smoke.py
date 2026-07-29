@@ -249,18 +249,26 @@ print(("OK " if ok_crypto else "KO ") + "[--] crypto_rh round-trip")
 if not ok_crypto:
     echecs.append("crypto_rh : round-trip KO")
 
-# Extraction : RIB -> IBAN, contrat -> dates, ARRÊT -> rien (aucune donnée de santé).
+# Extraction : RIB -> IBAN, contrat -> type/emploi/durée/dates, ARRÊT -> rien.
 champs_rib = extraction_pj.extraire_champs("RIB / coordonnées bancaires",
                                            "IBAN FR76 3000 4000 0500 0012 3456 789 BIC X")
-champs_contrat = extraction_pj.extraire_champs("Contrat de travail",
-                                               "prend effet le 01/09/2026 jusqu'au 31/12/2026")
+champs_contrat = extraction_pj.extraire_champs(
+    "Contrat de travail",
+    "CONTRAT DE TRAVAIL A DUREE DETERMINEE\n"
+    "Le contrat prend effet le 01/09/2026 jusqu'au 31/12/2026.\n"
+    "Mme X exercera un emploi de Conseillère statut Non cadre.\n"
+    "rémunération mensuelle brute de 2000 euros pour 151,67 heures par mois.")
 champs_arret = extraction_pj.extraire_champs("Arrêt de travail", "repos jusqu'au 20/06/2026 maladie")
+_cc = {c["cible"]: c["valeur"] for c in champs_contrat}
 ok_ext = (any(c["cible"] == "iban" for c in champs_rib)
-          and any(c["cible"] == "profil:date_fin" for c in champs_contrat)
+          and _cc.get("profil:date_fin") == "31/12/2026"
+          and _cc.get("profil:type_contrat") == "CDD"
+          and _cc.get("profil:poste") == "Conseillère"
+          and _cc.get("profil:heures_contractuelles_hebdo") == "35"
           and champs_arret == [])
-print(("OK " if ok_ext else "KO ") + "[--] extraction (RIB+contrat extraits, arrêt ignoré)")
+print(("OK " if ok_ext else "KO ") + "[--] extraction (RIB + contrat type/emploi/35h/dates, arrêt ignoré)")
 if not ok_ext:
-    echecs.append("extraction_pj : champs inattendus")
+    echecs.append(f"extraction_pj : champs inattendus ({_cc})")
 
 # Propositions : ajout + appliquer, sur un fichier profils TEMPORAIRE (vraies données intactes).
 if employes:

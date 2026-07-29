@@ -6,8 +6,11 @@ PROPOSER (jamais écrire d'office) un pré-remplissage du profil salarié.
 MINIMISATION / RGPD : AUCUNE donnée de santé n'est extraite — le contenu des
 ARRÊTS DE TRAVAIL n'est PAS lu (ils restent de simples documents classés).
 Cible volontairement limitée à :
-  - RIB                 -> IBAN (masqué : 4 derniers chiffres)
-  - Contrat / Avenant   -> dates (fin de CDD, fin de période d'essai, entrée)
+  - RIB                             -> IBAN (masqué : 4 derniers chiffres)
+  - Contrat / Avenant / Promesse    -> type (CDI/CDD), emploi, durée du travail
+    (hebdo, ou mensuelle 151,67 h -> 35 h/sem), dates (entrée/ancienneté, fin
+    de CDD, fin d'essai), date de naissance, adresse — champs du profil salarié
+    uniquement (le n° de sécurité sociale et le salaire ne sont PAS extraits)
 
 OCR 100 % LOCAL (Tesseract) : aucun document n'est envoyé à une IA tierce.
 Module PUR : pas de réseau, pas de chiffrement (le serveur chiffrera l'IBAN au
@@ -133,9 +136,23 @@ def extraire_contact(texte):
     }
 
 
+# Contrats (modèles de l'expert-comptable) : durée du travail, emploi, adresse.
+_HEBDO_RE = re.compile(
+    r"dur[ée]e\s+hebdomadaire.{0,90}?(\d{1,2}(?:[.,]\d{1,2})?)\s*heures", re.I | re.S)
+_MENSUEL_RE = re.compile(r"(\d{2,3}(?:[.,]\d{1,2})?)\s*heures\s+par\s+mois", re.I)
+_EMPLOI_RE = re.compile(
+    r"un\s+emploi\s+d[e'’]\s*([A-Za-zÀ-ÿ'’\- ]{3,60}?)\s*(?:statut|[.,\n])", re.I)
+_ADRESSE_RE = re.compile(r"demeurant\s+(.{10,90}?)\s*(?:\n|$)", re.I)
+
+
+def _prop(champ, valeur, apercu, libelle):
+    return {"cible": f"profil:{champ}", "valeur": valeur, "apercu": apercu,
+            "libelle": libelle, "chiffre": False}
+
+
 def extraire_champs(type_doc, texte):
     """Renvoie une liste de propositions {cible, valeur, apercu, libelle, chiffre}.
-    cible : 'iban' (sensible -> chiffré côté serveur) ou 'profil:<champ>' (date en clair).
+    cible : 'iban' (sensible -> chiffré côté serveur) ou 'profil:<champ>' (en clair).
     Les arrêts de travail et autres types -> [] (aucune donnée de santé)."""
     texte = texte or ""
     t = (type_doc or "").strip()
@@ -148,26 +165,62 @@ def extraire_champs(type_doc, texte):
                           "apercu": "IBAN détecté sur le RIB", "libelle": "IBAN (RIB)",
                           "chiffre": True})
 
-    elif t in ("Contrat de travail", "Avenant"):
-        fin = _date_apres(texte, ["jusqu'au", "jusqu au", "terme du contrat",
-                                  "au terme", "date de fin", "échéance"])
-        if fin:
-            props.append({"cible": "profil:date_fin", "valeur": fin,
-                          "apercu": f"Fin de contrat (CDD) : {fin}",
-                          "libelle": "Fin de contrat", "chiffre": False})
+    elif t in ("Contrat de travail", "Avenant", "Promesse d'embauche"):
+        bas = texte.lower()
+        # Type : un contrat de conversion CDD -> CDI mentionne les deux, mais
+        # seul un CDI parle de « durée indéterminée » -> priorité au CDI.
+        cdi = "indéterminée" in bas or "indeterminee" in bas
+        cdd = not cdi and ("déterminée" in bas or "determinee" in bas)
+        if cdi or cdd:
+            tc = "CDI" if cdi else "CDD"
+            props.append(_prop("type_contrat", tc, f"Type de contrat : {tc}",
+                               "Type de contrat"))
+        emploi = _EMPLOI_RE.search(texte)
+        if emploi:
+            poste = emploi.group(1).strip(" '’-\t")
+            props.append(_prop("poste", poste, f"Emploi : {poste}", "Poste / fonction"))
+        heures = None
+        mh = _HEBDO_RE.search(texte)
+        if mh:
+            heures = float(mh.group(1).replace(",", "."))
+        else:
+            mm = _MENSUEL_RE.search(texte)
+            if mm:                                   # 151,67 h/mois -> 35 h/sem
+                heures = float(mm.group(1).replace(",", ".")) * 12 / 52
+        if heures and 2 <= heures <= 48:
+            val = f"{round(heures, 2):g}".replace(".", ",")
+            props.append(_prop("heures_contractuelles_hebdo", val,
+                               f"Durée du travail : {val} h/semaine",
+                               "Heures contractuelles / semaine"))
+        if cdd:                                      # jamais de date_fin sur un CDI
+            fin = _date_apres(texte, ["jusqu'au", "jusqu au", "terme du contrat",
+                                      "au terme", "date de fin", "échéance",
+                                      "prend fin le"])
+            if fin:
+                props.append(_prop("date_fin", fin, f"Fin de contrat (CDD) : {fin}",
+                                   "Fin de contrat"))
         essai = _date_apres(texte, ["période d'essai", "periode d'essai",
                                     "fin de la période d'essai", "fin d'essai"])
         if essai:
-            props.append({"cible": "profil:fin_essai", "valeur": essai,
-                          "apercu": f"Fin de période d'essai : {essai}",
-                          "libelle": "Fin de période d'essai", "chiffre": False})
+            props.append(_prop("fin_essai", essai, f"Fin de période d'essai : {essai}",
+                               "Fin de période d'essai"))
         entree = _date_apres(texte, ["à compter du", "a compter du", "embauché le",
                                      "embauche le", "date d'embauche", "prend effet le",
-                                     "débute le"])
+                                     "débute le", "ancienneté acquise",
+                                     "anciennete acquise", "début du contrat",
+                                     "debut du contrat"])
         if entree:
-            props.append({"cible": "profil:date_entree", "valeur": entree,
-                          "apercu": f"Date d'entrée : {entree}",
-                          "libelle": "Date d'entrée", "chiffre": False})
+            props.append(_prop("date_entree", entree, f"Date d'entrée : {entree}",
+                               "Date d'entrée"))
+        naissance = _date_apres(texte, ["née le", "né le", "né(e) le",
+                                        "date de naissance"])
+        if naissance:
+            props.append(_prop("naissance", naissance,
+                               f"Date de naissance : {naissance}", "Date de naissance"))
+        adresse = _ADRESSE_RE.search(texte)
+        if adresse:
+            adr = re.sub(r"\s+", " ", adresse.group(1)).strip(" .,")
+            props.append(_prop("adresse", adr, f"Adresse : {adr}", "Adresse"))
 
     # Arrêt de travail / Carte vitale / autres : aucune extraction (minimisation).
     return props
