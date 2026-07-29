@@ -28,6 +28,7 @@
     input[type=number]:focus { outline: 2px solid #2e6da4; }
     .jours-suj { display: block; font-size: 0.78em; color: #777; margin-top: 2px; }
     .statut-ko { background: #FFD6D6; color: #9C0006; padding: 8px 12px; border-radius: 8px; font-size: 0.85em; margin: 6px 0; }
+    .conges { font-size: 0.85em; color: #1a7a6e; margin: 2px 0 0; }
     .pied { margin-top: 26px; padding-top: 16px; border-top: 1px solid #dde3ed; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .dest { font-size: 0.88em; color: #555; }
     .btn-envoyer { background: #27ae60; color: #fff; border: none; cursor: pointer; padding: 13px 26px; border-radius: 8px; font-size: 1em; font-weight: bold; }
@@ -128,6 +129,12 @@
         <td class="suj"><input type="number" step="0.25" min="0" name="v_{{ email }}_tot_sujetion" placeholder="0"></td>
       </tr>
     </table>
+    {% endif %}
+    {% if it.conges %}
+    <p class="conges">🏖 Congés payés pris sur la période :
+      {% for p in it.conges.plages %}{% if p.debut != p.fin %}du {{ p.debut }} au {{ p.fin }}{% else %}le {{ p.debut }}{% endif %} ({{ p.jours }} j){{ ' · ' if not loop.last }}{% endfor %}
+      {% if it.conges.plages|length > 1 %}— total {{ it.conges.total }} j ouvrables{% endif %}
+      <span style="color:#999">(jours ouvrables lun-sam hors fériés — à corriger via Planning → Absences si erreur)</span></p>
     {% endif %}
     {% endfor %}
 

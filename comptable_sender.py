@@ -65,6 +65,18 @@ def _semaine_lbl(lundi_iso):
     return f"du lun {lundi.strftime('%d/%m')} au dim {dim.strftime('%d/%m')}"
 
 
+def _conges_txt(cg):
+    """{"plages": [{debut, fin, jours}], "total": n} -> « du 13/07 au 25/07
+    (11 j) · le 28/07 (1 j) — total 12 j ouvrables »."""
+    plages = [(f"du {p['debut']} au {p['fin']} ({p['jours']} j)"
+               if p["debut"] != p["fin"] else f"le {p['debut']} (1 j)")
+              for p in cg.get("plages") or []]
+    txt = " · ".join(plages)
+    if len(plages) > 1:
+        txt += f" — total {cg['total']} j ouvrables"
+    return txt
+
+
 def _table(entetes, lignes_html):
     tr = "".join(f'<th style="{st}">{txt}</th>' for txt, st in entetes)
     return ('<table style="border-collapse:collapse;width:100%;margin:10px 0 4px">'
@@ -96,6 +108,8 @@ def construire_mail_comptable(resume, mois_annee):
     for it in resume:
         nom = f"{it['prenom']} {it['nom'].upper()}"
         if it.get("statut") == "manquant":
+            if it.get("conges"):
+                nom += f" (congés payés : {_conges_txt(it['conges'])})"
             sans_releve.append(nom)
             continue
         contrat = it.get("contrat_hebdo") or 0
@@ -127,6 +141,8 @@ def construire_mail_comptable(resume, mois_annee):
         else:  # sans_detail
             ligne += (f" → solde net {'+' if it['solde'] >= 0 else ''}{it['solde']} h"
                       " (pas de détail par jour : ventilation 25/50 à faire)")
+        if it.get("conges"):
+            ligne += f" · congés payés : {_conges_txt(it['conges'])}"
         lignes_txt.append(ligne + note_extras)
 
         # --- section HTML ---
@@ -137,6 +153,11 @@ def construire_mail_comptable(resume, mois_annee):
                  + "</h2>")
         if note_extras:
             titre += f'<div style="font-size:12.5px;color:#8a6d3b">{esc(note_extras)}</div>'
+        bloc_conges = ""
+        if it.get("conges"):
+            bloc_conges = ('<p style="margin:4px 0 0;font-size:13px;color:#1a7a6e">'
+                           "🏖 Congés payés pris sur la période : "
+                           + esc(_conges_txt(it["conges"])) + "</p>")
         if it["statut"] != "ok":
             motif = ("heures contractuelles non renseignées sur la fiche salarié"
                      if it["statut"] == "sans_contrat"
@@ -144,7 +165,8 @@ def construire_mail_comptable(resume, mois_annee):
             a_faire.append(nom)
             sections.append(
                 titre + f'<p style="margin:6px 0">Total du mois : +{_fmt_h(it["plus"])} / '
-                f"-{_fmt_h(it['moins'])} — <b>ventilation à faire</b> ({motif}).</p>")
+                f"-{_fmt_h(it['moins'])} — <b>ventilation à faire</b> ({motif}).</p>"
+                + bloc_conges)
             tot["plus"] += it["plus"]
             lignes_equipe.append(
                 f'<tr><td style="{_TD};text-align:left"><b>{esc(nom)}</b></td>'
@@ -183,7 +205,7 @@ def construire_mail_comptable(resume, mois_annee):
             entetes[-1] = (entetes[-1][0], entetes[-1][1] + '" colspan="2')
         entetes.append(('H. indemnité de sujétion<br><span style="font-weight:normal">'
                         "(garde dim./férié)</span>", _TH_SUJ))
-        sections.append(titre + _table(entetes, lignes_sem))
+        sections.append(titre + _table(entetes, lignes_sem) + bloc_conges)
 
         tot["plus"] += it["plus"]
         tot["sup25"] += it["sup25"]
@@ -248,7 +270,9 @@ def construire_mail_comptable(resume, mois_annee):
         "complémentaires des temps partiels majorées 10&nbsp;% / 25&nbsp;%). Les heures "
         "d'indemnité de sujétion correspondent aux heures effectuées un dimanche ou un jour "
         "férié (base : 1,5 × valeur du point conventionnel × nombre d'heures, calcul effectué "
-        "par vos soins). Le détail jour par jour figure dans le classeur Excel joint.")
+        "par vos soins). Les congés payés indiqués sont ceux pris sur la période du relevé, "
+        "comptés en jours ouvrables (lundi-samedi, hors jours fériés). Le détail jour par "
+        "jour figure dans le classeur Excel joint.")
     html = (
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:900px;'
         'line-height:1.5">'

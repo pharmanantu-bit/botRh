@@ -2047,13 +2047,68 @@ def calculer_majorations(jours, contrat_hebdo, mois, annee):
             "semaines": sorted(semaines.values(), key=lambda s: s["lundi"])}
 
 
+def _conges_paie(mois, annee):
+    """Congés payés PRIS par collaborateur sur la période de paie du mois
+    (source : planning — absences prolongées « Congés payés » + jours
+    ponctuels CP vidés hors plages), comptés en jours ouvrables lun-sam hors
+    fériés, comme l'onglet Congés. Renvoie {email: {"plages": [{debut, fin,
+    jours} en jj/mm, bornés à la période], "total": n}}."""
+    from planning_equipe import (charger_absences, charger_changements,
+                                 _jours_ouvrables_cp, ferie_de)
+    from datetime import date as dt_date
+    p1, p2 = periode_paie(mois, annee)
+    resultat, plages_brutes = {}, {}
+
+    def ajouter(email, d1, d2, n):
+        r = resultat.setdefault(email, {"plages": [], "total": 0})
+        deb, fin = max(d1, p1), min(d2, p2)
+        r["plages"].append({"debut": deb.strftime("%d/%m"), "fin": fin.strftime("%d/%m"),
+                            "jours": n, "_tri": deb.isoformat()})
+        r["total"] += n
+
+    for a in charger_absences():
+        if a.get("motif") != "Congés payés":
+            continue
+        try:
+            d1 = dt_date.fromisoformat(a.get("debut", ""))
+            d2 = dt_date.fromisoformat(a.get("fin", ""))
+        except ValueError:
+            continue
+        if d2 < p1 or d1 > p2:
+            continue
+        n = _jours_ouvrables_cp(d1, d2, p1, p2)
+        if n:
+            ajouter(a.get("email", ""), d1, d2, n)
+            plages_brutes.setdefault(a.get("email", ""), []).append((d1, d2))
+    for diso, parem in charger_changements().items():
+        for email, ch in (parem or {}).items():
+            if not ch or ch.get("motif") != "Congés payés" or (ch.get("creneaux") or []):
+                continue
+            try:
+                d0 = dt_date.fromisoformat(diso)
+            except ValueError:
+                continue
+            if (not (p1 <= d0 <= p2) or d0.isoweekday() > 6 or ferie_de(d0)
+                    or any(a1 <= d0 <= a2 for a1, a2 in plages_brutes.get(email, []))):
+                continue
+            ajouter(email, d0, d0, 1)
+    for r in resultat.values():
+        r["plages"].sort(key=lambda p: p["_tri"])
+        for p in r["plages"]:
+            p.pop("_tri", None)
+    return resultat
+
+
 def construire_resume_paie(mois, annee):
     """Résumé paie par collaborateur pour l'expert-comptable : totaux du
-    relevé + ventilation des majorations (calculer_majorations). `statut` :
+    relevé + ventilation des majorations (calculer_majorations) + congés
+    payés pris sur la période (_conges_paie, y compris pour un relevé
+    manquant — collaborateur en congés tout le mois). `statut` :
     ok / sans_detail (pas de détail jour par jour, ventilation impossible) /
     sans_contrat (heures contractuelles non renseignées) / manquant."""
     reponses = charger_reponses(mois, annee)
     profils = charger_profils()
+    conges_pris = _conges_paie(mois, annee)
     employes = [e for e in charger_employes()
                 if collaborateur_actif(profils.get(e["email"], {}))
                 or reponse_de(reponses, e["prenom"], e["email"])]
@@ -2064,6 +2119,8 @@ def construire_resume_paie(mois, annee):
         contrat = _heures_hebdo(prof.get("heures_contractuelles_hebdo", ""))
         item = {"prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
                 "contrat_hebdo": contrat}
+        if e["email"] in conges_pris:
+            item["conges"] = conges_pris[e["email"]]
         if r is None:
             item["statut"] = "manquant"
             resume.append(item)

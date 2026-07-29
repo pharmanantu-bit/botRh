@@ -535,6 +535,44 @@ print(("OK " if ok_ap and ok_aj else "KO ")
 if not (ok_ap and ok_aj):
     echecs.append("aperçu/ajustements comptable KO")
 
+# --- Congés payés pris sur la période de paie (stores planning isolés) :
+#     plage 13-25/07 = 11 j ouvrables (dim 19 + férié 14 exclus), ponctuel CP
+#     06/07 = +1 j, ponctuel un férié (14/07) ignoré ; affichage mail (section
+#     collaborateur + relevé manquant en congés) ---
+_tc = tempfile.mkdtemp()
+_absf0, _chgf0 = PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE
+PE.ABSENCES_FILE = os.path.join(_tc, "abs.json")
+PE.CHANGEMENTS_FILE = os.path.join(_tc, "chg.json")
+try:
+    with open(PE.ABSENCES_FILE, "w", encoding="utf-8") as f:
+        json.dump([{"id": 1, "email": "t1@ex.fr", "debut": "2026-07-13",
+                    "fin": "2026-07-25", "motif": "Congés payés"}], f)
+    with open(PE.CHANGEMENTS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"2026-07-06": {"t1@ex.fr": {"motif": "Congés payés", "creneaux": []}},
+                   "2026-07-14": {"t1@ex.fr": {"motif": "Congés payés", "creneaux": []}}}, f)
+    _cg = A._conges_paie(7, 2026)
+finally:
+    PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE = _absf0, _chgf0
+    for _p in [k for k in A._JSON_CACHE if _tc.replace("\\", "/") in k.replace("\\", "/")]:
+        A._JSON_CACHE.pop(_p, None)
+    _shutil.rmtree(_tc, ignore_errors=True)
+_c1 = _cg.get("t1@ex.fr") or {"plages": [], "total": 0}
+ok_cg = (_c1["total"] == 12 and len(_c1["plages"]) == 2
+         and _c1["plages"][0] == {"debut": "06/07", "fin": "06/07", "jours": 1}
+         and _c1["plages"][1] == {"debut": "13/07", "fin": "25/07", "jours": 11})
+_it_abs = {"prenom": "Nora", "nom": "L", "email": "n@ex.fr", "contrat_hebdo": 35.0,
+           "statut": "manquant",
+           "conges": {"plages": [{"debut": "24/06", "fin": "25/07", "jours": 27}], "total": 27}}
+_sj3, _txt3, _html3 = CS.construire_mail_comptable([{**_it1, "conges": _c1}, _it_abs],
+                                                   "Juillet 2026")
+ok_cg = (ok_cg and "Congés payés pris sur la période" in _html3
+         and "du 13/07 au 25/07 (11 j)" in _html3
+         and "le 06/07 (1 j) · du 13/07 au 25/07 (11 j) — total 12 j ouvrables" in _txt3
+         and "Nora L (congés payés : du 24/06 au 25/07 (27 j))" in _html3)
+print(("OK " if ok_cg else "KO ") + "[--] congés payés période de paie (calcul + mail)")
+if not ok_cg:
+    echecs.append("congés payés période de paie KO")
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 
