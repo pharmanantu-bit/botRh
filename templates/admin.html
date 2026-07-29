@@ -39,6 +39,16 @@
     .corr-champ label { display:block; font-size:0.82em; color:#1F4E79; font-weight:bold; margin-bottom:4px; }
     .corr-champ input { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:0.95em; }
     .corr-note { font-size:0.8em; color:#888; margin-bottom:14px; }
+    .mc-jour { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+    .mc-jour .lbl { flex:0 0 88px; font-size:0.85em; font-weight:bold; color:#1F4E79; }
+    .mc-jour .grp { display:flex; align-items:center; gap:4px; font-size:0.78em; color:#555; }
+    .mc-jour input[type=number] { width:74px; padding:5px 6px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; text-align:center; }
+    .mc-jour .suppr { border:none; background:#f3d6d6; color:#9C0006; border-radius:6px; cursor:pointer; padding:4px 8px; font-weight:bold; }
+    .mc-jour .suppr:hover { background:#eab8b8; }
+    .mc-jour.dimferie .lbl { color:#b56a1e; }
+    .mc-ajout { display:flex; gap:8px; margin-top:8px; align-items:center; }
+    .mc-ajout input[type=date] { flex:1; padding:6px; border:1px solid #ccc; border-radius:6px; font-size:0.88em; }
+    input.mc-verrou { background:#f0f4f8; color:#555; }
     .btn-valider-corr { width:100%; border:none; cursor:pointer; background:#e67e22; color:white; padding:10px; border-radius:8px; font-size:0.95em; font-weight:bold; }
     .btn-valider-corr:hover { background:#c96712; }
 
@@ -234,6 +244,15 @@
       <form method="POST" action="/admin/releve/corriger">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" id="mc-email" value="">
+        <input type="hidden" name="jours_transmis" id="mc-jours-flag" value="">
+        <div class="corr-champ">
+          <label>Détail jour par jour — corrigez directement le jour concerné</label>
+          <div id="mc-jours"></div>
+          <div class="mc-ajout">
+            <input type="date" id="mc-ajout-date" title="Jour oublié par le collaborateur">
+            <button type="button" class="btn-detail" onclick="ajouterJourCorr()">➕ Ajouter un jour</button>
+          </div>
+        </div>
         <div class="corr-champ">
           <label for="mc-plus">Heures en plus (H+)</label>
           <input type="number" name="heures_plus" id="mc-plus" step="0.25" min="0" required>
@@ -321,6 +340,63 @@ function voirDetail(btn) {
   document.getElementById('modalDetail').classList.add('ouvert');
 }
 
+const JOURS_ABR = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+function ligneJourCorr(label, plus, moins) {
+  const div = document.createElement('div');
+  div.className = 'mc-jour' + (label.indexOf('Dim') === 0 ? ' dimferie' : '');
+  const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
+  const hid = document.createElement('input'); hid.type = 'hidden'; hid.name = 'jour_label'; hid.value = label;
+  const g1 = document.createElement('span'); g1.className = 'grp'; g1.textContent = 'H+ ';
+  const ip = document.createElement('input'); ip.type = 'number'; ip.name = 'jour_plus';
+  ip.step = '0.25'; ip.min = '0'; ip.value = plus || '';
+  const g2 = document.createElement('span'); g2.className = 'grp'; g2.textContent = 'H− ';
+  const im = document.createElement('input'); im.type = 'number'; im.name = 'jour_moins';
+  im.step = '0.25'; im.min = '0'; im.value = moins || '';
+  ip.oninput = recalcTotauxCorr; im.oninput = recalcTotauxCorr;
+  const del = document.createElement('button'); del.type = 'button'; del.className = 'suppr';
+  del.textContent = '✕'; del.title = 'Retirer ce jour du relevé';
+  del.onclick = function () { div.remove(); recalcTotauxCorr(); };
+  g1.appendChild(ip); g2.appendChild(im);
+  div.append(lbl, hid, g1, g2, del);
+  return div;
+}
+
+function recalcTotauxCorr() {
+  const rows = document.getElementById('mc-jours').querySelectorAll('.mc-jour');
+  const inPlus = document.getElementById('mc-plus');
+  const inMoins = document.getElementById('mc-moins');
+  if (!rows.length) {   // plus de détail : les totaux redeviennent saisissables
+    inPlus.readOnly = false; inMoins.readOnly = false;
+    inPlus.classList.remove('mc-verrou'); inMoins.classList.remove('mc-verrou');
+    return;
+  }
+  let tp = 0, tm = 0;
+  rows.forEach(r => {
+    tp += parseFloat(r.querySelector('input[name=jour_plus]').value) || 0;
+    tm += parseFloat(r.querySelector('input[name=jour_moins]').value) || 0;
+  });
+  inPlus.value = Math.round(tp * 100) / 100;
+  inMoins.value = Math.round(tm * 100) / 100;
+  inPlus.readOnly = true; inMoins.readOnly = true;
+  inPlus.classList.add('mc-verrou'); inMoins.classList.add('mc-verrou');
+}
+
+function ajouterJourCorr() {
+  const di = document.getElementById('mc-ajout-date');
+  if (!di.value) { di.focus(); return; }
+  const d = new Date(di.value + 'T12:00:00');
+  const label = JOURS_ABR[d.getDay()] + ' ' + String(d.getDate()).padStart(2, '0')
+              + '/' + String(d.getMonth() + 1).padStart(2, '0');
+  const cont = document.getElementById('mc-jours');
+  const deja = Array.from(cont.querySelectorAll('input[name=jour_label]')).some(h => h.value === label);
+  if (deja) { alert('Ce jour figure déjà dans le détail.'); return; }
+  cont.appendChild(ligneJourCorr(label, '', ''));
+  document.getElementById('mc-jours-flag').value = '1';
+  di.value = '';
+  recalcTotauxCorr();
+}
+
 function ouvrirCorrection(btn) {
   const d = btn.dataset;
   const saisie = d.saisie === '1';
@@ -329,6 +405,13 @@ function ouvrirCorrection(btn) {
   document.getElementById('mc-plus').value = d.plus;
   document.getElementById('mc-moins').value = d.moins;
   document.getElementById('mc-motif').value = '';
+  const cont = document.getElementById('mc-jours');
+  cont.innerHTML = '';
+  const jours = ((RELEVES_DETAIL[d.email] || {}).jours) || [];
+  jours.forEach(j => cont.appendChild(ligneJourCorr(j.label, j.plus, j.moins)));
+  document.getElementById('mc-jours-flag').value = jours.length ? '1' : '';
+  document.getElementById('mc-ajout-date').value = '';
+  recalcTotauxCorr();
   document.getElementById('mc-motif').placeholder = saisie
     ? 'Ex. : heures communiquées oralement'
     : 'Ex. : erreur de saisie, oubli du 15/07…';

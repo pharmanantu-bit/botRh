@@ -1366,18 +1366,47 @@ def admin_valider():
 @app.route("/admin/releve/corriger", methods=["POST"])
 def admin_releve_corriger():
     """L'admin corrige un relevé reçu (erreur de saisie du salarié) avant la
-    paie. Les heures déclarées à l'origine sont conservées (traçabilité) et la
+    paie — JOUR PAR JOUR quand le détail existe : la modale renvoie les lignes
+    jour_label/jour_plus/jour_moins (ex. garde du dimanche déclarée 12 h au
+    lieu de 10 → corriger la ligne du dimanche), le détail devient la source
+    de vérité et les totaux H+/H− sont RECALCULÉS depuis les jours — ainsi la
+    ventilation paie (25/50, sujétion) est juste aussi. Sans détail transmis,
+    seuls les totaux sont corrigés (ancien comportement). La déclaration
+    d'origine du salarié (totaux + jours) est conservée (traçabilité) et la
     validation éventuelle est annulée : un relevé corrigé doit être re-validé."""
     if not session.get("admin"):
         return redirect(url_for("admin"))
     email = request.form.get("email", "")
-    try:
-        h_plus = round(float(request.form.get("heures_plus", "0") or 0), 2)
-        h_moins = round(float(request.form.get("heures_moins", "0") or 0), 2)
-    except ValueError:
-        abort(400)
-    if h_plus < 0 or h_moins < 0:
-        abort(400)
+    # Lignes du détail jour par jour (listes parallèles), transmises dès que
+    # la modale a affiché ou ajouté des jours (drapeau jours_transmis). Toutes
+    # les lignes retirées = détail vidé, totaux repris des champs libres.
+    jours_corriges = None
+    if request.form.get("jours_transmis") == "1":
+        jours_corriges = []
+        for lab, p, m in zip(request.form.getlist("jour_label"),
+                             request.form.getlist("jour_plus"),
+                             request.form.getlist("jour_moins")):
+            lab = (lab or "").strip()
+            try:
+                p = round(float(p or 0), 2)
+                m = round(float(m or 0), 2)
+            except ValueError:
+                abort(400)
+            if p < 0 or m < 0:
+                abort(400)
+            if lab and (p or m):                     # jour vidé = retiré du détail
+                jours_corriges.append({"label": lab, "plus": p, "moins": m})
+    if jours_corriges:
+        h_plus = round(sum(j["plus"] for j in jours_corriges), 2)
+        h_moins = round(sum(j["moins"] for j in jours_corriges), 2)
+    else:
+        try:
+            h_plus = round(float(request.form.get("heures_plus", "0") or 0), 2)
+            h_moins = round(float(request.form.get("heures_moins", "0") or 0), 2)
+        except ValueError:
+            abort(400)
+        if h_plus < 0 or h_moins < 0:
+            abort(400)
     emp = next((e for e in charger_employes() if e["email"] == email), None)
     if not emp:
         abort(404)
@@ -1387,12 +1416,15 @@ def admin_releve_corriger():
         r = reponses.get(t)
         if r is None:
             continue
-        # Conserver la toute première déclaration du salarié, même après
-        # plusieurs corrections successives.
+        # Conserver la toute première déclaration du salarié (totaux ET
+        # détail), même après plusieurs corrections successives.
         r.setdefault("declare", {"heures_plus": r.get("heures_plus"),
-                                 "heures_moins": r.get("heures_moins")})
+                                 "heures_moins": r.get("heures_moins"),
+                                 "jours": copy.deepcopy(r.get("jours") or [])})
         r["heures_plus"] = h_plus
         r["heures_moins"] = h_moins
+        if jours_corriges is not None:
+            r["jours"] = jours_corriges
         r["correction"] = {
             "le": datetime.now().strftime("%d/%m/%Y %H:%M"),
             "motif": request.form.get("motif", "").strip(),
@@ -1417,7 +1449,7 @@ def admin_releve_corriger():
             "date": now.strftime("%d/%m/%Y %H:%M"),
             "mois": now.month,
             "annee": now.year,
-            "jours": [],
+            "jours": jours_corriges or [],
             "saisi_par_admin": True,
             "valide": True,
             "date_validation": now.strftime("%d/%m/%Y %H:%M"),

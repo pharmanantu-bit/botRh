@@ -573,6 +573,33 @@ print(("OK " if ok_cg else "KO ") + "[--] congés payés période de paie (calcu
 if not ok_cg:
     echecs.append("congés payés période de paie KO")
 
+# --- Correction JOUR PAR JOUR d'un relevé (cas garde du dimanche déclarée
+#     12 h au lieu de 10) — UNIQUEMENT sur la donnée de test créée par ce
+#     script, jamais sur de vraies réponses ---
+if employes and cree_temp:
+    with client.session_transaction() as s:
+        s["_csrf_token"] = "smoke-csrf"
+    _e0 = employes[0]
+    _rc2 = client.post("/admin/releve/corriger", data={
+        "csrf_token": "smoke-csrf",
+        "email": _e0["email"], "motif": "garde dimanche : 12 h déclarées, 10 effectuées",
+        "jours_transmis": "1",
+        "jour_label": ["Mar 07/07", "Dim 12/07", "Lun 06/07"],
+        "jour_plus": ["10", "10", ""],           # dimanche corrigé 12 -> 10
+        "jour_moins": ["", "", "0"],             # lundi vidé -> retiré du détail
+    }).status_code
+    _rep2 = A.charger_reponses(mois, annee)
+    _r2 = A.reponse_de(_rep2, _e0["prenom"], _e0["email"])
+    ok_cj = (_rc2 == 302 and _r2 is not None
+             and _r2["heures_plus"] == 20.0 and _r2["heures_moins"] == 0.0
+             and [j["label"] for j in _r2.get("jours") or []] == ["Mar 07/07", "Dim 12/07"]
+             and _r2["declare"]["heures_plus"] == 6.0 and _r2["declare"]["jours"] == []
+             and _r2.get("valide") is False and _r2["correction"]["motif"])
+    print(("OK " if ok_cj else "KO ")
+          + "[--] correction jour par jour (détail remplacé + totaux recalculés + traçabilité)")
+    if not ok_cj:
+        echecs.append("correction jour par jour KO")
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 
