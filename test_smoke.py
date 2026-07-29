@@ -481,6 +481,30 @@ finally:
         A._JSON_CACHE.pop(_p, None)
     _shutil.rmtree(_td3, ignore_errors=True)
 
+# --- Paie : ventilation par semaine + sujétion (garde dim./férié) + mail
+#     comptable HTML (comptable_sender, sans SMTP ni réseau) ---
+import comptable_sender as CS
+_mj = A.calculer_majorations([{"label": "Mar 07/07", "plus": 10, "moins": 0},
+                              {"label": "Dim 12/07", "plus": 10, "moins": 0}], 35.0, 7, 2026)
+_mf = A.calculer_majorations([{"label": "Mar 14/07", "plus": 7, "moins": 7}], 35.0, 7, 2026)
+_res = [{"prenom": "Test", "nom": "Un", "contrat_hebdo": 35.0, "statut": "ok",
+         "plus": 20.0, "moins": 0.0, "solde": 20.0, "valide": True,
+         "saisi_par_admin": False, "corrige": False, "commentaire": "", **_mj},
+        {"prenom": "Test", "nom": "Deux", "contrat_hebdo": 35.0, "statut": "manquant"}]
+_sj, _txt, _html = CS.construire_mail_comptable(_res, "Juillet 2026")
+ok_pv = (_mj["sup25"] == 8.0 and _mj["sup50"] == 12.0 and _mj["sujetion"] == 10.0
+         and _mj["semaines"][0]["lundi"] == "2026-07-06"
+         and _mj["semaines"][0]["plus"] == 20.0
+         and _mj["semaines"][0]["sujetion_jours"] == ["dim. 12/07"]
+         and _mf["sup25"] == 0 and _mf["sujetion"] == 7.0
+         and "férié 14/07 (Fête nationale)" in _mf["semaines"][0]["sujetion_jours"]
+         and "Juillet 2026" in _sj and "sujétion 10h" in _txt
+         and "du lun 06/07 au dim 12/07" in _html and "dim. 12/07" in _html
+         and "Total équipe" in _html and "Test DEUX" in _html and SIGNATURE in _txt)
+print(("OK " if ok_pv else "KO ") + "[--] paie : semaines + sujétion + mail comptable HTML")
+if not ok_pv:
+    echecs.append("paie semaines/sujétion/mail comptable KO")
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

@@ -1868,9 +1868,9 @@ def _heures_hebdo(s):
         return 0.0
 
 
-def _semaine_de(label, mois, annee):
-    """Clé de semaine civile (lundi ISO) d'un label de jour de relevé
-    (« Lun 28/07 ») ; None si le label est illisible."""
+def _date_de(label, mois, annee):
+    """Date d'un label de jour de relevé (« Lun 28/07 ») rapportée au relevé
+    mois/année ; None si le label est illisible."""
     from datetime import date as dt_date
     try:
         jm = label.split()[-1]                       # « 28/07 »
@@ -1879,8 +1879,16 @@ def _semaine_de(label, mois, annee):
         return None
     a = annee - 1 if m > mois else annee             # mois précédent d'un relevé de janvier
     try:
-        d = dt_date(a, m, j)
+        return dt_date(a, m, j)
     except ValueError:
+        return None
+
+
+def _semaine_de(label, mois, annee):
+    """Clé de semaine civile (lundi ISO) d'un label de jour de relevé
+    (« Lun 28/07 ») ; None si le label est illisible."""
+    d = _date_de(label, mois, annee)
+    if d is None:
         return None
     lundi = d - timedelta(days=d.weekday())
     return lundi.isoformat()
@@ -1894,28 +1902,52 @@ def calculer_majorations(jours, contrat_hebdo, mois, annee):
       +50 % à partir de la 44e ;
     - temps partiel (contrat < 35 h) : heures au-delà du contrat = heures
       COMPLÉMENTAIRES (majoration 10 % / 25 %, ventilées par le comptable).
+    Les H+ déclarées un dimanche ou un jour férié = heures de garde ouvrant
+    droit à l'indemnité de sujétion (1,5 × point conventionnel × heures,
+    calculée par le comptable — on ne transmet que les heures).
     Hypothèse de calcul : le collaborateur effectue ses heures contractuelles,
     ajustées des H+ / H− déclarés jour par jour dans le relevé.
-    Renvoie {"sup25", "sup50", "complementaires"} (heures décimales)."""
+    Renvoie {"sup25", "sup50", "complementaires", "sujetion", "semaines"} —
+    semaines = liste triée [{lundi, plus, moins, sup25, sup50,
+    complementaires, sujetion, sujetion_jours}] (heures décimales)."""
+    from planning_equipe import ferie_de             # import tardif (cycle app<->blueprint)
     semaines = {}
     for jr in jours or []:
-        cle = _semaine_de(jr.get("label", ""), mois, annee)
-        if cle is None:
+        d = _date_de(jr.get("label", ""), mois, annee)
+        if d is None:
             continue
-        s = semaines.setdefault(cle, {"plus": 0.0, "moins": 0.0})
-        s["plus"] += float(jr.get("plus") or 0)
+        cle = (d - timedelta(days=d.weekday())).isoformat()
+        s = semaines.setdefault(cle, {"lundi": cle, "plus": 0.0, "moins": 0.0,
+                                      "sujetion": 0.0, "sujetion_jours": []})
+        p = float(jr.get("plus") or 0)
+        s["plus"] += p
         s["moins"] += float(jr.get("moins") or 0)
-    sup25 = sup50 = comp = 0.0
+        ferie = ferie_de(d)
+        if p > 0 and (d.weekday() == 6 or ferie):
+            s["sujetion"] += p
+            s["sujetion_jours"].append(
+                f"férié {d.strftime('%d/%m')} ({ferie})" if ferie
+                else f"dim. {d.strftime('%d/%m')}")
+    sup25 = sup50 = comp = suj = 0.0
     for s in semaines.values():
         travaille = contrat_hebdo + s["plus"] - s["moins"]
         if contrat_hebdo >= 35:
             sup = max(0.0, travaille - 35.0)
-            sup25 += min(sup, 8.0)
-            sup50 += max(0.0, sup - 8.0)
+            s["sup25"] = round(min(sup, 8.0), 2)
+            s["sup50"] = round(max(0.0, sup - 8.0), 2)
+            s["complementaires"] = 0.0
         else:
-            comp += max(0.0, travaille - contrat_hebdo)
+            s["sup25"] = s["sup50"] = 0.0
+            s["complementaires"] = round(max(0.0, travaille - contrat_hebdo), 2)
+        for k in ("plus", "moins", "sujetion"):
+            s[k] = round(s[k], 2)
+        sup25 += s["sup25"]
+        sup50 += s["sup50"]
+        comp += s["complementaires"]
+        suj += s["sujetion"]
     return {"sup25": round(sup25, 2), "sup50": round(sup50, 2),
-            "complementaires": round(comp, 2)}
+            "complementaires": round(comp, 2), "sujetion": round(suj, 2),
+            "semaines": sorted(semaines.values(), key=lambda s: s["lundi"])}
 
 
 def construire_resume_paie(mois, annee):
