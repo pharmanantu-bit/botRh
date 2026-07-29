@@ -853,8 +853,8 @@ FAMILLES_DOCS = {
         "Solde de tout compte", "RIB / coordonnées bancaires",
     ],
     "Identité & administratif": [
-        "Pièce d'identité", "Titre de séjour", "Carte vitale",
-        "Justificatif de domicile", "N° de Sécurité sociale",
+        "Fiche signalétique", "Pièce d'identité", "Titre de séjour",
+        "Carte vitale", "Justificatif de domicile", "N° de Sécurité sociale",
     ],
     "Santé & formation": [
         "Visite médicale", "Arrêt de travail", "Diplôme",
@@ -1655,6 +1655,7 @@ _CLASSIF_DOC = [
     (("justificatif de domicile", "domicile"), "Justificatif de domicile"),
     (("sécurité sociale", "securite sociale", "attestation de droits", "ameli"), "N° de Sécurité sociale"),
     (("carte d'identité", "carte nationale", "cni", "passeport", "passport", "pièce d'identité", "piece d'identite"), "Pièce d'identité"),
+    (("fiche signalétique", "fiche signaletique", "signaletique", "signalétique"), "Fiche signalétique"),
     (("visite médicale", "visite medicale", "médecine du travail", "medecine du travail", "aptitude"), "Visite médicale"),
     (("arrêt de travail", "arret de travail", "arrêt maladie", "arret maladie", "avis d'arrêt", "prolongation", "cpam"), "Arrêt de travail"),
     (("diplôme", "diplome", "brevet professionnel", "brevet de préparateur", "licence", "master", "baccalauréat", "baccalaureat", "bts"), "Diplôme"),
