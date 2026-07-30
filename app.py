@@ -3159,7 +3159,11 @@ def admin_sauvegarde_restaurer():
         data = json.loads(f.read().decode("utf-8"))
     except Exception:
         return redirect(url_for("admin_sauvegarde", err="format"))
-    if not isinstance(data, dict) or "employes" not in data:
+    # Sauvegarde complète OU volume partiel « documents » (la sauvegarde
+    # quotidienne arrive en plusieurs mails depuis 2026-07-31, limite Gmail).
+    cles_connues = ("employes", "documents_fichiers", "photos_fichiers",
+                    "candidats_fichiers")
+    if not isinstance(data, dict) or not any(k in data for k in cles_connues):
         return redirect(url_for("admin_sauvegarde", err="invalide"))
     try:
         r = restaurer_sauvegarde(data)
