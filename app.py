@@ -209,14 +209,14 @@ CIBLES_SENSIBLES = {"iban"}
 def _ajouter_propositions(email, extraction, source_doc_id):
     """Enregistre les champs extraits d'une PJ comme PROPOSITIONS (à valider par
     l'admin), sans rien écrire dans le profil. Chiffre les cibles sensibles (IBAN).
-    Anti-doublon par (cible, source_doc_id)."""
+    Anti-doublon par (cible, source_doc_id). Renvoie le nombre d'ajouts."""
     if not extraction or not isinstance(extraction, list):
-        return
+        return 0
     profils = charger_profils()
     prof = profils.get(email, {})
     props = prof.get("propositions", [])
     existantes = {(p.get("cible"), p.get("source_doc_id")) for p in props}
-    ajout = False
+    nb = 0
     for ex in extraction:
         cible = (ex.get("cible") or "").strip()
         valeur = (ex.get("valeur") or "").strip()
@@ -233,11 +233,12 @@ def _ajouter_propositions(email, extraction, source_doc_id):
             "source_doc_id": source_doc_id,
             "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
         })
-        ajout = True
-    if ajout:
+        nb += 1
+    if nb:
         prof["propositions"] = props
         profils[email] = prof
         sauvegarder_profils(profils)
+    return nb
 
 def _propositions_affichage(props):
     """Prépare les propositions pour l'affichage (déchiffre les valeurs sensibles)."""
@@ -1880,6 +1881,73 @@ def admin_employe_document_retype():
             break
     sauvegarder_docs_index(idx)
     return redirect(url_for("admin_employe", email=email))
+
+
+def _doc_analysable(type_doc):
+    """Types dont extraire_champs sait tirer des champs de pré-remplissage."""
+    t = (type_doc or "").strip()
+    return (t in ("Contrat de travail", "Avenant", "Promesse d'embauche")
+            or "RIB" in t or "bancaire" in t.lower())
+
+
+def _analyser_document(email, d):
+    """Relit un document déjà déposé et (re)génère les propositions de
+    pré-remplissage — même mécanique qu'au dépôt (propositions à valider,
+    jamais d'écriture directe dans le profil ; anti-doublon inclus).
+    Renvoie le nombre de propositions ajoutées."""
+    texte = ""
+    try:
+        with open(os.path.join(DOCS_DIR, d["fichier"]), "rb") as fp:
+            texte = extraction_pj.extraire_texte(d.get("nom_original") or d["fichier"],
+                                                 fp.read())
+    except Exception:
+        texte = ""
+    extraction = extraction_pj.extraire_champs(d.get("type", ""), texte)
+    nb = _ajouter_propositions(email, extraction, d["id"])
+    _controle_promesse(email, d.get("type", ""), extraction, texte)
+    return nb
+
+
+@app.route("/admin/employe/document/analyser", methods=["POST"])
+def admin_employe_document_analyser():
+    """Analyse à la demande un document déjà déposé (utile pour ceux déposés
+    avant l'arrivée du pré-remplissage automatique)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    doc_id = request.form.get("doc_id", "")
+    d = next((x for x in charger_docs_index().get(email, [])
+              if x.get("id") == doc_id), None)
+    if not d:
+        abort(404)
+    try:
+        nb = _analyser_document(email, d)
+    except Exception:
+        app.logger.exception("Analyse à la demande d'un document")
+        nb = 0
+    return redirect(url_for("admin_employe", email=email, analyse=nb))
+
+
+@app.route("/admin/documents/analyser_tout", methods=["POST"])
+def admin_documents_analyser_tout():
+    """Analyse en une passe tous les documents déjà déposés dont le type est
+    exploitable (contrat, avenant, promesse, RIB) : les champs extraits
+    deviennent des suggestions à valider sur chaque fiche. Un document déjà
+    analysé n'ajoute rien (anti-doublon par cible + document source)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    nb_docs, nb_props = 0, 0
+    for email, docs in charger_docs_index().items():
+        for d in docs:
+            if not _doc_analysable(d.get("type", "")):
+                continue
+            try:
+                nb_props += _analyser_document(email, d)
+                nb_docs += 1
+            except Exception:
+                app.logger.exception("Analyse groupée d'un document")
+    return redirect(url_for("admin_employes", analyse_docs=nb_docs,
+                            analyse_props=nb_props))
 
 
 @app.route("/admin/employe/profil", methods=["POST"])

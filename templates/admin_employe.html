@@ -341,6 +341,13 @@
       </div>
       {% if doc_err == 'type' %}<div class="doc-msg err">Format non accepté (PDF, images, Word uniquement).</div>{% endif %}
       {% if doc_err == 'vide' %}<div class="doc-msg err">Aucun fichier sélectionné.</div>{% endif %}
+      {% if request.args.get('analyse') is not none %}
+        {% set nb_analyse = request.args.get('analyse')|int %}
+        <div class="doc-msg" style="background:{{ '#d4edda' if nb_analyse else '#fff3cd' }}; color:{{ '#155724' if nb_analyse else '#856404' }}; padding:8px 12px; border-radius:6px; margin:8px 0;">
+          {% if nb_analyse %}🔎 Analyse terminée : {{ nb_analyse }} suggestion(s) ajoutée(s) — à valider dans « Suggestions extraites des documents » en haut de la fiche.
+          {% else %}🔎 Analyse terminée : aucune nouvelle suggestion (document déjà analysé, ou texte illisible — PDF scanné sans OCR).{% endif %}
+        </div>
+      {% endif %}
 
       <form method="POST" action="/admin/employe/document" enctype="multipart/form-data" class="doc-upload">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -393,6 +400,15 @@
                 <a href="/admin/document/{{ d.id }}?voir=1" target="_blank" rel="noopener"
                    title="Visualiser le document dans le navigateur"
                    style="display:inline-block; background:#1F4E79; color:white; border-radius:5px; padding:4px 9px; cursor:pointer; text-decoration:none; font-size:0.82em;">👁 Voir</a>
+                {% if d.type in ("Contrat de travail", "Avenant", "Promesse d'embauche") or "RIB" in d.type or "bancaire" in d.type|lower %}
+                <form method="POST" action="/admin/employe/document/analyser" style="display:inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="email" value="{{ emp.email }}">
+                  <input type="hidden" name="doc_id" value="{{ d.id }}">
+                  <button type="submit" title="Extraire les champs de ce document (type de contrat, poste, dates…) en suggestions à valider sur la fiche"
+                          style="background:#6b4fa0; color:white; border:none; border-radius:5px; padding:4px 9px; cursor:pointer; font-size:0.82em;">🔎 Analyser</button>
+                </form>
+                {% endif %}
                 {% if d.a_valider %}
                 <form method="POST" action="/admin/employe/document/valider" style="display:inline">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
