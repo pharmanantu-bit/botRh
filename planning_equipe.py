@@ -34,21 +34,14 @@ JOURS_ABBR = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 7: "Di
 def jour_courant():
     """Jour à ENCADRER en rouge (« aujourd'hui ») dans le planning.
 
-    - Heure de PARIS et non du serveur : PythonAnywhere tourne en UTC, sans
-      quoi le cadre changerait de jour à 1 h ou 2 h du matin selon la saison.
-    - Avant 5 h du matin, on reste sur la journée de la VEILLE : passé minuit,
-      l'équipe est toujours sur sa journée de travail — le cadre ne doit pas
-      sauter au jour suivant.
-    N'affecte QUE l'affichage (cadre + boutons « Aujourd'hui ») ; les règles de
-    gestion (jours passés, périodes…) restent sur la date civile."""
+    Heure de PARIS et non du serveur : PythonAnywhere tourne en UTC, donc sans
+    correction le cadre ne passait au jour suivant qu'à 1 h ou 2 h du matin
+    (selon la saison) au lieu de minuit pile."""
     try:
         from zoneinfo import ZoneInfo
-        maintenant = datetime.now(ZoneInfo("Europe/Paris"))
+        return datetime.now(ZoneInfo("Europe/Paris")).date()
     except Exception:              # base de fuseaux absente (ex. Windows sans tzdata)
-        maintenant = datetime.now()
-    if maintenant.hour < 5:
-        maintenant -= timedelta(days=1)
-    return maintenant.date()
+        return datetime.now().date()
 MOIS_ABBR = {1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Juin",
              7: "Juil", 8: "Août", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc"}
 SEMAINES = ["A", "B"]  # rotation par défaut (2 semaines tournantes)
