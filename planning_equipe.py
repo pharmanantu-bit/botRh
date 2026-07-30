@@ -29,6 +29,26 @@ TRAME_FILE = os.path.join(BASE_DIR, "planning_trame.json")
 JOURS_NOMS = {1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi",
               5: "Vendredi", 6: "Samedi", 7: "Dimanche"}
 JOURS_ABBR = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam", 7: "Dim"}
+
+
+def jour_courant():
+    """Jour à ENCADRER en rouge (« aujourd'hui ») dans le planning.
+
+    - Heure de PARIS et non du serveur : PythonAnywhere tourne en UTC, sans
+      quoi le cadre changerait de jour à 1 h ou 2 h du matin selon la saison.
+    - Avant 5 h du matin, on reste sur la journée de la VEILLE : passé minuit,
+      l'équipe est toujours sur sa journée de travail — le cadre ne doit pas
+      sauter au jour suivant.
+    N'affecte QUE l'affichage (cadre + boutons « Aujourd'hui ») ; les règles de
+    gestion (jours passés, périodes…) restent sur la date civile."""
+    try:
+        from zoneinfo import ZoneInfo
+        maintenant = datetime.now(ZoneInfo("Europe/Paris"))
+    except Exception:              # base de fuseaux absente (ex. Windows sans tzdata)
+        maintenant = datetime.now()
+    if maintenant.hour < 5:
+        maintenant -= timedelta(days=1)
+    return maintenant.date()
 MOIS_ABBR = {1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Juin",
              7: "Juil", 8: "Août", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc"}
 SEMAINES = ["A", "B"]  # rotation par défaut (2 semaines tournantes)
@@ -726,7 +746,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
                       "lignes": lignes, "ferme": ferme, "ferie": ferie,
-                      "aujourdhui": bool(date_reelle) and date_reelle == date.today()})
+                      "aujourdhui": bool(date_reelle) and date_reelle == jour_courant()})
     return {"ticks": ticks, "jours": jours}
 
 
@@ -873,7 +893,7 @@ def vue():
         try:
             ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            ref = date.today()
+            ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
         # Le planning suit la trame ACTIVÉE en vigueur pour la semaine consultée
         # (les trames activées se succèdent : l'historique garde ses anciennes trames).
         act = trame_active_pour(data, ref)
@@ -890,7 +910,7 @@ def vue():
                 L += timedelta(days=7)
         # Barre de navigation (semaines cliquables en Hebdo, mois en Mensuel).
         nav = {"type": "semaine" if periode == "hebdo" else "mois", "boutons": [],
-               "aujourdhui": url_for(".vue", onglet="planning", date=date.today().isoformat()) + "#auj"}
+               "aujourdhui": url_for(".vue", onglet="planning", date=jour_courant().isoformat()) + "#auj"}
         if periode == "hebdo":
             cur = _lundi(ref)
             for k in range(-2, 7):
@@ -964,7 +984,7 @@ def vue():
                         if lignes_j or fer:
                             tj.append({"label": f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m/%y')}",
                                        "ferie": fer, "lignes": lignes_j,
-                                       "aujourdhui": d == date.today()})
+                                       "aujourdhui": d == jour_courant()})
                     v["texte_jours"] = tj
                 else:  # tableau
                     # Tableau façon feuille de semaine : une colonne par jour, créneaux
@@ -973,7 +993,7 @@ def vue():
                     v["cols"] = [{"nom": JOURS_NOMS[j],
                                   "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y"),
                                   "ferie": ferie_de(lundi + timedelta(days=j - 1)),
-                                  "aujourdhui": lundi + timedelta(days=j - 1) == date.today()}
+                                  "aujourdhui": lundi + timedelta(days=j - 1) == jour_courant()}
                                  for j in jours_aff]
                     lignes_t = []
                     for e in emp_sm:
@@ -1274,7 +1294,7 @@ def vue():
         try:
             ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            ref = date.today()
+            ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
         lundi = _lundi(ref)
         act = trame_active_pour(data, lundi)     # trame en vigueur pour CETTE semaine
         jours_eff, ticks, alertes_total = [], [], 0
@@ -1342,7 +1362,7 @@ def vue():
                    eff_semaine=f"{lundi.strftime('%d/%m')} – {(lundi + timedelta(days=6)).strftime('%d/%m/%Y')}",
                    eff_prec=(lundi - timedelta(days=7)).isoformat(),
                    eff_suiv=(lundi + timedelta(days=7)).isoformat(),
-                   eff_auj=date.today().isoformat())
+                   eff_auj=jour_courant().isoformat())
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "conges":
