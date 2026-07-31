@@ -327,6 +327,15 @@
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
         {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', date=v.lundi) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
       </div>
+      {% if v.conformite %}
+      <details style="border:1px solid #e0c080; background:#fffaf0; border-radius:8px; margin:0 0 10px; font-size:0.88em;">
+        <summary style="cursor:pointer; padding:8px 12px; font-weight:bold; color:#9C6500; user-select:none;">⚠️ Durée du travail : {{ v.conformite|length }} point{{ 's' if v.conformite|length > 1 else '' }} à vérifier cette semaine</summary>
+        <ul style="margin:2px 0 8px; padding-left:26px;">
+          {% for a in v.conformite %}<li style="margin:3px 0;"><strong>{{ a.prenom }}</strong> — {{ a.texte }}</li>{% endfor %}
+        </ul>
+        <div style="padding:0 12px 8px; color:#888; font-size:0.92em;">Contrôle indicatif (Code du travail / CCN pharmacie) : repos quotidien 11 h min entre deux journées · 10 h max par jour · 48 h max par semaine · 6 jours travaillés consécutifs max. Les cas particuliers (gardes, dérogations) restent à ton appréciation.</div>
+      </details>
+      {% endif %}
       {% if mode == 'grille' %}
         {% set frise = v.frise %}{% include '_frise.html' %}
       {% elif mode == 'texte' %}

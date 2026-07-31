@@ -155,6 +155,70 @@ def creneaux_effectifs_jour(trame, email, d, changements, absences):
     return [c for c in cr if creneau_valide(c)]
 
 
+# --- Conformité durée du travail (contrôle INDICATIF, Code du travail / CCN) --
+REPOS_QUOTIDIEN_MIN = 11 * 60      # repos entre deux journées : 11 h minimum
+JOUR_MAX_MIN = 10 * 60             # travail effectif : 10 h max par jour
+SEMAINE_MAX_MIN = 48 * 60          # 48 h max par semaine civile
+JOURS_CONSECUTIFS_MAX = 6          # au plus 6 jours travaillés d'affilée
+
+
+def _fmt_h(minutes):
+    return f"{minutes // 60}h{minutes % 60:02d}" if minutes % 60 else f"{minutes // 60}h"
+
+
+def alertes_conformite(data, emp_sm, lundi, changements, absences):
+    """Contrôle indicatif de la semaine affichée : repos quotidien < 11 h,
+    journée > 10 h, semaine > 48 h, plus de 6 jours travaillés consécutifs.
+    Fenêtre élargie aux 6 jours PRÉCÉDANT le lundi (séries à cheval sur deux
+    semaines, repos dimanche→lundi). Renvoie [{prenom, texte}]."""
+    alertes = []
+    for e in emp_sm:
+        em, prenom = e["email"], e["prenom"]
+        jours = {}
+        for k in range(-6, 7):
+            d = lundi + timedelta(days=k)
+            tr = trame_active_pour(data, d)
+            cr = creneaux_effectifs_jour(tr, em, d, changements, absences) if tr else []
+            mins = [(_minutes(c.get("debut")), _minutes(c.get("fin"))) for c in cr]
+            jours[k] = sorted((a, b) for a, b in mins
+                              if a is not None and b is not None and b > a)
+        # Journée > 10 h + total de la semaine affichée
+        total_sem = 0
+        for k in range(7):
+            tot = sum(b - a for a, b in jours[k])
+            total_sem += tot
+            if tot > JOUR_MAX_MIN:
+                d = lundi + timedelta(days=k)
+                alertes.append({"prenom": prenom, "texte":
+                                f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m')} : "
+                                f"{_fmt_h(tot)} de travail (max 10h/jour)"})
+        if total_sem > SEMAINE_MAX_MIN:
+            alertes.append({"prenom": prenom, "texte":
+                            f"{_fmt_h(total_sem)} sur la semaine (max 48h)"})
+        # Repos quotidien < 11 h (fin de la veille → début du jour)
+        for k in range(7):
+            if not jours[k - 1] or not jours[k]:
+                continue
+            repos = (24 * 60 - jours[k - 1][-1][1]) + jours[k][0][0]
+            if repos < REPOS_QUOTIDIEN_MIN:
+                d = lundi + timedelta(days=k)
+                alertes.append({"prenom": prenom, "texte":
+                                f"repos de {_fmt_h(repos)} seulement avant "
+                                f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m')} (min 11h)"})
+        # Plus de 6 jours travaillés d'affilée (série touchant la semaine affichée ;
+        # la fenêtre de 6 jours arrière garantit qu'une série atteint 7 au plus
+        # tôt le lundi affiché → une seule alerte par série)
+        serie = 0
+        for k in range(-6, 7):
+            serie = serie + 1 if jours[k] else 0
+            if serie == JOURS_CONSECUTIFS_MAX + 1 and k >= 0:
+                d = lundi + timedelta(days=k)
+                alertes.append({"prenom": prenom, "texte":
+                                f"7e jour travaillé d'affilée le {JOURS_ABBR[d.isoweekday()]} "
+                                f"{d.strftime('%d/%m')} (max 6 jours consécutifs)"})
+    return alertes
+
+
 # --- Effectifs minimums (contrôle de couverture par créneau) -----------------
 EFFECTIFS_FILE = os.path.join(BASE_DIR, "planning_effectifs.json")
 EFFECTIFS_DEFAUT = {"min_total": 2, "min_pharmaciens": 1}
@@ -946,7 +1010,9 @@ def vue():
                     emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
                 fin = lundi + timedelta(days=6)
                 titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
-                v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat()}
+                v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat(),
+                     "conformite": alertes_conformite(data, emp_sm, lundi,
+                                                      changements, absences)}
                 if mode == "grille":
                     v["frise"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
                                         lundi, changements, absences,
