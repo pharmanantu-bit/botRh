@@ -327,6 +327,19 @@
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
         {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', date=v.lundi) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
       </div>
+      {% if mode != 'tableau' and v.compteurs %}
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px;"
+           title="Heures effectives de la semaine (trame + modifications + absences) / heures contractuelles de la fiche (moyenne si rotation A/B). Rouge = dépassement.">
+        {% for cp in v.compteurs %}
+        <span style="display:inline-flex; align-items:center; gap:5px; border:1px solid {{ '#e3b3ad' if cp.sur else '#d5dce5' }}; background:{{ '#fdf3f2' if cp.sur else '#f7f9fb' }}; border-radius:12px; padding:2px 9px; font-size:0.8em;">
+          <span style="width:9px; height:9px; border-radius:50%; background:{{ cp.couleur }};"></span>
+          {{ cp.prenom }}
+          <strong style="color:{{ '#C0392B' if cp.sur else '#1F4E79' }};">{{ cp.eff }}{% if cp.contrat %} / {{ cp.contrat }}{% endif %}</strong>
+          {% if cp.sur %}<span style="color:#C0392B;">▲</span>{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% if v.conformite %}
       <details style="border:1px solid #e0c080; background:#fffaf0; border-radius:8px; margin:0 0 10px; font-size:0.88em;">
         <summary style="cursor:pointer; padding:8px 12px; font-weight:bold; color:#9C6500; user-select:none;">⚠️ Durée du travail : {{ v.conformite|length }} point{{ 's' if v.conformite|length > 1 else '' }} à vérifier cette semaine</summary>
@@ -953,6 +966,35 @@
       </div>
       <button class="btn" type="submit" style="margin-top:12px;">💾 Enregistrer les droits</button>
     </form>
+
+    {# --- Vue annuelle des congés / absences --- #}
+    <details open style="margin-top:22px; border:1px solid #d5dce5; border-radius:10px; background:#fff;">
+      <summary style="cursor:pointer; padding:12px 16px; font-weight:bold; color:#1F4E79; user-select:none;">📅 Vue annuelle ({{ cp_label }}){% if annuel_conflits %} <span style="color:#C0392B; font-weight:normal;">— ⚠ {{ annuel_conflits }} jour{{ 's' if annuel_conflits > 1 else '' }} avec congés simultanés</span>{% endif %}</summary>
+      <div style="padding:0 14px 12px; overflow-x:auto;">
+        <table style="border-collapse:collapse; font-size:0.82em; min-width:820px; width:100%;">
+          <tr style="color:#556;">
+            <th style="text-align:left; padding:6px 8px;">Collaborateur</th>
+            {% for m in annuel_mois %}<th style="padding:6px 4px; font-weight:normal;">{{ m }}</th>{% endfor %}
+            <th style="padding:6px 8px;" title="Total congés payés posés sur la période (jours ouvrables)">Total CP</th>
+          </tr>
+          {% for l in annuel_lignes %}
+          <tr style="border-top:1px solid #eef1f5;">
+            <td style="padding:5px 8px; white-space:nowrap;"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong></td>
+            {% for c in l.cellules %}
+            <td style="text-align:center; padding:4px 3px;{% if c.conflit %} outline:2px solid #C0392B; outline-offset:-2px; border-radius:4px;{% endif %}{% if c.cp %} background:{{ '#cfe3f7' if c.cp >= 10 else ('#e3eefa' if c.cp >= 5 else '#f1f7fd') }};{% endif %}"
+                {% if c.titre %}title="{{ c.titre }}{% if c.conflit %} — congés simultanés avec un autre collaborateur{% endif %}"{% endif %}>
+              {% if c.cp %}<strong style="color:#1F4E79;">{{ c.cp }}</strong>{% endif %}
+              {% if c.autres %}<span style="color:#9C6500; font-size:0.88em;">{% if c.cp %} +{% endif %}{{ c.autres }}a</span>{% endif %}
+              {% if c.conflit %}<span style="color:#C0392B;"> ⚠</span>{% endif %}
+            </td>
+            {% endfor %}
+            <td style="text-align:center; padding:4px 8px; font-weight:bold; color:#1F4E79;">{{ l.total_cp or '' }}{% if l.total_autres %} <span style="color:#9C6500; font-weight:normal; font-size:0.88em;">+{{ l.total_autres }}a</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        <p class="meta" style="margin:8px 0 0;">Chiffres en <strong style="color:#1F4E79;">bleu</strong> = jours ouvrables de congés payés posés dans le mois (fond plus foncé = mois chargé) · <span style="color:#9C6500;">na</span> = jours d'autres absences (maladie, formation… — détail au survol) · <span style="color:#C0392B;">⚠</span> = congés payés qui se chevauchent entre deux collaborateurs (survoler pour le détail). Périodes réglables avec le sélecteur en haut de page.</p>
+      </div>
+    </details>
 
   {# ===================== ONGLET TOTAUX / FIN DE MOIS ===================== #}
   {% elif onglet == 'totaux' %}

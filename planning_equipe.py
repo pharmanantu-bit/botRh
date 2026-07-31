@@ -20,7 +20,8 @@ from signature_mail import SIGNATURE
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes,
                  charger_profils, sauvegarder_profils, couleur_collaborateur,
-                 collaborateur_actif, poste_de, POSTES, PALETTE_PLANNING)
+                 collaborateur_actif, poste_de, POSTES, PALETTE_PLANNING,
+                 _heures_hebdo)
 
 bp = Blueprint("planning_equipe", __name__)
 
@@ -1010,7 +1011,28 @@ def vue():
                     emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
                 fin = lundi + timedelta(days=6)
                 titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
+                # Compteur hebdo par collaborateur : heures EFFECTIVES de la
+                # semaine (trame + ponctuels + absences + fériés) vs heures
+                # contractuelles de la fiche (moyenne en cas de rotation A/B).
+                compteurs = []
+                for e in emp_sm:
+                    eff = 0
+                    for k in range(7):
+                        for c in creneaux_effectifs_jour(act_l, e["email"],
+                                                         lundi + timedelta(days=k),
+                                                         changements, absences):
+                            a, b = _minutes(c.get("debut")), _minutes(c.get("fin"))
+                            if a is not None and b is not None and b > a:
+                                eff += b - a
+                    contrat = round(_heures_hebdo(profils.get(e["email"], {})
+                                                  .get("heures_contractuelles_hebdo", "")) * 60)
+                    compteurs.append({"prenom": e["prenom"],
+                                      "couleur": couleurs.get(e["email"], "#888"),
+                                      "eff": _fmt_h(eff),
+                                      "contrat": _fmt_h(contrat) if contrat else "",
+                                      "sur": bool(contrat) and eff > contrat})
                 v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat(),
+                     "compteurs": compteurs,
                      "conformite": alertes_conformite(data, emp_sm, lundi,
                                                       changements, absences)}
                 if mode == "grille":
@@ -1469,10 +1491,51 @@ def vue():
         an_cour = periode_conges()[0].year
         cp_periodes = [{"an": a, "label": f"1 juin {a} → 31 mai {a + 1}",
                         "actif": a == p1.year} for a in range(an_cour, an_cour - 3, -1)]
+        # --- Vue annuelle : jours d'absence par collaborateur et par mois -----
+        # (jours ouvrables lun-sam hors fériés, comme le décompte CP). Conflit =
+        # jour où AU MOINS DEUX collaborateurs sont en congés payés en même temps.
+        cp_jours, autres_jours = {}, {}      # email -> {date: motif}
+        for a in absences:
+            em = a.get("email")
+            d1, d2 = _fr(a.get("debut", "")), _fr(a.get("fin", ""))
+            if em not in emap or not d1 or not d2:
+                continue
+            d = max(d1, p1)
+            while d <= min(d2, p2):
+                if d.isoweekday() <= 6 and not ferie_de(d):
+                    cible = cp_jours if a.get("motif") == "Congés payés" else autres_jours
+                    cible.setdefault(em, {})[d] = a.get("motif", "Absence")
+                d += timedelta(days=1)
+        cp_compte = {}
+        for jours in cp_jours.values():
+            for d in jours:
+                cp_compte[d] = cp_compte.get(d, 0) + 1
+        mois_annuel = [_ajoute_mois(p1, k) for k in range(12)]
+        annuel_lignes = []
+        for e in employes_base:
+            em, cellules = e["email"], []
+            for m0 in mois_annuel:
+                m_fin = m0.replace(day=calendar.monthrange(m0.year, m0.month)[1])
+                cp_m = [d for d in cp_jours.get(em, {}) if m0 <= d <= m_fin]
+                au_m = {d: mo for d, mo in autres_jours.get(em, {}).items() if m0 <= d <= m_fin}
+                titre = " · ".join(filter(None, [
+                    f"{len(cp_m)} j de congés payés" if cp_m else "",
+                    f"{len(au_m)} j autres ({', '.join(sorted(set(au_m.values())))})" if au_m else ""]))
+                cellules.append({"cp": len(cp_m), "autres": len(au_m),
+                                 "conflit": any(cp_compte.get(d, 0) >= 2 for d in cp_m),
+                                 "titre": titre})
+            annuel_lignes.append({"prenom": e["prenom"], "couleur": couleurs.get(em, "#888"),
+                                  "cellules": cellules,
+                                  "total_cp": len(cp_jours.get(em, {})),
+                                  "total_autres": len(autres_jours.get(em, {}))})
+        annuel_mois = [f"{MOIS_ABBR[m.month]} {m.year % 100:02d}" for m in mois_annuel]
+        annuel_conflits = sum(1 for n in cp_compte.values() if n >= 2)
         ctx.update(cp_lignes=cp_lignes, cp_periodes=cp_periodes, cp_annee=p1.year,
                    cp_label=f"1er juin {p1.year} → 31 mai {p2.year}",
                    cp_total_poses=round(sum(l["poses"] for l in cp_lignes), 1),
-                   cp_attente=cp_attente, cp_traitees=cp_traitees[:8])
+                   cp_attente=cp_attente, cp_traitees=cp_traitees[:8],
+                   annuel_mois=annuel_mois, annuel_lignes=annuel_lignes,
+                   annuel_conflits=annuel_conflits)
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "totaux":
