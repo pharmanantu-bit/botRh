@@ -162,7 +162,27 @@
     {% endfor %}
     <a href="/admin/mois">🏠 Relevés du mois</a>
   </div>
+  <script>
+    // Mobile : ramène l'onglet actif au centre de la barre balayable
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      document.querySelectorAll('.ongs a.actif, .ongs-sec a.actif').forEach(function (a) {
+        a.parentElement.scrollLeft = a.offsetLeft - (a.parentElement.clientWidth - a.offsetWidth) / 2;
+      });
+    }
+  </script>
+
+  {% if onglet == 'planning' and trame and nav %}
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+    <a href="{{ nav.aujourdhui }}" class="btn-mini {{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="background:#1F4E79;">Aujourd'hui</a>
+    <div class="{{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="display:flex; gap:4px; flex-wrap:wrap;">
+      {% for it in nav.boutons %}
+      <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
   {% if onglet_principal == 'planning' %}
+  {# Rangée sous-onglets + boutons ⊕, placée SOUS la barre des jours/semaines #}
   <div class="sec-row">
     <div class="ongs-sec">
       {% for cle, lib in sous_planning %}
@@ -188,25 +208,6 @@
       {% endif %}
     </div>
     {% endif %}
-  </div>
-  {% endif %}
-  <script>
-    // Mobile : ramène l'onglet actif au centre de la barre balayable
-    if (window.matchMedia('(max-width: 820px)').matches) {
-      document.querySelectorAll('.ongs a.actif, .ongs-sec a.actif').forEach(function (a) {
-        a.parentElement.scrollLeft = a.offsetLeft - (a.parentElement.clientWidth - a.offsetWidth) / 2;
-      });
-    }
-  </script>
-
-  {% if onglet == 'planning' and trame and nav %}
-  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-    <a href="{{ nav.aujourdhui }}" class="btn-mini {{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="background:#1F4E79;">Aujourd'hui</a>
-    <div class="{{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="display:flex; gap:4px; flex-wrap:wrap;">
-      {% for it in nav.boutons %}
-      <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
-      {% endfor %}
-    </div>
   </div>
   {% endif %}
 
