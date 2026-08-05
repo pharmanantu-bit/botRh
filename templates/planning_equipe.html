@@ -17,6 +17,11 @@
     .ongs a.actif { background: #1F4E79; color: white; }
     .ongs a:not(.actif):hover { background: #eef2f8; }
     /* Sous-onglets de Planning (Effectifs / Options) */
+    /* Rangée sous-onglets + actions : onglets (Planning/Effectifs/Options) à
+       gauche des boutons ⊕ Remplaçant / ⊕ Absences, sur la même ligne. */
+    .sec-row { display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap; margin: -8px 0 16px; padding-left: 6px; }
+    .sec-row .ongs-sec { margin: 0; padding-left: 0; }
+    .sec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .ongs-sec { display: flex; gap: 4px; flex-wrap: wrap; margin: -8px 0 16px; padding-left: 6px; }
     .ongs-sec a { padding: 5px 13px; text-decoration: none; color: #667; font-size: 0.82em; border-radius: 6px; border: 1px solid #dde3ed; }
     .ongs-sec a.actif { background: #2E75B6; color: white; border-color: #2E75B6; }
@@ -115,6 +120,9 @@
       .ongs::-webkit-scrollbar, .ongs-sec::-webkit-scrollbar { display: none; }
       .ongs a, .ongs-sec a { white-space: nowrap; flex: none; }
       .ongs a { padding: 11px 14px; }
+      /* Mobile : onglets en bandeau balayable pleine largeur, boutons ⊕ en dessous */
+      .sec-row { padding-left: 0; }
+      .sec-row .ongs-sec { flex: 0 0 100%; }
       /* Frise : colonne des noms réduite pour laisser la place aux barres */
       .fr-label, .fr-axis .sp { width: 92px; }
       .fr-label { font-size: 0.72em; }
@@ -155,10 +163,31 @@
     <a href="/admin/mois">🏠 Relevés du mois</a>
   </div>
   {% if onglet_principal == 'planning' %}
-  <div class="ongs-sec">
-    {% for cle, lib in sous_planning %}
-    <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet == cle else '' }}">{{ lib }}</a>
-    {% endfor %}
+  <div class="sec-row">
+    <div class="ongs-sec">
+      {% for cle, lib in sous_planning %}
+      <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet == cle else '' }}">{{ lib }}</a>
+      {% endfor %}
+    </div>
+    {% if onglet == 'planning' and trame and nav %}
+    <div class="sec-actions">
+      {% if ponctuel or abs_view %}
+      <a href="{{ url_for('.vue', onglet='planning', date=ref_date) }}" class="btn-mini" style="background:#888;">← Retour au planning</a>
+      {% else %}
+      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Remplaçant / horaires ponctuels</a>
+      <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absences prolongées</a>
+      <details style="align-self:center;">
+        <summary style="cursor:pointer; font-size:0.78em; color:#556;">ℹ️ À noter</summary>
+        <ul style="font-size:0.78em; color:#556; margin:6px 0 0 18px; line-height:1.6;">
+          <li>Pour un <strong>changement ponctuel</strong> (absence, échange, heures supplémentaires, formation…) : bouton « ⊕ Remplaçant / horaires ponctuels ».</li>
+          <li>Pour une <strong>absence prolongée</strong> : bouton « ⊕ Absences prolongées ».</li>
+          <li>Pour un <strong>changement régulier</strong> du planning : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage.</li>
+          <li>Pour les horaires d'un <strong>remplaçant</strong> : passe par « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable (Équipe &amp; RH) et ne pas être archivé.</li>
+        </ul>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
   <script>
@@ -178,23 +207,6 @@
       <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
       {% endfor %}
     </div>
-  </div>
-  <div style="margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap;">
-    {% if ponctuel or abs_view %}
-    <a href="{{ url_for('.vue', onglet='planning', date=ref_date) }}" class="btn-mini" style="background:#888;">← Retour au planning</a>
-    {% else %}
-    <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Remplaçant / horaires ponctuels</a>
-    <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absences prolongées</a>
-    <details style="align-self:center;">
-      <summary style="cursor:pointer; font-size:0.78em; color:#556;">ℹ️ À noter</summary>
-      <ul style="font-size:0.78em; color:#556; margin:6px 0 0 18px; line-height:1.6;">
-        <li>Pour un <strong>changement ponctuel</strong> (absence, échange, heures supplémentaires, formation…) : bouton « ⊕ Remplaçant / horaires ponctuels ».</li>
-        <li>Pour une <strong>absence prolongée</strong> : bouton « ⊕ Absences prolongées ».</li>
-        <li>Pour un <strong>changement régulier</strong> du planning : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage.</li>
-        <li>Pour les horaires d'un <strong>remplaçant</strong> : passe par « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable (Équipe &amp; RH) et ne pas être archivé.</li>
-      </ul>
-    </details>
-    {% endif %}
   </div>
   {% endif %}
 
