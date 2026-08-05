@@ -990,7 +990,7 @@ def admin_recherche():
                 employes_r.append({
                     "prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
                     "poste": poste_de(prof),
-                    "archive": bool(prof.get("archive")),
+                    "archive": prof.get("statut", "actif") == "archive",
                     "inactif": not collaborateur_actif(prof)})
         employes_r.sort(key=lambda x: (x["archive"], x["inactif"], x["nom"]))
         # Documents RH : libellé, nom de fichier d'origine ou type.
@@ -1208,6 +1208,13 @@ def admin_dashboard():
         return redirect(url_for("admin"))
 
     employes = charger_employes()
+    # Les collaborateurs ARCHIVÉS (ont quitté l'entreprise) ne figurent plus sur
+    # le tableau de bord — ni tableaux annuels, ni cumuls, ni classement. Leur
+    # historique reste consultable sur leur fiche et dans /admin/mois. Les
+    # supprimés ne sont déjà plus dans employees_live.
+    profils_db = charger_profils()
+    employes = [e for e in employes
+                if profils_db.get(e["email"], {}).get("statut", "actif") != "archive"]
     annee_courante = datetime.now().year
     annee = int(request.args.get("annee", annee_courante))
     mois_actuel = datetime.now().month if annee == annee_courante else 12
@@ -1296,7 +1303,7 @@ def admin_dashboard():
                 releves_jours[f"{p}|{m}"] = d["jours"]
 
     # Cockpit : indicateurs clés du moment (en-tête de la page d'accueil)
-    profils_ck = charger_profils()
+    profils_ck = profils_db
     actifs_ck = [e for e in employes if collaborateur_actif(profils_ck.get(e["email"], {}))]
     mc, ac = datetime.now().month, datetime.now().year
     reps_mc = charger_reponses(mc, ac)
