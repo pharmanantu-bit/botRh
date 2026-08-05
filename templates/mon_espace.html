@@ -73,7 +73,7 @@
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
         <form method="POST" action="/mon-espace/demandes/repondre" style="margin:0;">
           <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="accepter">
-          <button type="submit" class="btn-releve" style="margin:0; padding:8px 18px; background:#1F7A3D;" onclick="return confirm('{{ 'Accepter : ces congés seront ajoutés au planning.' if dm.type == 'conges' else 'Accepter : ce créneau sera ajouté à votre planning.' }}');">✔ Accepter</button>
+          <button type="submit" class="btn-releve" style="margin:0; padding:8px 18px; background:#1F7A3D;" onclick="return confirm('{{ 'Accepter : ces congés seront ajoutés au planning.' if dm.type == 'conges' else 'Accepter : le créneau sera ajouté à votre planning pour chaque jour demandé.' }}');">✔ Accepter</button>
         </form>
         <form method="POST" action="/mon-espace/demandes/repondre" style="margin:0; display:flex; gap:6px; flex-wrap:wrap;">
           <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="refuser">

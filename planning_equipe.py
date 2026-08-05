@@ -342,12 +342,18 @@ def sauvegarder_demandes_admin(lst):
 
 
 def _quand_demande_admin(dm):
-    """Libellé de la période demandée : « du 12/08 au 16/08/2026 » (congés) ou
-    « le 12/08/2026 de 18:00 à 20:00 » (heures supplémentaires)."""
+    """Libellé de la période demandée : « du 12/08 au 16/08/2026 » (congés),
+    « le 12/08/2026 de 18:00 à 20:00 » ou « les 12/08, 14/08 et 16/08/2026
+    de 18:00 à 20:00 » (heures supplémentaires, un ou plusieurs jours)."""
     try:
         if dm.get("type") == "heures_sup":
-            d = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
-            return f"le {d.strftime('%d/%m/%Y')} de {dm.get('h_debut', '')} à {dm.get('h_fin', '')}"
+            jours = dm.get("jours") or [dm.get("debut", "")]
+            ds = [datetime.strptime(j, "%Y-%m-%d").date() for j in jours]
+            creneau = f"de {dm.get('h_debut', '')} à {dm.get('h_fin', '')}"
+            if len(ds) == 1:
+                return f"le {ds[0].strftime('%d/%m/%Y')} {creneau}"
+            avant = ", ".join(d.strftime("%d/%m") for d in ds[:-1])
+            return f"les {avant} et {ds[-1].strftime('%d/%m/%Y')} {creneau}"
         d1 = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
         d2 = datetime.strptime(dm.get("fin", ""), "%Y-%m-%d").date()
         return f"du {d1.strftime('%d/%m')} au {d2.strftime('%d/%m/%Y')}"
@@ -2004,27 +2010,37 @@ def creer_demande_admin():
     if typ not in TYPES_DEMANDE_ADMIN or not any(
             e["email"] == email for e in charger_employes()):
         return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
-    try:
-        d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
-    except ValueError:
-        return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
     dm = {"id": uuid.uuid4().hex[:10], "email": email, "type": typ,
-          "debut": d1.isoformat(), "fin": d1.isoformat(),
           "commentaire": (request.form.get("commentaire") or "").strip()[:300],
           "statut": "en_attente", "lu_admin": True,
           "cree_le": datetime.now().strftime("%d/%m/%Y %H:%M")}
     if typ == "conges":
         try:
+            d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
             d2 = datetime.strptime(request.form.get("fin", ""), "%Y-%m-%d").date()
         except ValueError:
             return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
         if d2 < d1 or d1 < date.today():
             return redirect(url_for(".vue", onglet="demandes", msg="dem_dates"))
-        dm["fin"] = d2.isoformat()
-    else:                                            # heures supplémentaires
+        dm["debut"], dm["fin"] = d1.isoformat(), d2.isoformat()
+    else:
+        # Heures supplémentaires : UN OU PLUSIEURS jours (champs « jours »),
+        # un seul créneau commun — une seule demande, une seule réponse.
+        jours = []
+        for j in request.form.getlist("jours"):
+            try:
+                d = datetime.strptime(j, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if d not in jours:
+                jours.append(d)
+        jours.sort()
         hd, hf = _norm_hhmm(request.form.get("h_debut")), _norm_hhmm(request.form.get("h_fin"))
-        if not hd or not hf or _minutes(hf) <= _minutes(hd) or d1 < date.today():
+        if (not jours or not hd or not hf or _minutes(hf) <= _minutes(hd)
+                or jours[0] < date.today()):
             return redirect(url_for(".vue", onglet="demandes", msg="dem_dates"))
+        dm["jours"] = [d.isoformat() for d in jours]
+        dm["debut"], dm["fin"] = dm["jours"][0], dm["jours"][-1]
         dm["h_debut"], dm["h_fin"] = hd, hf
     demandes = charger_demandes_admin()
     demandes.append(dm)
@@ -2076,21 +2092,27 @@ def repondre_demande_admin():
             sauvegarder_absences(absences)
             dm["absence_id"] = aid
         else:                                        # heures supplémentaires
-            try:
-                d_obj = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
-            except ValueError:
-                d_obj = None
-            if d_obj:
-                chgs = charger_changements()
-                act = trame_active_pour(charger_trames(), d_obj)
+            # Un ponctuel par jour demandé (les anciennes demandes n'ont que debut).
+            chgs = charger_changements()
+            absences_l = charger_absences()
+            data_tr = charger_trames()
+            ecrit = False
+            for jiso in (dm.get("jours") or [dm.get("debut", "")]):
+                try:
+                    d_obj = datetime.strptime(jiso, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                act = trame_active_pour(data_tr, d_obj)
                 existants = [c for c in creneaux_effectifs_jour(
-                    act, emp["email"], d_obj, chgs, charger_absences())
+                    act, emp["email"], d_obj, chgs, absences_l)
                     if creneau_valide(c)] if act else []
                 creneaux = existants + [{"debut": dm.get("h_debut", ""), "fin": dm.get("h_fin", "")}]
                 creneaux.sort(key=lambda c: _minutes(c["debut"]) or 0)
                 chgs.setdefault(d_obj.isoformat(), {})[emp["email"]] = {
                     "motif": "Heures sup/récup/échanges", "creneaux": creneaux,
                     "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+                ecrit = True
+            if ecrit:
                 sauvegarder_changements(chgs)
         dm["statut"] = "acceptee"
     else:

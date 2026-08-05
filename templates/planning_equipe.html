@@ -1063,20 +1063,28 @@
               <option value="heures_sup">⏱️ Heures supplémentaires</option>
             </select>
           </label>
-          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
-            <span style="width:130px; flex:none;" id="demLblDebut">Du</span>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;" id="demLigneDebut">
+            <span style="width:130px; flex:none;">Du</span>
             <input type="date" name="debut" required min="{{ dem_auj }}" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
           </label>
           <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;" id="demLigneFin">
             <span style="width:130px; flex:none;">Au</span>
             <input type="date" name="fin" min="{{ dem_auj }}" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
           </label>
+          <div style="display:none; align-items:flex-start; gap:10px; font-size:0.86em; color:#555;" id="demLigneJours">
+            <span style="width:130px; flex:none; padding-top:8px;">Jour(s)</span>
+            <span style="flex:1; display:flex; flex-direction:column; gap:6px;" id="demJours">
+              <input type="date" name="jours" min="{{ dem_auj }}" style="padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <button type="button" onclick="demAjouterJour()" style="align-self:flex-start; background:#eef2f8; color:#1F4E79; border:1px solid #d4deeb; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:0.88em;">➕ Ajouter un jour</button>
+            </span>
+          </div>
           <label style="display:none; align-items:center; gap:10px; font-size:0.86em; color:#555;" id="demLigneHeures">
             <span style="width:130px; flex:none;">Créneau</span>
-            <span style="display:flex; gap:6px; align-items:center;">
+            <span style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <input type="text" name="h_debut" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="width:80px; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
               <span>–</span>
               <input type="text" name="h_fin" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="width:80px; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <span style="color:#889; font-size:0.9em;">identique chaque jour</span>
             </span>
           </label>
           <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
@@ -1090,12 +1098,24 @@
     <script>
       function demBascule() {
         var hs = document.getElementById('demType').value === 'heures_sup';
+        document.getElementById('demLigneDebut').style.display = hs ? 'none' : 'flex';
         document.getElementById('demLigneFin').style.display = hs ? 'none' : 'flex';
+        document.getElementById('demLigneJours').style.display = hs ? 'flex' : 'none';
         document.getElementById('demLigneHeures').style.display = hs ? 'flex' : 'none';
-        document.getElementById('demLblDebut').textContent = hs ? 'Le' : 'Du';
+        document.querySelector('[name=debut]').required = !hs;
         document.querySelector('[name=fin]').required = !hs;
+        document.querySelector('#demJours [name=jours]').required = hs;
         document.querySelector('[name=h_debut]').required = hs;
         document.querySelector('[name=h_fin]').required = hs;
+      }
+      function demAjouterJour() {
+        var zone = document.getElementById('demJours');
+        var modele = zone.querySelector('[name=jours]');
+        var copie = modele.cloneNode(false);
+        copie.value = '';
+        copie.required = false;      // seul le premier jour est obligatoire
+        zone.insertBefore(copie, zone.lastElementChild);
+        copie.focus();
       }
       demBascule();
     </script>
