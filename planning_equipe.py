@@ -92,7 +92,7 @@ CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
 MOTIFS = ["Non catégorisé", "Heures sup/récup/échanges", "Contrat ponctuel",
           "Repos compensatoire", "Garde", "Congés payés", "Arrêt maladie",
           "Accident du travail", "Congé maternité", "Congé parental",
-          "Formation", "Congé sans solde", "Autre"]
+          "Formation", "Congé sans solde", "Absence non justifiée", "Autre"]
 
 
 def charger_changements():
