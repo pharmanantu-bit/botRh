@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recherche</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 780px; margin: 0 auto; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 18px; }
+    .champ { display: flex; gap: 8px; margin-bottom: 22px; }
+    .champ input { flex: 1; padding: 11px 14px; border: 1px solid #ccd4e0; border-radius: 8px; font-size: 1em; }
+    .champ button { border: none; background: #1F4E79; color: white; border-radius: 8px; padding: 11px 20px; font-size: 0.95em; font-weight: bold; cursor: pointer; }
+    .champ button:hover { background: #163d60; }
+    .meta { color: #889; font-size: 0.85em; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; margin-bottom: 18px; overflow: hidden; }
+    .bloc h2 { color: #1F4E79; font-size: 0.98em; padding: 11px 14px; background: #f7f9fb; border-bottom: 1px solid #eef1f6; }
+    .ligne { display: flex; align-items: center; gap: 10px; padding: 11px 14px; text-decoration: none; color: inherit; }
+    .ligne + .ligne { border-top: 1px solid #f0f3f8; }
+    .ligne:hover { background: #f7f9fb; }
+    .ligne .nom { font-weight: bold; color: #1F4E79; }
+    .ligne .fin { margin-left: auto; color: #889; font-size: 0.82em; white-space: nowrap; }
+    .badge { display: inline-block; background: #eef2f8; color: #1F4E79; border-radius: 5px; padding: 1px 7px; font-size: 0.74em; }
+    .badge.att { background: #fdf6f5; color: #96524d; }
+    .vide { padding: 34px; text-align: center; color: #889; font-size: 0.92em; }
+    @media (max-width: 820px) {
+      body { padding: 8px; }
+      .carte { padding: 14px 10px; }
+      .ligne { flex-wrap: wrap; }
+      .ligne .fin { flex-basis: 100%; margin-left: 24px; }
+    }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <h1>🔎 Recherche</h1>
+
+  <form method="GET" action="/admin/recherche" class="champ">
+    <input type="search" name="q" value="{{ q }}" placeholder="Nom, e-mail, poste, document, candidat…" autofocus>
+    <button type="submit">Rechercher</button>
+  </form>
+
+  {% if trop_court %}
+  <div class="vide">Tape au moins 2 caractères.</div>
+  {% elif q and total == 0 %}
+  <div class="vide">Aucun résultat pour « {{ q }} ».<br><span class="meta">La recherche couvre les collaborateurs (nom, e-mail, poste), les candidats et les documents RH (libellé, fichier, type).</span></div>
+  {% elif not q %}
+  <div class="vide">Recherche dans toute l'administration : collaborateurs, candidats du recrutement et documents RH.</div>
+  {% endif %}
+
+  {% if employes %}
+  <div class="bloc">
+    <h2>👥 Collaborateurs <span class="meta" style="font-weight:normal;">— {{ employes|length }}</span></h2>
+    {% for e in employes %}
+    <a class="ligne" href="/admin/employe?email={{ e.email|urlencode }}">
+      <span class="nom">{{ e.prenom }} {{ e.nom|upper }}</span>
+      {% if e.poste %}<span class="badge">{{ e.poste }}</span>{% endif %}
+      {% if e.archive %}<span class="badge att">Archivé</span>
+      {% elif e.inactif %}<span class="badge att">⏸ Inactif</span>{% endif %}
+      <span class="fin">{{ e.email }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if candidats %}
+  <div class="bloc">
+    <h2>🧲 Candidats <span class="meta" style="font-weight:normal;">— {{ candidats|length }}</span></h2>
+    {% for c in candidats %}
+    <a class="ligne" href="/admin/recrutement/candidat?id={{ c.id|urlencode }}">
+      <span class="nom">{{ c.prenom }} {{ c.nom|upper }}</span>
+      {% if c.poste %}<span class="badge">{{ c.poste }}</span>{% endif %}
+      <span class="badge att">{{ c.statut }}</span>
+      <span class="fin">{{ c.date }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if documents %}
+  <div class="bloc">
+    <h2>📄 Documents RH <span class="meta" style="font-weight:normal;">— {{ documents|length }}</span></h2>
+    {% for d in documents %}
+    <a class="ligne" href="/admin/employe?email={{ d.email|urlencode }}#documents">
+      <span class="nom">{{ d.libelle }}</span>
+      {% if d.type %}<span class="badge">{{ d.type }}</span>{% endif %}
+      <span class="fin">{{ d.employe }}{% if d.date %} · {{ d.date }}{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

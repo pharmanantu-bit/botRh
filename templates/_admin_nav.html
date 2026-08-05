@@ -8,6 +8,9 @@
     <span class="nav-logo">💊 botRh</span>
     <button class="nav-close" onclick="toggleNav()" aria-label="Replier le menu" title="Replier">«</button>
   </div>
+  <form method="GET" action="/admin/recherche" class="nav-search">
+    <input type="search" name="q" placeholder="🔎 Rechercher…" aria-label="Recherche globale">
+  </form>
   <a href="/admin/dashboard">📊 <span>Tableau de bord</span></a>
   <a href="/admin/mois">🏠 <span>Relevés du mois</span></a>
   <a href="/admin/employes">👥 <span>Équipe & RH</span></a>
@@ -44,6 +47,13 @@
   }
   body.nav-collapse .nav-drawer { transform: translateX(-100%); }
   .nav-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15); margin-bottom: 10px; }
+  .nav-search { padding: 0 14px 12px; }
+  .nav-search input {
+    width: 100%; padding: 8px 12px; border: none; border-radius: 8px;
+    background: rgba(255,255,255,0.14); color: white; font-size: 0.88em;
+  }
+  .nav-search input::placeholder { color: #b9c9dc; }
+  .nav-search input:focus { outline: none; background: rgba(255,255,255,0.24); }
   .nav-logo { font-size: 1.15em; font-weight: bold; letter-spacing: 0.5px; }
   .nav-close { background: rgba(255,255,255,0.12); border: none; color: white; font-size: 1.2em; cursor: pointer; line-height: 1; width: 28px; height: 28px; border-radius: 6px; }
   .nav-close:hover { background: rgba(255,255,255,0.25); }

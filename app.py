@@ -963,6 +963,64 @@ def humaniser_taille(octets):
         octets /= 1024
 
 
+def _norm_recherche(s):
+    """Minuscules sans accents, pour une recherche tolérante (Héloïse = heloise)."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", (s or "").lower())
+                   if unicodedata.category(c) != "Mn")
+
+
+@app.route("/admin/recherche")
+def admin_recherche():
+    """Recherche globale (barre latérale) : employés, candidats, documents RH.
+    Lecture seule, insensible à la casse et aux accents, 2 caractères minimum."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    q = (request.args.get("q") or "").strip()
+    qn = _norm_recherche(q)
+    employes_r, candidats_r, documents_r = [], [], []
+    if len(qn) >= 2:
+        profils = charger_profils()
+        emap = {}
+        for e in charger_employes():
+            prof = profils.get(e["email"], {})
+            emap[e["email"]] = e
+            if qn in _norm_recherche(" ".join(
+                    [e["prenom"], e["nom"], e["email"], poste_de(prof)])):
+                employes_r.append({
+                    "prenom": e["prenom"], "nom": e["nom"], "email": e["email"],
+                    "poste": poste_de(prof),
+                    "archive": bool(prof.get("archive")),
+                    "inactif": not collaborateur_actif(prof)})
+        employes_r.sort(key=lambda x: (x["archive"], x["inactif"], x["nom"]))
+        # Documents RH : libellé, nom de fichier d'origine ou type.
+        for email, docs in charger_docs_index().items():
+            e = emap.get(email)
+            for d in docs:
+                if qn in _norm_recherche(" ".join(
+                        [d.get("libelle", ""), d.get("nom_original", ""), d.get("type", "")])):
+                    documents_r.append({
+                        "libelle": d.get("libelle") or d.get("nom_original", "?"),
+                        "type": d.get("type", ""), "date": d.get("date_ajout", ""),
+                        "email": email,
+                        "employe": f'{e["prenom"]} {e["nom"]}' if e else email})
+        documents_r.sort(key=lambda x: x["employe"])
+        # Candidats (le module recrutement est déjà chargé : import sans cycle).
+        from recrutement import charger_candidats
+        for cid, c in charger_candidats().items():
+            if qn in _norm_recherche(" ".join(
+                    [c.get("prenom", ""), c.get("nom", ""), c.get("email", ""),
+                     c.get("poste_vise", "")])):
+                candidats_r.append({
+                    "id": cid, "prenom": c.get("prenom", ""), "nom": c.get("nom", ""),
+                    "poste": c.get("poste_vise", ""), "statut": c.get("statut", "Reçu"),
+                    "date": c.get("date_ajout", "")})
+        candidats_r.sort(key=lambda x: x.get("date", ""), reverse=True)
+    return render_template("admin_recherche.html", q=q, trop_court=bool(q) and len(qn) < 2,
+                           employes=employes_r, candidats=candidats_r, documents=documents_r,
+                           total=len(employes_r) + len(candidats_r) + len(documents_r))
+
+
 @app.route("/admin/employes", methods=["GET", "POST"])
 def admin_employes():
     if not session.get("admin"):
