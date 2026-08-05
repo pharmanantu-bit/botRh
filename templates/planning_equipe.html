@@ -16,6 +16,8 @@
     .ongs a { padding: 9px 16px; text-decoration: none; color: #557; font-size: 0.9em; border-radius: 8px 8px 0 0; font-weight: bold; }
     .ongs a.actif { background: #1F4E79; color: white; }
     .ongs a:not(.actif):hover { background: #eef2f8; }
+    /* « Mes demandes » : séparé du groupe, poussé tout à droite de la barre */
+    .ongs a.ong-droite { margin-left: auto; border-left: 2px solid #dde3ed; }
     /* Sous-onglets de Planning (Effectifs / Options) */
     /* Rangée sous-onglets + actions : onglets (Planning/Effectifs/Options) à
        gauche des boutons ⊕ Remplaçant / ⊕ Absences, sur la même ligne. */
@@ -163,7 +165,7 @@
 
   <div class="ongs">
     {% for cle, lib in onglets %}
-    <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet_principal == cle else '' }}">{{ lib }}</a>
+    <a href="{{ url_for('.vue', onglet=cle, sem=sem, trame=tid) }}" class="{{ 'actif' if onglet_principal == cle else '' }}{{ ' ong-droite' if cle == 'demandes' else '' }}">{{ '📨 ' if cle == 'demandes' else '' }}{{ lib }}</a>
     {% endfor %}
     <a href="/admin/mois">🏠 Relevés du mois</a>
   </div>
