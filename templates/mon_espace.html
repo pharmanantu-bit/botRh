@@ -55,6 +55,40 @@
   </div>
   {% endif %}
 
+  {% set dem_attente_emp = demandes_pharma | selectattr('statut', 'equalto', 'en_attente') | list %}
+  {% if demandes_pharma %}
+  <div id="demandes" style="border:1px solid {{ '#f0dc9a' if dem_attente_emp else '#dde3ed' }}; border-radius:10px; padding:16px 20px; margin-bottom:22px; background:{{ '#FFFBEF' if dem_attente_emp else '#f9fbfd' }};">
+    <h2 style="color:#1F4E79; font-size:1.05em; margin-bottom:4px;">🔔 Demandes de la pharmacie{% if dem_attente_emp %} <span style="background:#C0392B; color:white; border-radius:10px; padding:1px 9px; font-size:0.72em; vertical-align:middle;">{{ dem_attente_emp|length }}</span>{% endif %}</h2>
+    <p style="color:#888; font-size:0.78em; margin-bottom:12px;">La pharmacie vous propose des congés ou vous demande des heures supplémentaires — répondez directement ici.</p>
+
+    {% if dem_msg == 'repondu' %}<div style="background:#d8f0de; border:1px solid #aadab8; color:#276221; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:0.9em;">✓ Votre réponse a bien été transmise à la pharmacie.</div>{% endif %}
+    {% if dem_msg == 'deja' %}<div style="background:#eef1f5; border:1px solid #d8dee6; color:#555; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:0.9em;">Cette demande a déjà été traitée (ou n'existe plus).</div>{% endif %}
+
+    {% for dm in demandes_pharma %}
+    <div style="padding:10px 0; font-size:0.9em;{% if not loop.first %} border-top:1px solid #e8edf4;{% endif %}">
+      <div><strong>{{ '🏖️' if dm.type == 'conges' else '⏱️' }} {{ dm.type_label }}</strong> {{ dm.quand }}
+        {% if dm.commentaire %}<br><span style="color:#888;">« {{ dm.commentaire }} »</span>{% endif %}
+        <br><span style="color:#888; font-size:0.86em;">Envoyée le {{ dm.cree_le }}</span></div>
+      {% if dm.statut == 'en_attente' %}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+        <form method="POST" action="/mon-espace/demandes/repondre" style="margin:0;">
+          <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="accepter">
+          <button type="submit" class="btn-releve" style="margin:0; padding:8px 18px; background:#1F7A3D;" onclick="return confirm('{{ 'Accepter : ces congés seront ajoutés au planning.' if dm.type == 'conges' else 'Accepter : ce créneau sera ajouté à votre planning.' }}');">✔ Accepter</button>
+        </form>
+        <form method="POST" action="/mon-espace/demandes/repondre" style="margin:0; display:flex; gap:6px; flex-wrap:wrap;">
+          <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="id" value="{{ dm.id }}"><input type="hidden" name="action" value="refuser">
+          <input type="text" name="commentaire" maxlength="300" placeholder="commentaire (optionnel)" style="padding:8px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.9em;">
+          <button type="submit" class="btn-releve" style="margin:0; padding:8px 18px; background:#C0392B;">✖ Refuser</button>
+        </form>
+      </div>
+      {% elif dm.statut == 'acceptee' %}<div style="margin-top:6px;"><span class="badge-pos">✓ Vous avez accepté{% if dm.traite_le %} le {{ dm.traite_le }}{% endif %}</span></div>
+      {% elif dm.statut == 'refusee' %}<div style="margin-top:6px;"><span class="badge-neg">✖ Vous avez refusé{% if dm.traite_le %} le {{ dm.traite_le }}{% endif %}</span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if cp %}
   <div id="conges" style="border:1px solid #dde3ed; border-radius:10px; padding:16px 20px; margin-bottom:22px; background:#f9fbfd;">
     <h2 style="color:#1F4E79; font-size:1.05em; margin-bottom:4px;">🏖️ Mes congés payés</h2>

@@ -155,6 +155,10 @@
   {% if msg == 'trame_protegee' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Impossible de supprimer une trame <strong>activée</strong> : elle sert à l'historique des plannings. Désactive-la d'abord si tu veux vraiment la supprimer.</div>{% endif %}
   {% if msg == 'trame_suppr' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Trame supprimée définitivement.</div>{% endif %}
   {% if msg == 'options_ok' %}<div class="msg">Options enregistrées.</div>{% endif %}
+  {% if msg == 'dem_envoyee' %}<div class="msg">Demande envoyée — le collaborateur la verra dans son Mon espace (aucun e-mail envoyé).</div>{% endif %}
+  {% if msg == 'dem_annulee' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Demande annulée.</div>{% endif %}
+  {% if msg == 'dem_dates' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Dates ou horaires invalides (la demande doit être à venir, fin après début).</div>{% endif %}
+  {% if msg == 'dem_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Demande incomplète — choisis un collaborateur et un type.</div>{% endif %}
 
   <div class="ongs">
     {% for cle, lib in onglets %}
@@ -1123,6 +1127,101 @@
     </details>
 
   {# ===================== ONGLET TOTAUX / FIN DE MOIS ===================== #}
+  {% elif onglet == 'demandes' %}
+    <h2 style="margin:0 0 4px; font-size:1.1em;">📨 Mes demandes</h2>
+    <p class="meta" style="margin:0 0 14px;">Propose des <strong>congés</strong> ou demande des <strong>heures supplémentaires</strong> à un collaborateur : il voit la demande dans son <strong>Mon espace</strong> (aucun e-mail) et répond Accepter / Refuser. Congés acceptés → l'absence est créée au planning ; heures sup acceptées → le créneau est ajouté au jour concerné.</p>
+
+    <div style="border:1px solid #dde3ed; border-radius:10px; padding:16px; margin-bottom:18px; max-width:620px;">
+      <h3 style="margin:0 0 12px; font-size:0.95em; color:#1F4E79;">Nouvelle demande</h3>
+      <form method="POST" action="{{ url_for('.creer_demande_admin') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:130px; flex:none;">Collaborateur</span>
+            <select name="email" required style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <option value="">— Collaborateur —</option>
+              {% for c in dem_collabs %}<option value="{{ c.email }}">{{ c.prenom }} {{ c.nom }}</option>{% endfor %}
+            </select>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:130px; flex:none;">Type</span>
+            <select name="type" id="demType" onchange="demBascule()" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <option value="conges">🏖️ Congés</option>
+              <option value="heures_sup">⏱️ Heures supplémentaires</option>
+            </select>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:130px; flex:none;" id="demLblDebut">Du</span>
+            <input type="date" name="debut" required min="{{ dem_auj }}" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;" id="demLigneFin">
+            <span style="width:130px; flex:none;">Au</span>
+            <input type="date" name="fin" min="{{ dem_auj }}" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+          <label style="display:none; align-items:center; gap:10px; font-size:0.86em; color:#555;" id="demLigneHeures">
+            <span style="width:130px; flex:none;">Créneau</span>
+            <span style="display:flex; gap:6px; align-items:center;">
+              <input type="text" name="h_debut" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="width:80px; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <span>–</span>
+              <input type="text" name="h_fin" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="width:80px; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+            </span>
+          </label>
+          <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
+            <span style="width:130px; flex:none;">Commentaire</span>
+            <input type="text" name="commentaire" placeholder="ex : renfort samedi matin, fermeture annuelle…" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+          </label>
+        </div>
+        <button class="btn" type="submit" style="margin-top:14px;">📨 Envoyer la demande</button>
+      </form>
+    </div>
+    <script>
+      function demBascule() {
+        var hs = document.getElementById('demType').value === 'heures_sup';
+        document.getElementById('demLigneFin').style.display = hs ? 'none' : 'flex';
+        document.getElementById('demLigneHeures').style.display = hs ? 'flex' : 'none';
+        document.getElementById('demLblDebut').textContent = hs ? 'Le' : 'Du';
+        document.querySelector('[name=fin]').required = !hs;
+        document.querySelector('[name=h_debut]').required = hs;
+        document.querySelector('[name=h_fin]').required = hs;
+      }
+      demBascule();
+    </script>
+
+    {% if dem_attente %}
+    <div style="border:1px solid #f0dc9a; background:#FFFBEF; border-radius:10px; padding:12px 14px; margin-bottom:16px;">
+      <h3 style="margin:0 0 8px; font-size:0.95em; color:#7a5b00;">⏳ En attente de réponse ({{ dem_attente|length }})</h3>
+      {% for dm in dem_attente %}
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0;{% if not loop.first %} border-top:1px solid #f2e7c6;{% endif %}">
+        <span style="min-width:150px;"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ dm.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ dm.prenom }}</strong></span>
+        <span style="flex:1; min-width:220px; font-size:0.9em;">{{ dm.type_label }} {{ dm.quand }}
+          {% if dm.commentaire %}<br><span class="meta">« {{ dm.commentaire }} »</span>{% endif %}
+          <br><span class="meta">Envoyée le {{ dm.cree_le }}</span></span>
+        <form method="POST" action="{{ url_for('.annuler_demande_admin') }}" style="margin:0;" onsubmit="return confirm('Annuler cette demande ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="id" value="{{ dm.id }}">
+          <button type="submit" class="btn-mini rouge">Annuler</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if dem_historique %}
+    <h3 style="font-size:0.95em; margin:0 0 8px; color:#1F4E79;">Réponses et historique</h3>
+    <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:760px;">
+      {% for dm in dem_historique %}
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:9px 12px;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">
+        <span style="min-width:150px;"><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ dm.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ dm.prenom }}</strong></span>
+        <span style="flex:1; min-width:220px; font-size:0.88em;">{{ dm.type_label }} {{ dm.quand }}
+          {% if dm.reponse %}<br><span class="meta">Réponse : « {{ dm.reponse }} »</span>{% endif %}</span>
+        <span style="font-size:0.84em; font-weight:bold; color:{{ '#1F7A3D' if dm.statut == 'acceptee' else ('#C0392B' if dm.statut == 'refusee' else '#889') }};">{{ dm.statut_label }}{% if dm.traite_le %} <span class="meta" style="font-weight:normal;">le {{ dm.traite_le }}</span>{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif not dem_attente %}
+    <p class="meta">Aucune demande envoyée pour l'instant.</p>
+    {% endif %}
+
   {% elif onglet == 'totaux' %}
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
       <h2 style="margin:0; font-size:1.1em;">Totaux {{ tot_mois_label }}

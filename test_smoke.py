@@ -68,6 +68,7 @@ routes_admin = [
     "/admin/planning-equipe?onglet=effectifs",
     "/admin/planning-equipe?onglet=changements",
     "/admin/planning-equipe?onglet=conges",
+    "/admin/planning-equipe?onglet=demandes",
     f"/admin/planning-equipe?onglet=conges&periode={annee}",
     "/admin/planning-equipe?onglet=effectifs&date=2026-07-13",
     "/admin/planning-equipe?onglet=totaux",

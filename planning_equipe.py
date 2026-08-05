@@ -321,6 +321,40 @@ def sauvegarder_demandes_cp(lst):
     _ecrire_json(DEMANDES_CP_FILE, lst)
 
 
+# --- Demandes de la pharmacie (admin → collaborateur, notification in-app) ----
+# La pharmacie propose des congés ou demande des heures supplémentaires ; le
+# collaborateur voit la demande dans son Mon espace (aucun e-mail) et répond.
+DEMANDES_ADMIN_FILE = os.path.join(BASE_DIR, "planning_demandes_admin.json")
+TYPES_DEMANDE_ADMIN = {"conges": "Congés", "heures_sup": "Heures supplémentaires"}
+STATUTS_DEMANDE_ADMIN = {"en_attente": "En attente de réponse", "acceptee": "Acceptée",
+                         "refusee": "Refusée", "annulee": "Annulée"}
+
+
+def charger_demandes_admin():
+    """[{id, email, type (conges|heures_sup), debut, fin, h_debut, h_fin,
+    commentaire, statut, cree_le, traite_le, reponse, lu_admin}]."""
+    d = _lire_json(DEMANDES_ADMIN_FILE, [])
+    return d if isinstance(d, list) else []
+
+
+def sauvegarder_demandes_admin(lst):
+    _ecrire_json(DEMANDES_ADMIN_FILE, lst)
+
+
+def _quand_demande_admin(dm):
+    """Libellé de la période demandée : « du 12/08 au 16/08/2026 » (congés) ou
+    « le 12/08/2026 de 18:00 à 20:00 » (heures supplémentaires)."""
+    try:
+        if dm.get("type") == "heures_sup":
+            d = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
+            return f"le {d.strftime('%d/%m/%Y')} de {dm.get('h_debut', '')} à {dm.get('h_fin', '')}"
+        d1 = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
+        d2 = datetime.strptime(dm.get("fin", ""), "%Y-%m-%d").date()
+        return f"du {d1.strftime('%d/%m')} au {d2.strftime('%d/%m/%Y')}"
+    except ValueError:
+        return dm.get("debut", "")
+
+
 def _cle_creneaux(creneaux):
     """Signature normalisée d'une liste de créneaux (ordre indifférent), pour comparer."""
     return sorted((c.get("debut", ""), c.get("fin", "")) for c in (creneaux or [])
@@ -841,7 +875,7 @@ def _frise_solo(trame, sem, email, couleur):
 
 ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
            ("changements", "Changements"), ("conges", "Congés"),
-           ("totaux", "Totaux / Fin de mois")]
+           ("demandes", "Mes demandes"), ("totaux", "Totaux / Fin de mois")]
 # Effectifs & Options : sous-onglets internes de « Planning ».
 SOUS_PLANNING = [("planning", "Planning"), ("effectifs", "Effectifs"), ("options", "Options")]
 
@@ -1545,6 +1579,35 @@ def vue():
                    annuel_conflits=annuel_conflits)
         return render_template("planning_equipe.html", **ctx)
 
+    if onglet == "demandes":
+        # « Mes demandes » : la pharmacie propose des congés ou demande des heures
+        # supplémentaires à un collaborateur ; il répond depuis son Mon espace
+        # (notification in-app, aucun e-mail). Afficher l'onglet marque les
+        # réponses comme lues (efface la notification du tableau de bord).
+        demandes = charger_demandes_admin()
+        lues = False
+        for dm in demandes:
+            if dm.get("statut") in ("acceptee", "refusee") and not dm.get("lu_admin"):
+                dm["lu_admin"] = True
+                lues = True
+        if lues:
+            sauvegarder_demandes_admin(demandes)
+        dem_attente, dem_historique = [], []
+        for dm in sorted(demandes, key=lambda x: x.get("cree_le", ""), reverse=True):
+            em = dm.get("email", "")
+            info = {**dm,
+                    "prenom": emap[em]["prenom"] if em in emap else em,
+                    "couleur": couleurs.get(em, "#888"),
+                    "type_label": TYPES_DEMANDE_ADMIN.get(dm.get("type", ""), dm.get("type", "")),
+                    "statut_label": STATUTS_DEMANDE_ADMIN.get(dm.get("statut", ""), dm.get("statut", "")),
+                    "quand": _quand_demande_admin(dm)}
+            (dem_attente if dm.get("statut") == "en_attente" else dem_historique).append(info)
+        ctx.update(dem_attente=dem_attente, dem_historique=dem_historique[:12],
+                   dem_collabs=[{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"]}
+                                for e in employes_base],
+                   dem_auj=date.today().isoformat())
+        return render_template("planning_equipe.html", **ctx)
+
     if onglet == "totaux":
         from app import charger_reponses, reponse_de, MOIS_FR, periode_paie
         changements = charger_changements()
@@ -1933,6 +1996,115 @@ def annuler_demande_conges():
             sauvegarder_demandes_cp(demandes)
             break
     return redirect(f"/mon-espace?token={token}&prenom={emp['prenom']}&cp=annulee#conges")
+
+
+@bp.route("/admin/planning-equipe/demandes/creer", methods=["POST"])
+def creer_demande_admin():
+    """La pharmacie envoie une demande (congés ou heures sup) à un collaborateur.
+    Il la verra dans son Mon espace — aucun e-mail n'est envoyé."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    typ = request.form.get("type", "")
+    if typ not in TYPES_DEMANDE_ADMIN or not any(
+            e["email"] == email for e in charger_employes()):
+        return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
+    try:
+        d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
+    dm = {"id": uuid.uuid4().hex[:10], "email": email, "type": typ,
+          "debut": d1.isoformat(), "fin": d1.isoformat(),
+          "commentaire": (request.form.get("commentaire") or "").strip()[:300],
+          "statut": "en_attente", "lu_admin": True,
+          "cree_le": datetime.now().strftime("%d/%m/%Y %H:%M")}
+    if typ == "conges":
+        try:
+            d2 = datetime.strptime(request.form.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            return redirect(url_for(".vue", onglet="demandes", msg="dem_invalide"))
+        if d2 < d1 or d1 < date.today():
+            return redirect(url_for(".vue", onglet="demandes", msg="dem_dates"))
+        dm["fin"] = d2.isoformat()
+    else:                                            # heures supplémentaires
+        hd, hf = _norm_hhmm(request.form.get("h_debut")), _norm_hhmm(request.form.get("h_fin"))
+        if not hd or not hf or _minutes(hf) <= _minutes(hd) or d1 < date.today():
+            return redirect(url_for(".vue", onglet="demandes", msg="dem_dates"))
+        dm["h_debut"], dm["h_fin"] = hd, hf
+    demandes = charger_demandes_admin()
+    demandes.append(dm)
+    sauvegarder_demandes_admin(demandes)
+    return redirect(url_for(".vue", onglet="demandes", msg="dem_envoyee"))
+
+
+@bp.route("/admin/planning-equipe/demandes/annuler", methods=["POST"])
+def annuler_demande_admin():
+    """Annule une demande tant que le collaborateur n'a pas répondu."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    demandes = charger_demandes_admin()
+    for dm in demandes:
+        if dm.get("id") == request.form.get("id", "") and dm.get("statut") == "en_attente":
+            dm["statut"] = "annulee"
+            dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            sauvegarder_demandes_admin(demandes)
+            break
+    return redirect(url_for(".vue", onglet="demandes", msg="dem_annulee"))
+
+
+@bp.route("/mon-espace/demandes/repondre", methods=["POST"])
+def repondre_demande_admin():
+    """Le collaborateur accepte ou refuse une demande de la pharmacie (jeton
+    signé, pas de session). Accepter des congés = l'absence « Congés payés »
+    est créée au planning ; accepter des heures sup = un horaire ponctuel
+    « Heures sup/récup/échanges » ajoute le créneau au jour concerné."""
+    from tokens import resoudre_employe
+    token = request.form.get("token", "")
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(403)
+    retour = f"/mon-espace?token={token}&prenom={emp['prenom']}"
+    action = request.form.get("action", "")
+    demandes = charger_demandes_admin()
+    dm = next((x for x in demandes if x.get("id") == request.form.get("id", "")
+               and x.get("email") == emp["email"]), None)
+    if not dm or dm.get("statut") != "en_attente" or action not in ("accepter", "refuser"):
+        return redirect(retour + "&dem=deja#demandes")
+    if action == "accepter":
+        if dm.get("type") == "conges":
+            absences = charger_absences()
+            aid = datetime.now().strftime("%Y%m%d%H%M%S%f")
+            absences.append({"id": aid, "email": emp["email"],
+                             "debut": dm.get("debut", ""), "fin": dm.get("fin", ""),
+                             "motif": "Congés payés",
+                             "commentaire": (dm.get("commentaire") or "Proposé par la pharmacie").strip()})
+            sauvegarder_absences(absences)
+            dm["absence_id"] = aid
+        else:                                        # heures supplémentaires
+            try:
+                d_obj = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
+            except ValueError:
+                d_obj = None
+            if d_obj:
+                chgs = charger_changements()
+                act = trame_active_pour(charger_trames(), d_obj)
+                existants = [c for c in creneaux_effectifs_jour(
+                    act, emp["email"], d_obj, chgs, charger_absences())
+                    if creneau_valide(c)] if act else []
+                creneaux = existants + [{"debut": dm.get("h_debut", ""), "fin": dm.get("h_fin", "")}]
+                creneaux.sort(key=lambda c: _minutes(c["debut"]) or 0)
+                chgs.setdefault(d_obj.isoformat(), {})[emp["email"]] = {
+                    "motif": "Heures sup/récup/échanges", "creneaux": creneaux,
+                    "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+                sauvegarder_changements(chgs)
+        dm["statut"] = "acceptee"
+    else:
+        dm["statut"] = "refusee"
+    dm["reponse"] = (request.form.get("commentaire") or "").strip()[:300]
+    dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    dm["lu_admin"] = False    # notification « réponse reçue » côté pharmacie
+    sauvegarder_demandes_admin(demandes)
+    return redirect(retour + "&dem=repondu#demandes")
 
 
 @bp.route("/admin/planning-equipe/changement", methods=["POST"])

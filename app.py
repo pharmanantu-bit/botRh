@@ -49,7 +49,8 @@ app.permanent_session_lifetime = timedelta(hours=8)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
 CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push",
                # Formulaires employés authentifiés par jeton signé (pas de session).
-               "/mon-espace/conges/demander", "/mon-espace/conges/annuler"}
+               "/mon-espace/conges/demander", "/mon-espace/conges/annuler",
+               "/mon-espace/demandes/repondre"}
 
 def csrf_token():
     tok = session.get("_csrf_token")
@@ -1184,6 +1185,23 @@ def mon_espace():
                                                                      dm.get("statut", ""))})
         demandes_cp = demandes_cp[:10]
 
+    # Demandes de la pharmacie (congés proposés / heures sup) → notification
+    # in-app : à répondre directement ici, aucun e-mail.
+    demandes_pharma = []
+    if emp:
+        from planning_equipe import (charger_demandes_admin, TYPES_DEMANDE_ADMIN,
+                                     STATUTS_DEMANDE_ADMIN, _quand_demande_admin)
+        for dm in sorted(charger_demandes_admin(), key=lambda x: x.get("cree_le", ""),
+                         reverse=True):
+            if dm.get("email") != emp["email"] or dm.get("statut") == "annulee":
+                continue
+            demandes_pharma.append({
+                **dm,
+                "type_label": TYPES_DEMANDE_ADMIN.get(dm.get("type", ""), dm.get("type", "")),
+                "statut_label": STATUTS_DEMANDE_ADMIN.get(dm.get("statut", ""), dm.get("statut", "")),
+                "quand": _quand_demande_admin(dm)})
+        demandes_pharma = demandes_pharma[:10]
+
     return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique,
                            rempli_courant=rempli_courant, modifiable=modifiable,
                            jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
@@ -1191,6 +1209,8 @@ def mon_espace():
                            lien_releve=f"/releve?token={token}&prenom={prenom}",
                            cp=cp, demandes_cp=demandes_cp,
                            cp_msg=request.args.get("cp", ""),
+                           demandes_pharma=demandes_pharma,
+                           dem_msg=request.args.get("dem", ""),
                            auj=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -1358,6 +1378,24 @@ def admin_dashboard():
             "niveau": "orange", "icone": "🏖️",
             "texte": f"{demandes_cp_attente} demande{'s' if demandes_cp_attente > 1 else ''} de congés en attente",
             "url": "/admin/planning-equipe?onglet=conges", "action": "Accepter / refuser"})
+
+    # 2 bis) Réponses des collaborateurs aux demandes de la pharmacie (onglet
+    # « Mes demandes » du planning) — non lues tant que l'onglet n'est pas ouvert.
+    try:
+        from planning_equipe import charger_demandes_admin
+        reponses_dem = [d for d in charger_demandes_admin()
+                        if d.get("statut") in ("acceptee", "refusee") and not d.get("lu_admin")]
+        if reponses_dem:
+            nb_ok = sum(1 for d in reponses_dem if d["statut"] == "acceptee")
+            nb_ko = len(reponses_dem) - nb_ok
+            det = " / ".join(filter(None, [f"{nb_ok} acceptée{'s' if nb_ok > 1 else ''}" if nb_ok else "",
+                                           f"{nb_ko} refusée{'s' if nb_ko > 1 else ''}" if nb_ko else ""]))
+            a_traiter.append({
+                "niveau": "bleu", "icone": "🔔",
+                "texte": f"{len(reponses_dem)} réponse{'s' if len(reponses_dem) > 1 else ''} à tes demandes ({det})",
+                "url": "/admin/planning-equipe?onglet=demandes", "action": "Voir les réponses"})
+    except Exception:
+        app.logger.exception("À traiter : lecture demandes pharmacie échouée (non bloquant)")
 
     # 3) Alertes RH (échéances contrat/essai/visite, documents expirés) —
     #    une ligne par collaborateur concerné, vers sa fiche.
