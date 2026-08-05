@@ -92,27 +92,6 @@
     .jtot { color: #889; font-size: 0.92em; }
     .stub { padding: 40px; text-align: center; color: #889; }
 
-    /* ===== Vue JOUR (mobile uniquement) ===== */
-    .vjour { display: none; }
-    .vjour-nav { display: flex; gap: 8px; margin: 0 0 10px; }
-    .vjour-nav button { flex: 1; border: none; border-radius: 8px; padding: 11px 0; font-size: 0.95em; cursor: pointer; background: #eef2f8; color: #1F4E79; font-weight: bold; }
-    .vjour-nav button.fleche { flex: none; width: 54px; font-size: 1.15em; }
-    .vjour-card { border: 1px solid #dde3ed; border-radius: 10px; background: #fff; overflow: hidden; }
-    .vjour-card.auj { border: 2px solid #C0392B; }
-    .vjour-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 12px; background: #f7f9fb; border-bottom: 1px solid #eef1f6; }
-    .vjour-card.auj .vjour-tete { background: #fdf3f2; }
-    .vjour-tete h3 { margin: 0; font-size: 1em; color: #1F4E79; }
-    .vjour-card.auj .vjour-tete h3 { color: #C0392B; }
-    .vjour-ligne { display: flex; align-items: center; gap: 9px; padding: 10px 12px; font-size: 0.95em; }
-    .vjour-ligne + .vjour-ligne { border-top: 1px solid #f0f3f8; }
-    .vjour-ligne .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-    .vjour-nom { font-weight: bold; color: #1F4E79; min-width: 86px; }
-    .vjour-h { flex: 1; font-variant-numeric: tabular-nums; color: #334; }
-    .vjour-tot { color: #889; font-size: 0.86em; white-space: nowrap; }
-    .vjour-abs { color: #96524d; background: #fdf6f5; }
-    .vjour-vide { padding: 18px 12px; color: #889; font-size: 0.9em; text-align: center; }
-    .vjour-motif { display: inline-block; background: #eef2f8; color: #1F4E79; border-radius: 5px; padding: 1px 7px; font-size: 0.76em; }
-
     /* ===== Mobile ===== */
     @media (max-width: 820px) {
       body { padding: 8px; }
@@ -129,9 +108,6 @@
       .fr-label, .fr-axis .sp { width: 92px; }
       .fr-label { font-size: 0.72em; }
       .fr-tot { width: 42px; }
-      /* Vue JOUR : remplace les vues bureau (grille/texte/tableau) sur mobile */
-      .vjour { display: block; }
-      .vue-bureau, .masq-vjour { display: none !important; }
     }
   </style>
 </head>
@@ -180,8 +156,8 @@
 
   {% if onglet == 'planning' and trame and nav %}
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-    <a href="{{ nav.aujourdhui }}" class="btn-mini {{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="background:#1F4E79;">Aujourd'hui</a>
-    <div class="{{ 'masq-vjour' if not ponctuel and not abs_view else '' }}" style="display:flex; gap:4px; flex-wrap:wrap;">
+    <a href="{{ nav.aujourdhui }}" class="btn-mini" style="background:#1F4E79;">Aujourd'hui</a>
+    <div style="display:flex; gap:4px; flex-wrap:wrap;">
       {% for it in nav.boutons %}
       <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
       {% endfor %}
@@ -389,54 +365,6 @@
       {% endif %}
     </div>
     {% endif %}
-    {# ===== Vue JOUR (mobile) : un jour à la fois, navigation ‹ Aujourd'hui › ===== #}
-    {% if vues %}
-    {% set mc = {'rouge': '#C0392B', 'bleu': '#2E75B6', 'orange': '#E67E22', 'gris': '#95A5A6'} %}
-    <div class="vjour">
-      <div class="vjour-nav">
-        <button type="button" class="fleche" id="vjPrec" aria-label="Jour précédent">‹</button>
-        <button type="button" id="vjAuj">Aujourd'hui</button>
-        <button type="button" class="fleche" id="vjSuiv" aria-label="Jour suivant">›</button>
-      </div>
-      {% for v in vues %}{% for j in v.jours_mobile %}
-      {% set pres = j.lignes | selectattr('barres') | list %}
-      {% set abst = j.lignes | rejectattr('barres') | selectattr('modifie') | list %}
-      <div class="vjour-card {{ 'auj' if j.aujourdhui }}" style="display:none;"
-           data-date="{{ j.date_iso }}" data-lundi="{{ v.lundi }}" data-auj="{{ 1 if j.aujourdhui else 0 }}">
-        <div class="vjour-tete">
-          <div>
-            <h3>{{ j.nom }} <span style="font-weight:normal; color:#889; font-size:0.82em;">· Sem. {{ v.sem }}</span></h3>
-            {% if j.aujourdhui %}<span style="color:#C0392B; font-size:0.78em;">• aujourd'hui</span>{% endif %}
-            {% if j.ferie %}<span style="color:#9C6500; font-size:0.78em;">Férié — {{ j.ferie }}</span>
-            {% else %}<span style="color:#889; font-size:0.78em;">{{ pres|length }} présent{{ 's' if pres|length > 1 else '' }}</span>{% endif %}
-          </div>
-          <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=j.date_iso) }}" class="btn-mini vert" title="Modifier ce jour (remplaçant / horaires ponctuels)">✏️</a>
-        </div>
-        {% for l in pres %}
-        <div class="vjour-ligne">
-          <span class="dot" style="background:{{ l.couleur }};"></span>
-          <span class="vjour-nom">{{ l.prenom }}{% if l.marque %} <span style="color:{{ mc[l.marque] }};" title="{{ l.marque_titre }}">◆</span>{% endif %}</span>
-          <span class="vjour-h">{% for c in l.creneaux | selectattr('debut') | selectattr('fin') %}{{ c.debut }}–{{ c.fin }}{% if not loop.last %} · {% endif %}{% endfor %}
-            {% if l.motif %}<br><span class="vjour-motif">{{ l.motif }}</span>{% endif %}</span>
-          <span class="vjour-tot">{{ l.total_txt }}</span>
-        </div>
-        {% endfor %}
-        {% for l in abst %}
-        <div class="vjour-ligne vjour-abs">
-          <span class="dot" style="background:{{ l.couleur }};"></span>
-          <span class="vjour-nom" style="color:#96524d;">{{ l.prenom }}{% if l.marque %} <span style="color:{{ mc[l.marque] }};" title="{{ l.marque_titre }}">◆</span>{% endif %}</span>
-          <span class="vjour-h" style="color:#96524d;">Absent·e{% if l.motif %} <span class="vjour-motif">{{ l.motif }}</span>{% endif %}</span>
-        </div>
-        {% endfor %}
-        {% if not pres and not abst %}
-        <div class="vjour-vide">{{ 'Pharmacie fermée — férié.' if j.ferie else 'Personne de planifié ce jour.' }}</div>
-        {% endif %}
-      </div>
-      {% endfor %}{% endfor %}
-    </div>
-    {% endif %}
-
-    <div class="vue-bureau">
     {% for v in vues %}
       <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
@@ -515,47 +443,6 @@
       <span style="white-space:nowrap;"><span style="color:#E67E22;">◆</span> présent avec des heures différentes <span class="meta">(heures en plus = foncé, heures en moins = très clair)</span></span> ·
       <span style="white-space:nowrap;"><span style="color:#95A5A6;">◆</span> absence sur un jour non prévu</span>
     </div>
-    {% endif %}
-    </div>{# fin .vue-bureau #}
-
-    {% if vues %}
-    <script>
-      // Vue JOUR mobile : n'affiche qu'une carte à la fois ; les flèches passent au
-      // jour voisin, et basculent sur la semaine d'à côté au bord de la période.
-      (function () {
-        if (!window.matchMedia('(max-width: 820px)').matches) return;
-        var cards = [].slice.call(document.querySelectorAll('.vjour-card'));
-        if (!cards.length) return;
-        var params = new URLSearchParams(location.search);
-        var idx = -1, i;
-        function trouve(f) { for (var k = 0; k < cards.length; k++) if (f(cards[k])) return k; return -1; }
-        var sel = params.get('vjsel');
-        if (sel === 'first') idx = 0;
-        else if (sel === 'last') idx = cards.length - 1;
-        if (idx < 0 && params.get('date')) idx = trouve(function (c) { return c.dataset.date === params.get('date'); });
-        if (idx < 0) idx = trouve(function (c) { return c.dataset.auj === '1'; });
-        if (idx < 0) idx = 0;
-        function montre(k) { idx = k; cards.forEach(function (c, j) { c.style.display = (j === k) ? '' : 'none'; }); }
-        function isoLocal(d) {
-          return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        }
-        function saute(dir) {
-          var k = idx + dir;
-          if (k >= 0 && k < cards.length) { montre(k); return; }
-          // Bord de la période affichée : recharge sur la semaine voisine.
-          var lundi = new Date(cards[idx].dataset.lundi + 'T12:00:00');
-          lundi.setDate(lundi.getDate() + (dir > 0 ? 7 : -7));
-          location = '{{ url_for(".vue") }}?onglet=planning&date=' + isoLocal(lundi) + '&vjsel=' + (dir > 0 ? 'first' : 'last');
-        }
-        montre(idx);
-        document.getElementById('vjPrec').addEventListener('click', function () { saute(-1); });
-        document.getElementById('vjSuiv').addEventListener('click', function () { saute(1); });
-        document.getElementById('vjAuj').addEventListener('click', function () {
-          var k = trouve(function (c) { return c.dataset.auj === '1'; });
-          if (k >= 0) montre(k); else location = '{{ nav.aujourdhui }}';
-        });
-      })();
-    </script>
     {% endif %}
 
     {% if heures_reel %}
