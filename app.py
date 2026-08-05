@@ -1322,6 +1322,113 @@ def admin_dashboard():
     demandes_cp_attente = sum(1 for d in charger_demandes_cp()
                               if d.get("statut") == "en_attente")
 
+    # ---- Centre « À traiter » : toutes les actions en attente, en une liste
+    # triée par urgence, chaque ligne menant directement à l'écran d'action. ----
+    import urllib.parse
+    a_traiter = []
+    jour_auj = datetime.now().day
+
+    def _noms(prenoms, maxi=4):
+        return ", ".join(prenoms[:maxi]) + (f" +{len(prenoms) - maxi}" if len(prenoms) > maxi else "")
+
+    # 1) Relevés d'heures du mois : en attente, puis reçus à valider.
+    #    La ligne « en attente » n'apparaît qu'à partir du 20 (jour d'envoi des
+    #    relevés) : avant, personne n'a encore été sollicité — rien à traiter.
+    attente = [e["prenom"] for e in actifs_ck
+               if not reponse_de(reps_mc, e["prenom"], e["email"])]
+    if attente and jour_auj >= 20:
+        a_traiter.append({
+            "niveau": "rouge" if jour_auj > JOUR_CLOTURE else "orange", "icone": "🕐",
+            "texte": f"{len(attente)} relevé{'s' if len(attente) > 1 else ''} d'heures en attente — {_noms(attente)}",
+            "url": "/admin/mois", "action": "Relancer / saisir"})
+    a_valider = []
+    for e in actifs_ck:
+        r = reponse_de(reps_mc, e["prenom"], e["email"])
+        if r and not r.get("valide"):
+            a_valider.append(e["prenom"])
+    if a_valider:
+        a_traiter.append({
+            "niveau": "orange" if jour_auj >= JOUR_CLOTURE else "bleu", "icone": "☑️",
+            "texte": f"{len(a_valider)} relevé{'s' if len(a_valider) > 1 else ''} reçu{'s' if len(a_valider) > 1 else ''} à valider — {_noms(a_valider)}",
+            "url": "/admin/mois", "action": "Valider"})
+
+    # 2) Demandes de congés en attente.
+    if demandes_cp_attente:
+        a_traiter.append({
+            "niveau": "orange", "icone": "🏖️",
+            "texte": f"{demandes_cp_attente} demande{'s' if demandes_cp_attente > 1 else ''} de congés en attente",
+            "url": "/admin/planning-equipe?onglet=conges", "action": "Accepter / refuser"})
+
+    # 3) Alertes RH (échéances contrat/essai/visite, documents expirés) —
+    #    une ligne par collaborateur concerné, vers sa fiche.
+    for e in actifs_ck:
+        als = [a for a in alertes_completes(e["email"], profils_ck.get(e["email"], {}))
+               if a.get("niveau") in ("rouge", "orange")]
+        if als:
+            suite = f" (+{len(als) - 1} autre{'s' if len(als) > 2 else ''})" if len(als) > 1 else ""
+            a_traiter.append({
+                "niveau": "rouge" if any(a["niveau"] == "rouge" for a in als) else "orange",
+                "icone": "⚠️", "texte": f"{e['prenom']} — {als[0]['texte']}{suite}",
+                "url": f"/admin/employe?email={urllib.parse.quote(e['email'])}", "action": "Voir la fiche"})
+
+    # 4) Infos extraites des documents (contrat, RIB…) à confirmer sur les fiches.
+    avec_props = [e for e in actifs_ck
+                  if profils_ck.get(e["email"], {}).get("propositions")]
+    if avec_props:
+        nb_props = sum(len(profils_ck[e["email"]]["propositions"]) for e in avec_props)
+        seul = avec_props[0]
+        a_traiter.append({
+            "niveau": "bleu", "icone": "🔎",
+            "texte": f"{nb_props} info{'s' if nb_props > 1 else ''} extraite{'s' if nb_props > 1 else ''} de documents à confirmer — {_noms([e['prenom'] for e in avec_props])}",
+            "url": (f"/admin/employe?email={urllib.parse.quote(seul['email'])}"
+                    if len(avec_props) == 1 else "/admin/employes"),
+            "action": "Confirmer"})
+
+    # 5) Documents requis manquants (vue d'ensemble).
+    if cockpit["nb_manquants"]:
+        concernes = [e["prenom"] for e in actifs_ck if docs_manquants(e["email"])]
+        a_traiter.append({
+            "niveau": "bleu", "icone": "📎",
+            "texte": f"{cockpit['nb_manquants']} document{'s' if cockpit['nb_manquants'] > 1 else ''} requis manquant{'s' if cockpit['nb_manquants'] > 1 else ''} — {_noms(concernes)}",
+            "url": "/admin/employes", "action": "Compléter"})
+
+    # 6) Conformité durée du travail sur la semaine en cours (best-effort :
+    #    le tableau de bord ne doit jamais planter à cause du planning).
+    try:
+        import planning_equipe as PE
+        data_tr = PE.charger_trames()
+        lundi_c = PE._lundi(datetime.now().date())
+        act_tr = PE.trame_active_pour(data_tr, lundi_c)
+        if act_tr:
+            emap_d = {e["email"]: e for e in employes}
+            emp_sm = [emap_d[em] for em in PE.membres_semaine(act_tr, employes, profils_ck, lundi_c)
+                      if em in emap_d]
+            confs = PE.alertes_conformite(data_tr, emp_sm, lundi_c,
+                                          PE.charger_changements(), PE.charger_absences())
+            if confs:
+                a_traiter.append({
+                    "niveau": "orange", "icone": "⚖️",
+                    "texte": f"{len(confs)} point{'s' if len(confs) > 1 else ''} durée du travail à vérifier cette semaine — {_noms(sorted({c['prenom'] for c in confs}))}",
+                    "url": "/admin/planning-equipe", "action": "Voir le planning"})
+    except Exception:
+        app.logger.exception("À traiter : contrôle conformité planning échoué (non bloquant)")
+
+    # 7) Nouvelles candidatures au statut « Reçu ».
+    try:
+        from recrutement import charger_candidats
+        recus = sum(1 for c in charger_candidats().values()
+                    if c.get("statut", "Reçu") == "Reçu" and not c.get("anonymise"))
+        if recus:
+            a_traiter.append({
+                "niveau": "bleu", "icone": "🧲",
+                "texte": f"{recus} candidature{'s' if recus > 1 else ''} reçue{'s' if recus > 1 else ''} à examiner",
+                "url": "/admin/recrutement", "action": "Voir le pipeline"})
+    except Exception:
+        app.logger.exception("À traiter : lecture candidatures échouée (non bloquant)")
+
+    ordre_niveau = {"rouge": 0, "orange": 1, "bleu": 2}
+    a_traiter.sort(key=lambda x: ordre_niveau.get(x["niveau"], 3))
+
     return render_template("admin_dashboard.html",
         employes=employes,
         donnees=donnees,
@@ -1334,6 +1441,7 @@ def admin_dashboard():
         releves_jours=releves_jours,
         cockpit=cockpit,
         demandes_cp_attente=demandes_cp_attente,
+        a_traiter=a_traiter,
     )
 
 
