@@ -787,6 +787,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     marque_titre += f" — {motif}"
             lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
                            "barres": barres, "total": total_jour(cr_eff),
+                           "total_txt": _fmt_hmin(total_jour(cr_eff)),
                            "modifie": modifie, "motif": motif,
                            "marque": marque, "marque_titre": marque_titre,
                            "creneaux": _pad2(cr_eff), "creneaux_trame": _pad2(cr_trame)})
@@ -1114,6 +1115,12 @@ def vue():
                     for l in lignes_t:
                         l["cells"] = [l["cells"][i] for i in garder]
                     v["lignes"] = lignes_t
+                # Vue JOUR (mobile) : un jour à la fois sur petit écran, construite
+                # sur les mêmes règles que la frise (trame + ponctuels + absences +
+                # fériés), quel que soit le mode d'affichage bureau choisi.
+                v["jours_mobile"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_aff),
+                                           True, lundi, changements, absences,
+                                           masquer_fermes=True)["jours"]
                 vues.append(v)
         # Récapitulatif des changements ponctuels sur la période affichée.
         recap_chg = []
