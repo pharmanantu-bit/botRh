@@ -875,7 +875,7 @@ def _frise_solo(trame, sem, email, couleur):
 
 ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
            ("changements", "Changements"), ("conges", "Congés"),
-           ("totaux", "Totaux / Fin de mois"),
+           ("totaux", "Fin de mois"),
            # « Mes demandes » : rendu séparé, poussé à droite de la barre.
            ("demandes", "Mes demandes")]
 # Effectifs & Options : sous-onglets internes de « Planning ».
