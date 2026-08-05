@@ -159,6 +159,7 @@
   {% if msg == 'dem_annulee' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Demande annulée.</div>{% endif %}
   {% if msg == 'dem_dates' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Dates ou horaires invalides (la demande doit être à venir, fin après début).</div>{% endif %}
   {% if msg == 'dem_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Demande incomplète — choisis un collaborateur et un type.</div>{% endif %}
+  {% if msg == 'motif_requis' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Motif obligatoire</strong> — la modification sans motif n'a <strong>pas</strong> été enregistrée. Choisis un motif (retard, congés, heures sup…) puis valide à nouveau.</div>{% endif %}
 
   <div class="ongs">
     {% for cle, lib in onglets %}
@@ -226,7 +227,7 @@
          class="navitem {{ 'actif' if d.actif else '' }}" style="font-size:0.8em;">{{ d.label }}{% if d.ferme %} <span style="opacity:.7;">·fermé</span>{% endif %}</a>
       {% endfor %}
     </div>
-    <form method="POST" action="{{ url_for('.saisie_ponctuelle') }}">
+    <form method="POST" action="{{ url_for('.saisie_ponctuelle') }}" id="formPonctuel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date" value="{{ saisie.date_iso }}">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
@@ -261,7 +262,8 @@
               </td>
               <td>
                 <select name="motif_{{ r.email }}" style="padding:4px; border:1px solid #ccd4e0; border-radius:5px; font-size:0.82em; max-width:150px;">
-                  {% for m in motifs %}<option value="{{ m }}" {% if r.motif == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+                  <option value="">— Motif —</option>
+                  {% for m in motifs if m != 'Non catégorisé' %}<option value="{{ m }}" {% if r.motif == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
                 </select>
               </td>
               <td style="white-space:nowrap;">
@@ -282,6 +284,27 @@
         r.querySelector('[name^="h2d_"]').value=r.dataset.t2d; r.querySelector('[name^="h2f_"]').value=r.dataset.t2f; }
       function ponctVider(btn){ var r=_row(btn);
         ['h1d_','h1f_','h2d_','h2f_'].forEach(function(p){ r.querySelector('[name^="'+p+'"]').value=''; }); }
+      // Motif obligatoire : toute ligne dont les horaires diffèrent de la trame
+      // doit avoir un motif choisi, sinon l'enregistrement est bloqué.
+      document.getElementById('formPonctuel').addEventListener('submit', function (e) {
+        var bloquees = [];
+        this.querySelectorAll('tbody tr').forEach(function (r) {
+          var em = r.dataset.email;
+          if (!em) return;
+          function val(p) { var el = r.querySelector('[name="' + p + em + '"]'); return el ? (el.value || '').trim() : ''; }
+          var cur = [val('h1d_'), val('h1f_'), val('h2d_'), val('h2f_')].join('|');
+          var tra = [r.dataset.t1d || '', r.dataset.t1f || '', r.dataset.t2d || '', r.dataset.t2f || ''].join('|');
+          var sel = r.querySelector('[name="motif_' + em + '"]');
+          if (!sel) return;
+          if (cur !== tra && !sel.value) { bloquees.push(r); sel.style.border = '2px solid #C0392B'; }
+          else { sel.style.border = ''; }
+        });
+        if (bloquees.length) {
+          e.preventDefault();
+          bloquees[0].scrollIntoView({ block: 'center' });
+          alert('Motif obligatoire : ' + bloquees.length + ' ligne(s) modifiée(s) sans motif (encadrées en rouge).');
+        }
+      });
     </script>
     {% elif abs_view %}
     {# ===== Absence prolongée : formulaire + liste ===== #}
@@ -308,8 +331,9 @@
           </label>
           <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
             <span style="width:120px; flex:none;">Type</span>
-            <select name="motif" style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
-              {% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+            <select name="motif" required style="flex:1; padding:7px; border:1px solid #ccc; border-radius:6px; font-size:0.9em;">
+              <option value="">— Motif (obligatoire) —</option>
+              {% for m in motifs if m != 'Non catégorisé' %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
             </select>
           </label>
           <label style="display:flex; align-items:center; gap:10px; font-size:0.86em; color:#555;">
@@ -1424,9 +1448,10 @@
         <button type="button" class="btn-mini" style="background:#9C0006;" onclick="chgNonTravaille()">🚫 Non travaillé</button>
         <button type="button" class="btn-mini" style="background:#eef2f8; color:#1F4E79; border:1px solid #d4deeb;" onclick="chgRetablir()">↺ Rétablir les horaires</button>
       </div>
-      <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">Motif</label>
+      <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">Motif <span style="color:#C0392B;">(obligatoire pour toute modification)</span></label>
       <select name="motif" id="chgMotif" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; margin-bottom:16px;">
-        {% for m in motifs %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        <option value="">— Choisir un motif —</option>
+        {% for m in motifs if m != 'Non catégorisé' %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
       </select>
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <button class="btn" type="submit">💾 Valider</button>
@@ -1453,6 +1478,24 @@
       document.getElementById('chgNonTrav').value = '';
     };
     modal.addEventListener('click', window.fermerChg);
+    // Motif obligatoire : bloque la validation si les horaires diffèrent de la
+    // trame (= vraie modification) et qu'aucun motif n'est choisi. La
+    // suppression (🗑) et le retour à la trame restent libres.
+    modal.querySelector('form').addEventListener('submit', function (e) {
+      if (e.submitter && e.submitter.id === 'chgSuppr') return;
+      var v = ['chgH1d', 'chgH1f', 'chgH2d', 'chgH2f'].map(function (i) {
+        return (document.getElementById(i).value || '').trim();
+      }).join('|');
+      var t = [trameCur[0].debut || '', trameCur[0].fin || '',
+               trameCur[1].debut || '', trameCur[1].fin || ''].join('|');
+      var modifie = v !== t || document.getElementById('chgNonTrav').value === '1';
+      var mot = document.getElementById('chgMotif');
+      if (modifie && !mot.value) {
+        e.preventDefault();
+        mot.style.border = '2px solid #C0392B';
+        alert('Motif obligatoire : choisis un motif pour cette modification.');
+      }
+    });
     document.querySelectorAll('.fr-clic').forEach(function (row) {
       row.style.cursor = 'pointer';
       row.addEventListener('click', function () {
@@ -1465,8 +1508,9 @@
         set('chgH2d', cr[1].debut); set('chgH2f', cr[1].fin);
         document.getElementById('chgNonTrav').value = '';
         var mot = document.getElementById('chgMotif');
-        mot.value = row.dataset.motif || 'Non catégorisé';
-        if (!mot.value) mot.value = 'Non catégorisé';
+        mot.value = row.dataset.motif || '';
+        if (mot.selectedIndex < 0) mot.value = '';   // motif legacy absent des choix
+        mot.style.border = '';
         // bouton « Annuler ce changement » seulement si la ligne est déjà modifiée
         document.getElementById('chgSuppr').style.display =
           row.querySelector('.fr-label span[title^="Modifié"]') ? 'inline-block' : 'none';

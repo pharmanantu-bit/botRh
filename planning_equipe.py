@@ -2148,6 +2148,11 @@ def enregistrer_changement():
                 if not data[date_iso]:
                     del data[date_iso]
         else:
+            # Motif OBLIGATOIRE pour toute vraie modification (anti-oubli) :
+            # sans motif choisi, rien n'est enregistré.
+            if motif_norm == "Non catégorisé":
+                return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                        msg="motif_requis", _anchor=f"j-{date_iso}"))
             data.setdefault(date_iso, {})[email] = {
                 "motif": motif_norm,
                 "creneaux": creneaux,
@@ -2195,6 +2200,7 @@ def saisie_ponctuelle():
     fer = ferie_de(d_obj)
     data = charger_changements()
     absences = charger_absences()
+    sans_motif = False
     for em in request.form.getlist("email"):
         creneaux = []
         for s in (1, 2):
@@ -2217,13 +2223,19 @@ def saisie_ponctuelle():
             if present:
                 del data[date_iso][em]
         else:
+            # Motif OBLIGATOIRE (anti-oubli) : une ligne modifiée sans motif
+            # n'est PAS enregistrée — l'existant reste tel quel, message affiché.
+            if motif == "Non catégorisé":
+                sans_motif = True
+                continue
             data.setdefault(date_iso, {})[em] = {
                 "motif": motif, "creneaux": creneaux,
                 "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
     if date_iso in data and not data[date_iso]:
         del data[date_iso]
     sauvegarder_changements(data)
-    return redirect(url_for(".vue", onglet="planning", ponctuel=1, date=date_iso))
+    return redirect(url_for(".vue", onglet="planning", ponctuel=1, date=date_iso,
+                            **({"msg": "motif_requis"} if sans_motif else {})))
 
 
 @bp.route("/admin/planning-equipe/absence", methods=["POST"])
@@ -2242,6 +2254,9 @@ def ajouter_absence():
         d2 = datetime.strptime(fin, "%Y-%m-%d").date()
     except ValueError:
         d1 = d2 = None
+    # Motif OBLIGATOIRE (anti-oubli) : pas d'absence sans motif choisi.
+    if motif not in MOTIFS or motif == "Non catégorisé":
+        return redirect(url_for(".vue", onglet="planning", absence=1, msg="motif_requis"))
     if email and d1 and d2:
         if d2 < d1:
             d1, d2 = d2, d1
@@ -2249,7 +2264,7 @@ def ajouter_absence():
         absences.append({
             "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
             "email": email, "debut": d1.isoformat(), "fin": d2.isoformat(),
-            "motif": motif if motif in MOTIFS else "Non catégorisé",
+            "motif": motif,
             "commentaire": commentaire})
         sauvegarder_absences(absences)
     return redirect(url_for(".vue", onglet="planning", absence=1))
