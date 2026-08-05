@@ -110,10 +110,16 @@ else:
     print(f"KO [--] JOUR_CLOTURE = {A.JOUR_CLOTURE}")
 
 # Grille du formulaire : du 26 du mois précédent au 25 du mois courant inclus.
+# Mois de transition (MOIS_SANS_JOURS_PREC, ex. août 2026) : du 1er au 25, sans
+# les jours du mois précédent (déjà couverts par l'ancien relevé).
 if employes and datetime.now().day <= A.JOUR_CLOTURE:
     html_releve = client.get(f"/releve?token={tok0}&prenom={prenom0}").data.decode("utf-8")
-    attendus = ['name="prec_plus_26"', 'name="mois_plus_25"']
-    interdits = ['name="prec_plus_24"', 'name="prec_plus_25"', 'name="mois_plus_26"', 'name="mois_plus_31"']
+    if A.sans_jours_prec(mois, annee):
+        attendus = ['name="mois_plus_1"', 'name="mois_plus_25"']
+        interdits = ['name="prec_plus_26"', 'name="mois_plus_26"', 'name="mois_plus_31"']
+    else:
+        attendus = ['name="prec_plus_26"', 'name="mois_plus_25"']
+        interdits = ['name="prec_plus_24"', 'name="prec_plus_25"', 'name="mois_plus_26"', 'name="mois_plus_31"']
     grille_ok = (all(a in html_releve for a in attendus)
                  and not any(i in html_releve for i in interdits))
     if grille_ok:
@@ -123,14 +129,21 @@ if employes and datetime.now().day <= A.JOUR_CLOTURE:
         print("KO [--] grille /releve : bornes de période incorrectes")
 
 # extraire_detail_jours ignore les champs hors période (24-25 préc., 26+ courant).
+# Mois de transition : les jours du mois précédent sont AUSSI ignorés.
 detail = A.extraire_detail_jours(
     {"prec_plus_24": "5", "prec_plus_26": "2", "mois_plus_25": "1", "mois_plus_26": "3"},
     mois, annee)
 labels = [d["label"] for d in detail]
-if len(detail) == 2 and any("26/" in l for l in labels) and any("25/" in l for l in labels):
+if A.sans_jours_prec(mois, annee):
+    detail_ok = len(detail) == 1 and any("25/" in l for l in labels)
+    attendu_txt = "1 jour (25 courant, mois de transition)"
+else:
+    detail_ok = len(detail) == 2 and any("26/" in l for l in labels) and any("25/" in l for l in labels)
+    attendu_txt = "2 jours (26 préc. + 25 courant)"
+if detail_ok:
     print("OK [--] extraire_detail_jours : champs hors période ignorés")
 else:
-    echecs.append(f"extraire_detail_jours : attendu 2 jours (26 préc. + 25 courant), reçu {labels}")
+    echecs.append(f"extraire_detail_jours : attendu {attendu_txt}, reçu {labels}")
     print(f"KO [--] extraire_detail_jours : {labels}")
 
 # periode_paie : la référence unique planning/relevé pour chaque mois.
