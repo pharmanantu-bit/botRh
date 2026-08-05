@@ -30,9 +30,15 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Mot de passe</label>
     <input type="password" name="password" autofocus placeholder="••••••••">
-    {% if twofa %}
+    {% if twofa and appareil_ok %}
+    <p style="background:#d8f0de; border:1px solid #aadab8; color:#276221; border-radius:6px; padding:8px 10px; font-size:0.8em; text-align:left; margin-bottom:16px;">✓ Appareil reconnu — code non demandé.</p>
+    {% elif twofa %}
     <label>Code de l'application (6 chiffres)</label>
     <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6">
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:16px; cursor:pointer; font-size:0.82em;">
+      <input type="checkbox" name="retenir" value="1" checked style="width:auto; margin:0;">
+      Faire confiance à cet appareil pendant 30 jours <span style="color:#889;">(le code ne sera plus demandé ici)</span>
+    </label>
     {% endif %}
     <button type="submit" class="btn">Connexion</button>
   </form>

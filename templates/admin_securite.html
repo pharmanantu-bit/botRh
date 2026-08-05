@@ -44,6 +44,20 @@
     <div class="secret"><code>{{ secret }}</code></div>
     <p>Ensuite, à chaque connexion : mot de passe <strong>+ le code à 6 chiffres</strong> affiché par l'application.</p>
   </div>
+  <div class="bloc">
+    <h2>🖥️ Cet appareil</h2>
+    {% if appareil_ok %}
+    <p><span class="pill pill-on">✓ Appareil de confiance</span> — le code n'est pas demandé sur ce navigateur jusqu'au <strong>{{ appareil_exp }}</strong> (le mot de passe reste exigé).</p>
+    <form method="POST" action="/admin/securite/oublier-appareil" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" style="background:#fff; border:1px solid #ccd4e0; border-radius:7px; padding:8px 14px; cursor:pointer; font-size:0.86em; color:#555;">Oublier cet appareil (redemander le code ici)</button>
+    </form>
+    {% else %}
+    <p>Ce navigateur n'est <strong>pas mémorisé</strong> : le code à 6 chiffres est demandé à chaque connexion.
+       Pour ne plus le taper ici pendant 30 jours, coche « <em>Faire confiance à cet appareil</em> » à la prochaine connexion.</p>
+    {% endif %}
+    <p style="font-size:0.82em; color:#889; margin-top:8px;">La confiance vaut par navigateur et par appareil ; un appareil inconnu passe toujours par le code.</p>
+  </div>
   <div class="danger">🆘 <strong>Perdu ton téléphone ?</strong> Retire la ligne <code>ADMIN_TOTP_SECRET</code>
      du fichier <code>.env</code> (onglet Files sur PythonAnywhere) puis recharge la web app →
      retour au mot de passe seul. Aucun blocage définitif possible.</div>

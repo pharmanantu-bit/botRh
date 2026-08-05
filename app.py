@@ -38,11 +38,13 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=EST_PROD,
 )
-app.permanent_session_lifetime = timedelta(hours=8)
+# 48 h (au lieu de 8 h) : combiné à l'appareil de confiance 2FA, la connexion
+# quotidienne se réduit au mot de passe seul sur les appareils habituels.
+app.permanent_session_lifetime = timedelta(hours=48)
 
 # --- Protection CSRF (jeton par session, sans dépendance externe) ---
 # Chaque formulaire admin doit renvoyer le champ caché {{ csrf_token() }} ;
-# le jeton est lié à la session (durée 8h) et vérifié sur chaque POST.
+# le jeton est lié à la session et vérifié sur chaque POST.
 # Exemptions : routes publiques/machines déjà protégées par un secret
 #   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
 #   - /assistant_push, /document_push : POST machine protégés par la clé API (runner)
@@ -574,27 +576,87 @@ def _verifier_totp(code):
         return False
 
 
+# --- Appareil de confiance : la 2FA mémorisée 30 jours sur CE navigateur -----
+# Après une connexion COMPLÈTE (mot de passe + code) avec la case cochée, un
+# cookie signé HMAC(secret de session) est posé : pendant 30 jours, sur cet
+# appareil, seul le mot de passe est demandé. Un appareil inconnu (ou après
+# expiration) repasse par le code. Le cookie ne contourne JAMAIS le mot de
+# passe, et une rotation de FLASK_SECRET_KEY invalide tous les appareils.
+APPAREIL_COOKIE = "botrh_appareil"
+APPAREIL_DUREE = timedelta(days=30)
+
+
+def _appareil_signature(exp):
+    import hmac as _hmac
+    return _hmac.new(str(app.secret_key or "botrh").encode(),
+                     f"appareil|{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def appareil_de_confiance():
+    """True si le navigateur porte un cookie « appareil de confiance » valide."""
+    val = request.cookies.get(APPAREIL_COOKIE, "")
+    try:
+        exp, sig = val.split(".", 1)
+        import hmac as _hmac
+        return int(exp) > int(_time.time()) and _hmac.compare_digest(sig, _appareil_signature(exp))
+    except (ValueError, AttributeError):
+        return False
+
+
+def appareil_expire_le():
+    """Date d'expiration (jj/mm/aaaa) du cookie appareil, ou '' si absent/invalide."""
+    if not appareil_de_confiance():
+        return ""
+    exp = request.cookies.get(APPAREIL_COOKIE, "").split(".", 1)[0]
+    return datetime.fromtimestamp(int(exp)).strftime("%d/%m/%Y")
+
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
+    twofa = deuxieme_facteur_actif()
+    confiance = appareil_de_confiance()
     if request.method == "POST":
         ip = request.remote_addr or "?"
         if login_bloque(ip):
             return render_template("admin_login.html", erreur=True, bloque=True), 429
         mdp = request.form.get("password", "")
-        twofa = deuxieme_facteur_actif()
-        if mdp == ADMIN_PASSWORD and (not twofa or _verifier_totp(request.form.get("code", ""))):
+        # Appareil de confiance : le code n'est pas exigé (le mot de passe, toujours).
+        if mdp == ADMIN_PASSWORD and (not twofa or confiance
+                                      or _verifier_totp(request.form.get("code", ""))):
             login_reset(ip)
             session.permanent = True
             session["admin"] = True
+            # Mémoriser l'appareil : seulement après une connexion complète
+            # (code saisi), jamais depuis un appareil déjà en confiance.
+            if twofa and not confiance and request.form.get("retenir"):
+                exp = str(int(_time.time() + APPAREIL_DUREE.total_seconds()))
+                resp = redirect(url_for("admin_dashboard"))
+                resp.set_cookie(APPAREIL_COOKIE, f"{exp}.{_appareil_signature(exp)}",
+                                max_age=int(APPAREIL_DUREE.total_seconds()),
+                                httponly=True, samesite="Lax", secure=EST_PROD,
+                                path="/admin")
+                return resp
         else:
             login_echec(ip)
-            return render_template("admin_login.html", erreur=True, twofa=twofa)
+            return render_template("admin_login.html", erreur=True, twofa=twofa,
+                                   appareil_ok=confiance)
 
     if not session.get("admin"):
-        return render_template("admin_login.html", erreur=False, twofa=deuxieme_facteur_actif())
+        return render_template("admin_login.html", erreur=False, twofa=twofa,
+                               appareil_ok=confiance)
 
     # Page d'accueil = tableau de bord
     return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/securite/oublier-appareil", methods=["POST"])
+def oublier_appareil():
+    """Retire la confiance accordée à CE navigateur (le code sera redemandé)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    resp = redirect(url_for("admin_securite"))
+    resp.delete_cookie(APPAREIL_COOKIE, path="/admin")
+    return resp
 
 
 def _qr_svg(data):
@@ -629,7 +691,9 @@ def admin_securite():
             app.logger.exception("2FA : URI/QR impossible")
     return render_template("admin_securite.html", actif=actif,
                            secret_present=bool(ADMIN_TOTP_SECRET),
-                           uri=uri, qr_svg=qr_svg, secret=ADMIN_TOTP_SECRET)
+                           uri=uri, qr_svg=qr_svg, secret=ADMIN_TOTP_SECRET,
+                           appareil_ok=appareil_de_confiance(),
+                           appareil_exp=appareil_expire_le())
 
 
 @app.route("/admin/mois")
