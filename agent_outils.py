@@ -1645,14 +1645,17 @@ def _moteur():
     return moteur, (os.getenv("ASSISTANT_MODELE") or MODELE_AGENT_DEFAUT.get(moteur))
 
 
-def repondre(texte_utilisateur, origine="chat", contexte=""):
+def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_CONTEXTE):
     """Ajoute le message utilisateur, fait tourner l'agent sur les derniers
-    échanges, persiste et renvoie la réponse {reply, actions, outils_utilises}."""
+    échanges, persiste et renvoie la réponse {reply, actions, outils_utilises}.
+    nb_contexte : messages d'historique envoyés au modèle (la ronde en envoie
+    peu : chaque appel coûte des tokens et le palier Mistral est limité/minute)."""
     mode = mode_agent()
     ajouter_message("user", texte_utilisateur, origine=origine if origine != "chat" else None)
     conv = charger_conversation()
     messages = [{"role": m["role"], "content": m["content"]}
-                for m in conv if m.get("role") in ("user", "assistant")][-TOURS_CONTEXTE:]
+                for m in conv if m.get("role") in ("user", "assistant")
+                and not m.get("systeme")][-nb_contexte:]
     employes = charger_employes()
     annuaire = annuaire_pseudo(employes)
     roster = _roster_pseudo(annuaire, charger_profils())
@@ -1700,7 +1703,7 @@ def ronde():
     propose des cartes. Le compte-rendu est posté dans la conversation."""
     contexte = ("RONDE AUTOMATIQUE : tu parles à l'utilisateur sans qu'il t'ait posé de "
                 "question ; sois concis et concret.")
-    return repondre(BRIEF_RONDE, origine="ronde", contexte=contexte)
+    return repondre(BRIEF_RONDE, origine="ronde", contexte=contexte, nb_contexte=1)
 
 
 # --- Routes ----------------------------------------------------------------------
@@ -1710,7 +1713,7 @@ def _detail_erreur_ia(e):
     import urllib.error
     if isinstance(e, urllib.error.HTTPError):
         return {401: "clé API refusée (vérifie MISTRAL_API_KEY / ANTHROPIC_API_KEY)",
-                429: "trop de requêtes en même temps (limite de débit Mistral) — réessaie dans quelques secondes",
+                429: "limite de débit Mistral atteinte (palier gratuit : 25 000 tokens/minute) — attends une minute et réessaie, ou active la facturation sur console.mistral.ai",
                 }.get(e.code, f"erreur HTTP {e.code} du moteur IA") + "."
     if isinstance(e, RuntimeError):
         return f"{e}"

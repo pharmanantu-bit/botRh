@@ -141,8 +141,12 @@ def _extraire_json(texte):
 
 
 def _post_json(url, headers, charge, timeout=60, essais=4):
-    """POST JSON avec reprise automatique sur 429 (limite de débit : l'agent
-    enchaîne plusieurs appels par question) et sur 5xx : attente 1, 2, 4 s."""
+    """POST JSON avec reprise automatique.
+    - 429 (limite de débit) : le palier gratuit Mistral plafonne à 25 000 tokens
+      par MINUTE et l'agent enchaîne plusieurs appels de ~9 000 tokens ; on attend
+      donc la fenêtre suivante (Retry-After s'il est fourni, sinon 20 s), jusqu'à
+      3 fois (~1 min) ;
+    - 5xx : attente 1, 2, 4 s."""
     import time
     data = json.dumps(charge).encode("utf-8")
     for k in range(essais):
@@ -153,7 +157,14 @@ def _post_json(url, headers, charge, timeout=60, essais=4):
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or k == essais - 1:
                 raise
-            time.sleep(2 ** k)
+            if e.code == 429:
+                try:
+                    attente = min(float(e.headers.get("Retry-After") or 0), 60) or 20
+                except ValueError:
+                    attente = 20
+                time.sleep(attente)
+            else:
+                time.sleep(2 ** k)
 
 
 # --- Moteurs interchangeables ---
