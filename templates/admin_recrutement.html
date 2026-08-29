@@ -35,20 +35,6 @@
     .chat-wrap { margin-top: 26px; border-top: 2px solid #eef2f7; padding-top: 18px; }
     .chat-wrap h2 { color: #1F4E79; font-size: 1.05em; }
     .chat-sub { color: #888; font-size: 0.82em; margin: 4px 0 8px; }
-    .chat-transp { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; font-size: 0.78em; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; }
-    .chat-log { background: #f9fbfd; border: 1px solid #dde3ed; border-radius: 10px; padding: 14px; min-height: 90px; max-height: 420px; overflow-y: auto; }
-    .msg-c { margin-bottom: 12px; display: flex; } .msg-c.user { justify-content: flex-end; }
-    .bulle { max-width: 84%; padding: 10px 14px; border-radius: 12px; font-size: 0.9em; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
-    .msg-c.user .bulle { background: #1F4E79; color: white; } .msg-c.bot .bulle { background: white; border: 1px solid #dde3ed; color: #333; }
-    .chat-vide { color: #888; font-style: italic; font-size: 0.85em; line-height: 1.6; }
-    .chat-form { display: flex; gap: 8px; margin-top: 12px; }
-    .chat-form textarea { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.9em; resize: vertical; min-height: 46px; font-family: inherit; }
-    .chat-form button { background: #1F4E79; color: white; border: none; border-radius: 8px; padding: 0 18px; font-weight: bold; cursor: pointer; }
-    .chat-form button:disabled { background: #9aa7b5; }
-    .outils-meta { font-size: 0.74em; color: #6b8aa3; margin: -6px 0 12px 4px; }
-    .actions-bloc { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: -2px 0 14px 4px; }
-    .action-btn { background: #1F7A3D; color: #fff; border: none; border-radius: 7px; padding: 7px 13px; font-size: 0.84em; font-weight: bold; cursor: pointer; text-decoration: none; }
-    .action-btn:hover { background: #176030; }
   </style>
 </head>
 <body>
@@ -93,72 +79,14 @@
     {% endfor %}
   </div>
 
-  <!-- Assistant recrutement (agent IA) -->
+  <!-- Le chat recrutement a rejoint l'agent RH (page dédiée) -->
   <div class="chat-wrap">
-    <h2>💬 Assistant recrutement</h2>
-    <div class="chat-sub">Pose une question sur tes candidats, ou demande un brouillon de mail / des questions d'entretien.</div>
-    <div class="chat-transp">⚠️ Les questions envoient les données candidats à l'IA (Mistral, hébergé UE). Marche en local / PA payant.</div>
-    <div class="chat-log" id="chatLog">
-      <div class="chat-vide" id="chatVide">Exemples : « Classe les candidats pour préparateur » · « Compare Marie et Paul » · « Qui a de l'expérience en vaccination&nbsp;? » · « Prépare une convocation pour Marie » · « Questions d'entretien pour Paul »</div>
-    </div>
-    <form class="chat-form" id="chatForm">
-      <textarea id="chatInput" placeholder="Ta question recrutement…" required></textarea>
-      <button type="submit" id="chatSend">Envoyer</button>
-    </form>
+    <h2>💬 Discuter de tes candidats avec l'agent RH</h2>
+    <div class="chat-sub">Classer, comparer, chercher une compétence, préparer une convocation ou un refus, changer un statut : tout se fait dans le chat de l'agent RH. ⚠️ Les questions envoient les données candidats à l'IA (Mistral, hébergé UE).</div>
+    <a href="/admin/agent" class="btn" style="display:inline-block;text-decoration:none;margin-top:8px;">💬 Ouvrir l'agent RH</a>
   </div>
 </div>
 
-<script>
-  const CSRF = "{{ csrf_token() }}";
-  const histo = [];
-  const log = document.getElementById('chatLog');
-  const OUTILS_LBL = { lister_candidats:'liste', fiche_candidat:'fiche', rechercher_candidat:'recherche CV',
-    classer_candidats:'classement', preparer_mail_convocation:'mail convocation', preparer_mail_refus:'mail refus' };
-  function ajoute(role, texte) {
-    const v = document.getElementById('chatVide'); if (v) v.remove();
-    const w = document.createElement('div'); w.className = 'msg-c ' + (role === 'user' ? 'user' : 'bot');
-    const b = document.createElement('div'); b.className = 'bulle'; b.textContent = texte;
-    w.appendChild(b); log.appendChild(w); log.scrollTop = log.scrollHeight; return b;
-  }
-  function metaOutils(noms) {
-    if (!noms || !noms.length) return;
-    const u = [...new Set(noms)].map(n => OUTILS_LBL[n] || n);
-    const m = document.createElement('div'); m.className = 'outils-meta';
-    m.textContent = '🔧 a consulté : ' + u.join(', '); log.appendChild(m); log.scrollTop = log.scrollHeight;
-  }
-  function renderActions(actions) {
-    if (!actions || !actions.length) return;
-    const wrap = document.createElement('div'); wrap.className = 'actions-bloc';
-    actions.forEach(a => {
-      if (!a || a.type !== 'mailto') return;
-      const el = document.createElement('a'); el.className = 'action-btn';
-      el.href = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(a.to || '')
-        + '&su=' + encodeURIComponent(a.subject || '') + '&body=' + encodeURIComponent(a.body || '');
-      el.target = '_blank'; el.rel = 'noopener'; el.textContent = a.label || 'Ouvrir le mail';
-      wrap.appendChild(el);
-    });
-    log.appendChild(wrap); log.scrollTop = log.scrollHeight;
-  }
-  document.getElementById('chatForm').addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const inp = document.getElementById('chatInput'); const q = inp.value.trim(); if (!q) return;
-    inp.value = ''; const send = document.getElementById('chatSend'); send.disabled = true;
-    ajoute('user', q); histo.push({ role: 'user', content: q });
-    const bulle = ajoute('bot', '…');
-    try {
-      const r = await fetch('/admin/recrutement/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
-        body: JSON.stringify({ messages: histo }) });
-      const data = await r.json();
-      if (data.reply) { bulle.textContent = data.reply; histo.push({ role: 'assistant', content: data.reply });
-        metaOutils(data.outils_utilises); renderActions(data.actions); }
-      else { bulle.textContent = '⚠️ ' + (data.error || 'Erreur.'); }
-    } catch (err) { bulle.textContent = '⚠️ Connexion impossible.'; }
-    send.disabled = false; inp.focus();
-  });
-  document.getElementById('chatInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('chatForm').requestSubmit(); }
-  });
-</script>
+
 </body>
 </html>

@@ -673,35 +673,6 @@ def roster_recrutement():
         for c in list(charger_candidats().values())[:40])
 
 
-@bp.route("/admin/recrutement/chat", methods=["POST"])
-def chat():
-    """Agent conversationnel recrutement (function calling). IA en temps réel →
-    local / PA payant. Données candidats envoyées au modèle (transparence UI)."""
-    if not _admin():
-        return current_app.response_class(json.dumps({"error": "non autorisé"}),
-                                          status=403, mimetype="application/json")
-    data = request.get_json(force=True, silent=True) or {}
-    messages = data.get("messages", [])
-    if not isinstance(messages, list) or not messages:
-        return current_app.response_class(json.dumps({"error": "message vide"}),
-                                          status=400, mimetype="application/json")
-    messages = messages[-20:]
-    try:
-        import agent_recrutement
-        res = agent_recrutement.run_agent_recrutement(
-            messages, executer_outil_recrutement,
-            moteur=os.getenv("ASSISTANT_MOTEUR", "mistral"),
-            modele=os.getenv("ASSISTANT_MODELE") or None,
-            roster_txt=roster_recrutement())
-        return current_app.response_class(json.dumps(res, ensure_ascii=False), mimetype="application/json")
-    except Exception as e:
-        current_app.logger.exception("Agent recrutement indisponible")
-        return current_app.response_class(
-            json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
-                                 "En ligne, nécessite un PythonAnywhere payant."}, ensure_ascii=False),
-            status=502, mimetype="application/json")
-
-
 @bp.route("/admin/recrutement/supprimer", methods=["POST"])
 def supprimer():
     if not _admin():
