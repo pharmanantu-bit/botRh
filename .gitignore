@@ -28,3 +28,8 @@ planning_effectifs.json
 planning_conges.json
 planning_demandes_conges.json
 planning_demandes_admin.json
+
+# Agent RH (conversation, journal, options)
+agent_conversation.json
+agent_journal.json
+agent_options.json

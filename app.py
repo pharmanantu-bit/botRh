@@ -49,7 +49,7 @@ app.permanent_session_lifetime = timedelta(hours=48)
 #   - /envoyer : protégé par le jeton unique de l'employé dans l'URL
 #   - /assistant_push, /document_push : POST machine protégés par la clé API (runner)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
-CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push",
+CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push", "/agent_ronde",
                # Formulaires employés authentifiés par jeton signé (pas de session).
                "/mon-espace/conges/demander", "/mon-espace/conges/annuler",
                "/mon-espace/demandes/repondre"}
@@ -3172,48 +3172,30 @@ def executer_outil_agent(nom, args, annuaire):
 
 @app.route("/admin/assistant/chat", methods=["POST"])
 def admin_assistant_chat():
-    """Agent RH outillé (function calling). Lit les données de l'officine via des
-    outils LECTURE SEULE, en préservant la pseudonymisation RGPD (le modèle ne voit
-    jamais un vrai nom). Appelle l'IA en direct (accès Internet sortant requis : OK
-    en local ; en prod, PythonAnywhere payant). En cas d'échec, repli sur le conseil
-    pur (chat sans outils)."""
+    """Compatibilité : l'ancien chat de la page Assistant délègue à l'agent RH
+    (agent_outils.repondre — conversation persistante, modes validation/autonome).
+    Accepte {message} ou l'ancien format {messages:[...]} (dernier message user)."""
     if not session.get("admin"):
         return app.response_class(json.dumps({"error": "non autorisé"}),
                                   status=403, mimetype="application/json")
     data = request.get_json(force=True, silent=True) or {}
-    messages = data.get("messages", [])
-    if not isinstance(messages, list) or not messages:
+    texte = (data.get("message") or "").strip()
+    if not texte:
+        msgs = data.get("messages") or []
+        texte = next((m.get("content", "") for m in reversed(msgs)
+                      if isinstance(m, dict) and m.get("role") == "user"), "").strip()
+    if not texte:
         return app.response_class(json.dumps({"error": "message vide"}),
                                   status=400, mimetype="application/json")
-    messages = messages[-20:]  # borne les tokens (20 derniers tours)
-    moteur = os.getenv("ASSISTANT_MOTEUR", "mistral")
-    modele = os.getenv("ASSISTANT_MODELE") or None
-
-    employes = charger_employes()
-    from assistant_rh import annuaire_pseudo
-    annuaire = annuaire_pseudo(employes)
-    roster = _roster_pseudo(annuaire, charger_profils())
-
     try:
-        from agent_rh import run_agent
-        res = run_agent(messages, employes, executer_outil_agent,
-                        moteur=moteur, modele=modele, roster_txt=roster)
-        return app.response_class(json.dumps(res, ensure_ascii=False),
+        from agent_outils import repondre
+        return app.response_class(json.dumps(repondre(texte[:4000]), ensure_ascii=False),
                                   mimetype="application/json")
-    except Exception:
-        app.logger.exception("Agent RH indisponible — repli sur le conseil pur")
-        try:
-            from assistant_rh import chat
-            reponse = chat(messages, moteur=moteur, modele=modele)
-            return app.response_class(
-                json.dumps({"reply": reponse, "outils_utilises": [], "degrade": True},
-                           ensure_ascii=False), mimetype="application/json")
-        except Exception as e:
-            return app.response_class(
-                json.dumps({"error": f"Service IA indisponible ({type(e).__name__}). "
-                                     f"En ligne, l'assistant nécessite un PythonAnywhere payant."},
-                           ensure_ascii=False),
-                status=502, mimetype="application/json")
+    except Exception as e:
+        app.logger.exception("Agent RH indisponible")
+        return app.response_class(
+            json.dumps({"error": f"Service IA indisponible ({type(e).__name__})."}, ensure_ascii=False),
+            status=502, mimetype="application/json")
 
 
 @app.route("/export_reponses")
@@ -3563,6 +3545,8 @@ from recrutement import bp as recrutement_bp  # noqa: E402
 app.register_blueprint(recrutement_bp)
 from planning_equipe import bp as planning_equipe_bp  # noqa: E402
 app.register_blueprint(planning_equipe_bp)
+from agent_outils import bp as agent_bp  # noqa: E402
+app.register_blueprint(agent_bp)
 
 
 if __name__ == "__main__":

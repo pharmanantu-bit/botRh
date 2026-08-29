@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Agent RH — botRh</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #e5ddd5; }
+    .chat-app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; max-width: 900px; margin: 0 auto; background: #efeae2; position: relative; }
+    .chat-app::before { content: ""; position: absolute; inset: 0; opacity: 0.06; pointer-events: none;
+      background-image: radial-gradient(circle at 20px 20px, #1F4E79 2px, transparent 2px); background-size: 40px 40px; }
+
+    /* En-tête */
+    .tete { background: #1F4E79; color: white; padding: 10px 14px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); z-index: 2; }
+    .avatar { width: 42px; height: 42px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.4em; flex-shrink: 0; }
+    .tete .infos { flex: 1; min-width: 0; }
+    .tete .nom { font-weight: bold; font-size: 1.02em; }
+    .tete .statut { font-size: 0.76em; color: #cfe0f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tete .statut b { color: #fff; }
+    .tete-btns { display: flex; gap: 6px; }
+    .tete-btns form { margin: 0; }
+    .tbtn { background: rgba(255,255,255,0.14); border: none; color: white; border-radius: 8px; padding: 7px 10px; font-size: 0.82em; cursor: pointer; white-space: nowrap; }
+    .tbtn:hover { background: rgba(255,255,255,0.26); }
+    .tbtn.auto { background: #f2b705; color: #3a2c00; font-weight: bold; }
+    .tbtn.valid { background: #2e7d32; font-weight: bold; }
+
+    /* Fil */
+    .fil { flex: 1; overflow-y: auto; padding: 14px 12px 8px; display: flex; flex-direction: column; gap: 6px; z-index: 1; scroll-behavior: smooth; }
+    .jour { align-self: center; background: #d5dfe8; color: #3d556b; font-size: 0.72em; padding: 4px 10px; border-radius: 8px; margin: 8px 0 4px; }
+    .b { max-width: 82%; padding: 7px 10px 6px; border-radius: 10px; font-size: 0.93em; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; position: relative; box-shadow: 0 1px 1px rgba(0,0,0,0.12); }
+    .b.user { align-self: flex-end; background: #d9fdd3; border-top-right-radius: 2px; }
+    .b.bot { align-self: flex-start; background: #fff; border-top-left-radius: 2px; }
+    .b.sys { align-self: center; background: #fff8dc; color: #6b5300; font-size: 0.82em; max-width: 92%; text-align: center; box-shadow: none; }
+    .b.err { background: #ffe0e0; color: #9C0006; }
+    .b .ts { display: block; text-align: right; font-size: 0.68em; color: #8a8a8a; margin-top: 2px; }
+    .b .origine { font-size: 0.7em; color: #1F4E79; font-weight: bold; display: block; margin-bottom: 2px; }
+    .outils { font-size: 0.7em; color: #6b8aa3; margin: -2px 0 2px 6px; align-self: flex-start; }
+
+    /* Cartes de confirmation */
+    .carte { align-self: flex-start; max-width: 82%; background: #fff; border: 1px solid #cfe0f2; border-left: 4px solid #1F7A3D; border-radius: 10px; padding: 9px 11px; font-size: 0.86em; box-shadow: 0 1px 1px rgba(0,0,0,0.12); }
+    .carte .lbl { font-weight: bold; color: #1F4E79; margin-bottom: 3px; }
+    .carte .res { white-space: pre-wrap; color: #333; line-height: 1.4; }
+    .carte .btns { display: flex; gap: 8px; margin-top: 8px; }
+    .carte button { border: none; border-radius: 7px; padding: 7px 12px; font-weight: bold; cursor: pointer; font-size: 0.95em; }
+    .carte .ok { background: #1F7A3D; color: #fff; }
+    .carte .ok:hover { background: #176030; }
+    .carte .ok:disabled { background: #9aa7b5; cursor: default; }
+    .carte .fait { color: #1F7A3D; font-weight: bold; margin-top: 6px; }
+    .carte.done { border-left-color: #9aa7b5; opacity: 0.85; }
+    .carte .lien { background: #1F4E79; color: #fff; text-decoration: none; display: inline-block; }
+
+    /* Saisie */
+    .saisie { display: flex; gap: 8px; padding: 8px 10px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); background: #f0f0f0; border-top: 1px solid #ddd; z-index: 2; align-items: flex-end; }
+    .saisie textarea { flex: 1; border: none; border-radius: 20px; padding: 10px 14px; font-size: 1em; font-family: inherit; resize: none; max-height: 130px; min-height: 42px; background: #fff; line-height: 1.35; }
+    .saisie textarea:focus { outline: 2px solid #1F4E79; }
+    .env { width: 44px; height: 44px; border-radius: 50%; border: none; background: #1F4E79; color: #fff; font-size: 1.2em; cursor: pointer; flex-shrink: 0; }
+    .env:disabled { background: #9aa7b5; }
+    .vide { align-self: center; text-align: center; color: #667; font-size: 0.88em; background: #fff8dc; border-radius: 10px; padding: 14px 16px; margin-top: 30px; max-width: 92%; line-height: 1.6; }
+    .typing { align-self: flex-start; background: #fff; border-radius: 10px; padding: 8px 12px; font-size: 0.9em; color: #888; }
+
+    /* Panneau journal */
+    .panneau { display: none; position: absolute; inset: 0; background: #fff; z-index: 5; overflow-y: auto; padding: 14px; }
+    .panneau.on { display: block; }
+    .panneau h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .panneau .ferme { background: #1F4E79; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    .jl { border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.86em; }
+    .jl .m { color: #888; font-size: 0.85em; }
+    .jl .o { font-weight: bold; color: #1F4E79; }
+    .aide { background: #eaf3ff; border-radius: 8px; padding: 10px 12px; font-size: 0.84em; line-height: 1.55; color: #1F4E79; margin: 10px 0 14px; }
+    .aide code { background: #fff; padding: 1px 5px; border-radius: 4px; }
+    .danger { color: #9C0006; }
+    @media (max-width: 820px) { body { padding-left: 0 !important; } .tete { padding-left: 58px; } .tete-btns .txt { display: none; } }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="chat-app">
+  <div class="tete">
+    <div class="avatar">🤖</div>
+    <div class="infos">
+      <div class="nom">Agent RH</div>
+      <div class="statut">
+        {% if mode == 'autonome' %}⚡ <b>Autonome</b> — j'exécute et je rends compte{% else %}🤝 <b>Validation</b> — je propose, tu confirmes{% endif %}
+        · {{ moteur }}
+      </div>
+    </div>
+    <div class="tete-btns">
+      <form method="POST" action="/admin/agent/mode">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if mode == 'autonome' %}
+        <input type="hidden" name="mode" value="validation">
+        <button type="submit" class="tbtn valid" title="Repasser en mode validation">🤝 <span class="txt">Je valide</span></button>
+        {% else %}
+        <input type="hidden" name="mode" value="autonome">
+        <button type="submit" class="tbtn auto" title="Laisser l'agent agir seul" onclick="return confirm('En mode autonome, l\'agent EXÉCUTE directement les changements (planning, dossiers, e-mails) et fait sa ronde quotidienne seul. Tout est tracé dans le journal. Activer ?');">⚡ <span class="txt">Autonome</span></button>
+        {% endif %}
+      </form>
+      <form method="POST" action="/admin/agent/ronde" onsubmit="document.getElementById('btnRonde').disabled=true;document.getElementById('btnRonde').textContent='⏳';">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="tbtn" id="btnRonde" title="Lancer la ronde maintenant">🔁 <span class="txt">Ronde</span></button>
+      </form>
+      <button type="button" class="tbtn" onclick="document.getElementById('panneau').classList.toggle('on')" title="Journal des actions de l'agent">📋 <span class="txt">Journal</span></button>
+    </div>
+  </div>
+
+  <div class="fil" id="fil">
+    {% if not conversation %}
+    <div class="vide">
+      👋 Je suis ton agent RH. Parle-moi comme sur WhatsApp :<br>
+      « <em>Marie est malade jusqu'à vendredi</em> » · « <em>Décale Paul demain à 10h-14h</em> » ·
+      « <em>Qui travaille samedi ?</em> » · « <em>Accepte les congés de Léa</em> » ·
+      « <em>Envoie une relance à ceux qui n'ont pas rendu leur relevé</em> » ·
+      « <em>Solde de congés de Karim ?</em> »<br>
+      🔒 Les prénoms sont masqués avant l'IA (pseudonymisation RGPD).
+    </div>
+    {% endif %}
+    {% set ns = namespace(jour='') %}
+    {% for m in conversation %}
+      {% set j = m.ts[:10] if m.ts else '' %}
+      {% if j and j != ns.jour %}{% set ns.jour = j %}<div class="jour">{{ j[8:10] }}/{{ j[5:7] }}/{{ j[:4] }}</div>{% endif %}
+      {% if m.systeme %}
+        <div class="b sys">{{ m.content }}<span class="ts">{{ m.ts[11:] }}</span></div>
+      {% elif m.role == 'user' %}
+        <div class="b user">{% if m.origine == 'ronde' %}<span class="origine">🔁 Ronde automatique</span>{{ 'Ronde quotidienne lancée.' }}{% else %}{{ m.content }}{% endif %}<span class="ts">{{ m.ts[11:] }}</span></div>
+      {% else %}
+        <div class="b bot{% if m.erreur %} err{% endif %}">{% if m.origine == 'ronde' %}<span class="origine">🔁 Compte-rendu de ronde</span>{% endif %}{{ m.content }}<span class="ts">{{ m.ts[11:] }}</span></div>
+        {% if m.outils %}<div class="outils">🔧 {{ m.outils | unique | join(', ') }}</div>{% endif %}
+        {% for a in m.actions or [] %}
+          {% if a.type == 'confirmer' %}
+          <div class="carte{% if a.fait %} done{% endif %}" data-id="{{ m.id }}" data-idx="{{ loop.index0 }}">
+            <div class="lbl">{{ a.label }} · proposition</div>
+            <div class="res">{{ a.resume }}</div>
+            {% if a.fait %}<div class="fait">✓ Confirmé le {{ a.fait_le }}</div>
+            {% else %}<div class="btns"><button type="button" class="ok" onclick="confirmer(this)">✅ Confirmer</button></div>{% endif %}
+          </div>
+          {% elif a.type == 'lien' %}
+          <div class="carte"><a class="lien" href="{{ a.url }}" target="_blank" rel="noopener" style="border-radius:7px;padding:7px 12px;font-weight:bold;">{{ a.label }}</a></div>
+          {% elif a.type == 'mailto' %}
+          <div class="carte"><div class="lbl">{{ a.label }}</div><div class="res">Objet : {{ a.subject }}</div>
+            <div class="btns"><a class="lien" style="border-radius:7px;padding:7px 12px;font-weight:bold;" target="_blank" rel="noopener"
+              href="https://mail.google.com/mail/?view=cm&fs=1&to={{ a.to | urlencode }}&su={{ a.subject | urlencode }}&body={{ a.body | urlencode }}">Ouvrir dans Gmail</a></div></div>
+          {% elif a.type == 'post' %}
+          <div class="carte"><div class="lbl">{{ a.label }}</div>
+            <div class="btns"><button type="button" class="ok" onclick="posterAction(this, {{ a.url | tojson }}, {{ a.fields | tojson }})">Confirmer</button></div></div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <form class="saisie" id="form">
+    <textarea id="inp" rows="1" placeholder="Écris à l'agent…" autocomplete="off"></textarea>
+    <button type="submit" class="env" id="btn" title="Envoyer">➤</button>
+  </form>
+
+  <div class="panneau" id="panneau">
+    <h2>📋 Journal de l'agent <button type="button" class="ferme" onclick="document.getElementById('panneau').classList.remove('on')">Fermer</button></h2>
+    <div class="aide">
+      Tout ce que l'agent a <strong>réellement écrit ou envoyé</strong> est tracé ici (mode autonome, ronde, ou carte confirmée).
+      La ronde quotidienne tourne chaque matin (cron GitHub → <code>/agent_ronde</code>) : relevés en retard, demandes de congés, échéances.
+      <span class="danger">Le mode autonome exécute sans te demander</span> — repasse en « Je valide » pour retrouver les cartes de confirmation.
+    </div>
+    {% for j in journal %}
+    <div class="jl"><span class="m">{{ j.ts }} · {{ j.mode }} · {{ j.origine }}</span><br><span class="o">{{ outils_libelles.get(j.outil, j.outil) }}</span> — {{ j.resume }}</div>
+    {% else %}
+    <div class="jl">Aucune action exécutée pour le moment.</div>
+    {% endfor %}
+    <form method="POST" action="/admin/agent/effacer" style="margin-top:18px;" onsubmit="return confirm('Effacer la conversation ? (le journal est conservé)');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="ferme" style="background:#9C0006;">🗑️ Effacer la conversation</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  const CSRF = "{{ csrf_token() }}";
+  const fil = document.getElementById('fil');
+  const inp = document.getElementById('inp');
+  const btn = document.getElementById('btn');
+  function bas() { fil.scrollTop = fil.scrollHeight; }
+  function heure() { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
+  function bulle(cls, texte, ts) {
+    const v = fil.querySelector('.vide'); if (v) v.remove();
+    const b = document.createElement('div'); b.className = 'b ' + cls; b.textContent = texte;
+    const t = document.createElement('span'); t.className = 'ts'; t.textContent = ts || heure(); b.appendChild(t);
+    fil.appendChild(b); bas(); return b;
+  }
+  function carte(msgId, idx, a) {
+    const c = document.createElement('div'); c.className = 'carte'; c.dataset.id = msgId; c.dataset.idx = idx;
+    if (a.type === 'confirmer') {
+      c.innerHTML = '<div class="lbl"></div><div class="res"></div><div class="btns"><button type="button" class="ok">✅ Confirmer</button></div>';
+      c.querySelector('.lbl').textContent = (a.label || 'Action') + ' · proposition';
+      c.querySelector('.res').textContent = a.resume || '';
+      c.querySelector('button').addEventListener('click', function () { confirmer(this); });
+    } else if (a.type === 'lien') {
+      const l = document.createElement('a'); l.className = 'lien'; l.href = a.url; l.target = '_blank'; l.rel = 'noopener';
+      l.style.cssText = 'border-radius:7px;padding:7px 12px;font-weight:bold;'; l.textContent = a.label || 'Ouvrir'; c.appendChild(l);
+    } else if (a.type === 'mailto') {
+      c.innerHTML = '<div class="lbl"></div><div class="res"></div><div class="btns"></div>';
+      c.querySelector('.lbl').textContent = a.label || 'E-mail'; c.querySelector('.res').textContent = 'Objet : ' + (a.subject || '');
+      const l = document.createElement('a'); l.className = 'lien'; l.target = '_blank'; l.rel = 'noopener';
+      l.style.cssText = 'border-radius:7px;padding:7px 12px;font-weight:bold;'; l.textContent = 'Ouvrir dans Gmail';
+      l.href = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(a.to || '') + '&su=' + encodeURIComponent(a.subject || '') + '&body=' + encodeURIComponent(a.body || '');
+      c.querySelector('.btns').appendChild(l);
+    } else if (a.type === 'post') {
+      c.innerHTML = '<div class="lbl"></div><div class="btns"><button type="button" class="ok">Confirmer</button></div>';
+      c.querySelector('.lbl').textContent = a.label || 'Confirmer';
+      c.querySelector('button').addEventListener('click', function () { posterAction(this, a.url, a.fields || {}); });
+    } else { return; }
+    fil.appendChild(c); bas();
+  }
+  async function confirmer(b) {
+    const c = b.closest('.carte'); b.disabled = true; b.textContent = '⏳';
+    try {
+      const r = await fetch('/admin/agent/confirmer', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+        body: JSON.stringify({ id: c.dataset.id, idx: parseInt(c.dataset.idx, 10) }) });
+      const d = await r.json();
+      if (d.ok) {
+        c.classList.add('done'); c.querySelector('.btns').remove();
+        const f = document.createElement('div'); f.className = 'fait'; f.textContent = '✓ Confirmé'; c.appendChild(f);
+        bulle('sys', '✅ Fait : ' + d.resultat);
+      } else { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ ' + (d.resultat || d.error || 'Échec')); }
+    } catch (e) { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ Connexion impossible.'); }
+  }
+  async function posterAction(b, url, fields) {
+    b.disabled = true;
+    try {
+      await fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields) });
+      b.textContent = '✓ Fait';
+    } catch (e) { b.textContent = '⚠️ Échec'; b.disabled = false; }
+  }
+  document.getElementById('form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const q = inp.value.trim(); if (!q) return;
+    inp.value = ''; inp.style.height = 'auto'; btn.disabled = true;
+    bulle('user', q);
+    const typing = document.createElement('div'); typing.className = 'typing'; typing.textContent = 'L\'agent réfléchit…'; fil.appendChild(typing); bas();
+    try {
+      const r = await fetch('/admin/agent/chat', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify({ message: q }) });
+      const d = await r.json(); typing.remove();
+      if (d.reply) {
+        bulle('bot', d.reply, d.ts ? d.ts.slice(11) : null);
+        if (d.outils_utilises && d.outils_utilises.length) { const o = document.createElement('div'); o.className = 'outils'; o.textContent = '🔧 ' + [...new Set(d.outils_utilises)].join(', '); fil.appendChild(o); }
+        (d.actions || []).forEach((a, i) => carte(d.id, i, a));
+      } else { bulle('bot err', '⚠️ ' + (d.error || 'Erreur.')); }
+    } catch (err) { typing.remove(); bulle('bot err', '⚠️ Connexion impossible.'); }
+    btn.disabled = false; inp.focus();
+  });
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('form').requestSubmit(); } });
+  inp.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 130) + 'px'; });
+  bas();
+</script>
+</body>
+</html>

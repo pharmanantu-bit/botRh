@@ -1,0 +1,28 @@
+name: Ronde quotidienne Agent RH
+
+# Réveille l'AGENT RH sur le serveur chaque matin : relevés en retard, demandes
+# de congés en attente, échéances. Le serveur fait tourner la boucle IA lui-même
+# (api.mistral.ai est dans la liste blanche PythonAnywhere) et poste son
+# compte-rendu dans le chat /admin/agent. En mode « validation », il ne fait que
+# proposer (cartes à confirmer) ; en mode « autonome », il exécute.
+
+on:
+  schedule:
+    - cron: '30 5 * * 1-6'   # 05:30 UTC = 07:30 Paris (été) / 06:30 (hiver), lun→sam
+  workflow_dispatch:
+
+jobs:
+  ronde:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclencher la ronde
+        env:
+          API_CLE: ${{ secrets.API_CLE }}
+        run: |
+          CLE="${API_CLE:-botRh-trigger-2026}"
+          code=$(curl -s -o /tmp/ronde.json -w '%{http_code}' --max-time 300 \
+                 -X POST "https://pharmacie92000.pythonanywhere.com/agent_ronde?cle=${CLE}")
+          echo "HTTP ${code}"
+          # Le compte-rendu peut contenir des prénoms : on n'affiche que le statut.
+          python3 -c "import json;d=json.load(open('/tmp/ronde.json'));print('ok=',d.get('ok'),'mode=',d.get('mode'),'erreur=',d.get('error'))" || true
+          test "$code" = "200"

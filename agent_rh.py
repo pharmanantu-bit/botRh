@@ -23,7 +23,7 @@ from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
 )
 
-MAX_TOURS = 5  # borne le nombre d'allers-retours d'outils (coût/latence)
+MAX_TOURS = 8  # borne le nombre d'allers-retours d'outils (coût/latence)
 
 SYSTEM_AGENT = (
     "Tu es l'assistant RH d'une pharmacie d'officine en France : à la fois expert "
@@ -34,20 +34,29 @@ SYSTEM_AGENT = (
     "échéances ou le planning, APPELLE l'outil adapté plutôt que de deviner. "
     "N'invente jamais une donnée : si un outil ne renvoie rien, dis-le.\n"
     "- Les salariés sont anonymisés en « Employé A », « Employé B »... Utilise ces "
-    "étiquettes telles quelles (dans tes appels d'outils comme dans ta réponse) ; "
-    "n'écris JAMAIS de nom de famille. L'affichage ré-identifiera localement.\n"
+    "étiquettes telles quelles et TOUJOURS complètes (« Employé C », jamais « C » ni "
+    "« Employés C, D ») dans tes appels d'outils comme dans ta réponse ; n'écris JAMAIS "
+    "de nom de famille. L'affichage ré-identifiera localement.\n"
     "- Pour les questions purement juridiques/RH (sans donnée nominative), réponds "
     "directement, en français, de façon concrète et actionnable, et signale quand "
     "un point délicat relève de l'avocat ou de l'expert-comptable. Information "
     "générale, pas un conseil juridique engageant. Aucun conseil médical.\n"
-    "- Pour PRÉPARER une action (relance d'un retardataire, attestation de travail, "
-    "note au journal, mail à un salarié), APPELLE l'outil action correspondant "
-    "(preparer_relance / preparer_attestation / proposer_note_journal / preparer_mail). "
-    "Ces outils ne font que PRÉPARER une proposition que l'utilisateur confirmera d'un "
-    "clic : ne prétends JAMAIS que c'est envoyé, ajouté ou fait. Annonce simplement que "
-    "le brouillon/le document est prêt à valider.\n"
+    "- Tu peux AGIR sur le planning et les dossiers avec les outils d'ÉCRITURE "
+    "(ajouter_absence, modifier_horaires_jour, retablir_horaires_jour, supprimer_absence, "
+    "traiter_demande_conges, envoyer_demande_collaborateur, ajouter_note_journal, "
+    "mettre_a_jour_profil, envoyer_mail, envoyer_relance). Avant d'écrire, vérifie ce "
+    "qu'il faut (planning du jour, solde de congés, demandes en attente) avec les outils "
+    "de LECTURE. Si une information indispensable manque (date, motif, horaires…), "
+    "demande-la au lieu de deviner.\n"
+    "- Chaque outil d'écriture renvoie son résultat réel : « FAIT » (exécuté) ou "
+    "« PROPOSITION » (l'utilisateur confirmera d'un clic). Rapporte EXACTEMENT ce "
+    "statut : ne dis jamais qu'une chose est faite si l'outil a répondu PROPOSITION, "
+    "et ne redemande pas confirmation si l'outil a répondu FAIT.\n"
+    "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
+    "PRÉPARER un brouillon ou un lien à ouvrir : ne prétends jamais que c'est envoyé.\n"
     "- Réponds toujours en français, clairement, et synthétise le résultat des "
-    "outils au lieu de le recracher brut."
+    "outils au lieu de le recracher brut. TEXTE BRUT façon messagerie : pas de "
+    "Markdown (aucun astérisque, aucun #), listes avec des tirets, phrases courtes."
 )
 
 # --- Catalogue d'outils (format neutre, converti par moteur) ---
@@ -108,17 +117,6 @@ OUTILS_SPECS = [
         "requis": ["employe"],
     },
     {
-        "nom": "proposer_note_journal",
-        "description": "Propose l'ajout d'une note datée au journal RH d'un salarié "
-                       "(ex. entretien, augmentation, avertissement). N'écrit RIEN : "
-                       "l'utilisateur confirmera l'ajout d'un clic.",
-        "params": {"employe": ("string", "Étiquette du salarié"),
-                   "note": ("string", "Texte de la note"),
-                   "type_evenement": ("string", "Type : Entretien, Augmentation, "
-                                                 "Avertissement, Formation, Congés, Autre (optionnel)")},
-        "requis": ["employe", "note"],
-    },
-    {
         "nom": "preparer_mail",
         "description": "Rédige un brouillon d'e-mail RH libre à un salarié (convocation, "
                        "information…). Ne l'envoie PAS : brouillon à relire et envoyer soi-même.",
@@ -127,7 +125,159 @@ OUTILS_SPECS = [
                    "corps": ("string", "Corps du mail")},
         "requis": ["employe", "corps"],
     },
+    # --- Outils LECTURE planning (contexte avant d'agir) ---
+    {
+        "nom": "planning_jour",
+        "description": "Qui travaille à une date donnée et à quels horaires (trame + "
+                       "changements ponctuels − absences − fériés), avec les absents.",
+        "params": {"date": ("string", "Date AAAA-MM-JJ (défaut : aujourd'hui)")},
+        "requis": [],
+    },
+    {
+        "nom": "planning_collaborateur",
+        "description": "Horaires effectifs d'un salarié sur la semaine contenant une date "
+                       "(défaut : semaine en cours), jour par jour.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "date": ("string", "Une date AAAA-MM-JJ de la semaine voulue (optionnel)")},
+        "requis": ["employe"],
+    },
+    {
+        "nom": "solde_conges",
+        "description": "Solde de congés payés d'un salarié sur la période en cours "
+                       "(droit, report, posés, restant) et ses plages de CP.",
+        "params": {"employe": ("string", "Étiquette du salarié")},
+        "requis": ["employe"],
+    },
+    {
+        "nom": "demandes_conges_en_attente",
+        "description": "Demandes de congés déposées par les salariés et non encore "
+                       "traitées (id, salarié, dates, commentaire).",
+        "params": {},
+        "requis": [],
+    },
+    {
+        "nom": "absences_en_cours",
+        "description": "Absences prolongées en cours ou à venir (congés, arrêts…) "
+                       "sur les 60 prochains jours.",
+        "params": {},
+        "requis": [],
+    },
+    # --- Outils ÉCRITURE : exécutés (mode autonome) ou proposés (mode validation) ---
+    {
+        "nom": "ajouter_absence",
+        "description": "Déclare une absence prolongée au planning (congés payés, arrêt "
+                       "maladie, formation…) sur une plage de dates. Refusée si elle "
+                       "chevauche une absence existante.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "debut": ("string", "Premier jour AAAA-MM-JJ"),
+                   "fin": ("string", "Dernier jour AAAA-MM-JJ (défaut = début)"),
+                   "motif": ("string", "Congés payés | Arrêt maladie | Accident du travail | "
+                                       "Congé maternité | Congé parental | Formation | "
+                                       "Congé sans solde | Absence non justifiée | "
+                                       "Repos compensatoire | Garde | Autre"),
+                   "commentaire": ("string", "Commentaire (optionnel)")},
+        "requis": ["employe", "debut", "motif"],
+    },
+    {
+        "nom": "supprimer_absence",
+        "description": "Supprime l'absence prolongée d'un salarié couvrant une date.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "date": ("string", "Une date AAAA-MM-JJ couverte par l'absence")},
+        "requis": ["employe", "date"],
+    },
+    {
+        "nom": "modifier_horaires_jour",
+        "description": "Change les horaires d'un salarié pour UNE date (retard, heures "
+                       "sup, échange, jour non travaillé…). `creneaux` vide = jour non "
+                       "travaillé. Un motif est obligatoire.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "date": ("string", "Date AAAA-MM-JJ"),
+                   "creneaux": ("string", "Créneaux « 09:00-13:00, 14:00-19:00 » (max 2) ; "
+                                          "vide = non travaillé"),
+                   "motif": ("string", "Heures sup/récup/échanges | Contrat ponctuel | "
+                                       "Repos compensatoire | Garde | Congés payés | Arrêt "
+                                       "maladie | Formation | Absence non justifiée | Autre")},
+        "requis": ["employe", "date", "motif"],
+    },
+    {
+        "nom": "retablir_horaires_jour",
+        "description": "Annule le changement ponctuel d'une date : le salarié retrouve "
+                       "ses horaires de trame.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "date": ("string", "Date AAAA-MM-JJ")},
+        "requis": ["employe", "date"],
+    },
+    {
+        "nom": "traiter_demande_conges",
+        "description": "Accepte ou refuse une demande de congés en attente (voir "
+                       "demandes_conges_en_attente pour l'id). Accepter crée l'absence "
+                       "« Congés payés » et prévient le salarié par mail.",
+        "params": {"id": ("string", "Identifiant de la demande"),
+                   "decision": ("string", "accepter | refuser"),
+                   "motif_refus": ("string", "Motif en cas de refus (optionnel)")},
+        "requis": ["id", "decision"],
+    },
+    {
+        "nom": "envoyer_demande_collaborateur",
+        "description": "Envoie à un salarié, dans son espace, une proposition de congés "
+                       "ou une demande d'heures supplémentaires à laquelle il répondra.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "type": ("string", "conges | heures_sup"),
+                   "debut": ("string", "Premier jour AAAA-MM-JJ"),
+                   "fin": ("string", "Dernier jour AAAA-MM-JJ (congés) ; optionnel"),
+                   "h_debut": ("string", "Heure de début HH:MM (heures sup)"),
+                   "h_fin": ("string", "Heure de fin HH:MM (heures sup)"),
+                   "commentaire": ("string", "Message (optionnel)")},
+        "requis": ["employe", "type", "debut"],
+    },
+    {
+        "nom": "ajouter_note_journal",
+        "description": "Ajoute une note datée au journal RH d'un salarié (entretien, "
+                       "augmentation, avertissement, formation…).",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "note": ("string", "Texte de la note"),
+                   "type_evenement": ("string", "Entretien | Augmentation | Avertissement | "
+                                                 "Formation | Congés | Autre (optionnel)")},
+        "requis": ["employe", "note"],
+    },
+    {
+        "nom": "mettre_a_jour_profil",
+        "description": "Met à jour UN champ du dossier salarié : poste, "
+                       "heures_contractuelles_hebdo, type_contrat, date_entree, date_fin, "
+                       "fin_essai, visite_medicale, telephone, adresse, urgence_nom, "
+                       "urgence_tel.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "champ": ("string", "Nom du champ (voir description)"),
+                   "valeur": ("string", "Nouvelle valeur (dates au format JJ/MM/AAAA)")},
+        "requis": ["employe", "champ", "valeur"],
+    },
+    {
+        "nom": "envoyer_mail",
+        "description": "ENVOIE réellement un e-mail à un salarié (convocation, "
+                       "information…). Le texte est envoyé tel quel : rédige-le "
+                       "complètement, en français, poli et sans nom de famille.",
+        "params": {"employe": ("string", "Étiquette du salarié"),
+                   "sujet": ("string", "Objet"),
+                   "corps": ("string", "Corps du message")},
+        "requis": ["employe", "sujet", "corps"],
+    },
+    {
+        "nom": "envoyer_relance",
+        "description": "ENVOIE réellement l'e-mail de rappel du relevé d'heures à un "
+                       "salarié retardataire (texte standard avec son lien).",
+        "params": {"employe": ("string", "Étiquette du salarié")},
+        "requis": ["employe"],
+    },
 ]
+
+# Outils qui MODIFIENT des données ou ENVOIENT quelque chose. En mode « validation »
+# l'implémentation renvoie une PROPOSITION (carte à confirmer) ; en mode « autonome »
+# elle exécute. Décision prise côté app (agent_outils.executer), jamais par le LLM.
+OUTILS_ECRITURE = {
+    "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
+    "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
+    "ajouter_note_journal", "mettre_a_jour_profil", "envoyer_mail", "envoyer_relance",
+}
 
 
 def _schema_props(spec):
@@ -244,7 +394,28 @@ def _boucle_fake(msgs, annuaire, table, executer):
     mo = re.search(r"Employé [A-Z]+", dernier)
     label = mo.group(0) if mo else None
     # Outils ACTION (mots-clés explicites, salarié ciblé requis)
-    if "relance" in d and label:
+    # Outils ÉCRITURE (mots-clés explicites) — servent aux tests hors-ligne
+    mdate = re.search(r"\d{4}-\d{2}-\d{2}", dernier)
+    diso = mdate.group(0) if mdate else None
+    if "absence" in d and label and diso and "supprim" not in d:
+        nom, args = "ajouter_absence", {"employe": label, "debut": diso, "fin": diso,
+                                        "motif": "Arrêt maladie"}
+    elif "horaire" in d and label and diso:
+        nom, args = "modifier_horaires_jour", {"employe": label, "date": diso,
+                                               "creneaux": "10:00-14:00",
+                                               "motif": "Heures sup/récup/échanges"}
+    elif "journal" in d and label and any(k in d for k in ("ajoute", "note")):
+        nom, args = "ajouter_note_journal", {"employe": label, "note": "Entretien réalisé.",
+                                             "type_evenement": "Entretien"}
+    elif "demandes" in d and "cong" in d:
+        nom, args = "demandes_conges_en_attente", {}
+    elif "solde" in d and label:
+        nom, args = "solde_conges", {"employe": label}
+    elif "planning" in d and diso:
+        nom, args = "planning_jour", {"date": diso}
+    elif "envoie" in d and "relance" in d and label:
+        nom, args = "envoyer_relance", {"employe": label}
+    elif "relance" in d and label:
         nom, args = "preparer_relance", {"employe": label}
     elif ("attestation" in d or "certificat" in d) and label:
         nom, args = "preparer_attestation", {"employe": label}
@@ -267,7 +438,26 @@ def _boucle_fake(msgs, annuaire, table, executer):
     return f"(mode fake) Résultat de l'outil « {nom} » :\n{res}", outils, actions
 
 
-def run_agent(messages, employes, executer, moteur="mistral", modele=None, roster_txt=""):
+def contexte_date(aujourdhui=None):
+    """Bloc « date du jour » injecté dans le system : indispensable pour que le
+    modèle résolve « demain », « lundi prochain », « ce mois-ci »…"""
+    from datetime import date as _date
+    d = aujourdhui or _date.today()
+    from datetime import timedelta as _td
+    jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+    # Calendrier des 14 prochains jours : évite les erreurs « lundi prochain = mardi ».
+    cal = ", ".join(f"{jours[(d + _td(days=k)).weekday()]} {(d + _td(days=k)).isoformat()}"
+                    for k in range(1, 15))
+    return (f"Aujourd'hui : {jours[d.weekday()]} {d.strftime('%d/%m/%Y')} (ISO {d.isoformat()}).\n"
+            f"Jours suivants : {cal}.\n"
+            f"« {jours[(d + _td(days=1)).weekday()]} prochain » = le premier {jours[(d + _td(days=1)).weekday()]} "
+            f"après aujourd'hui, soit {(d + _td(days=1)).isoformat()} ; même logique pour les autres jours "
+            "(le PREMIER à venir, pas celui de la semaine suivante).\n"
+            "Utilise EXACTEMENT ces dates ISO dans les outils (vérifie le jour de la semaine).")
+
+
+def run_agent(messages, employes, executer, moteur="mistral", modele=None, roster_txt="",
+              mode="validation", contexte=""):
     """Lance l'agent outillé. `messages` : [{role:'user'|'assistant', content}].
     `executer(nom, args, annuaire)` : callback fourni par app.py qui exécute l'outil
     en local et renvoie un texte. `roster_txt` : roster pseudonymisé (labels + poste)
@@ -280,7 +470,19 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
     # Pseudonymise les messages de l'utilisateur AVANT tout envoi au modèle.
     msgs = [{"role": m["role"], "content": pseudonymiser_texte(m.get("content", ""), table)}
             for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
-    systeme = SYSTEM_AGENT + (f"\n\nSalariés (anonymisés) :\n{roster_txt}" if roster_txt else "")
+    systeme = SYSTEM_AGENT + "\n\n" + contexte_date()
+    if mode == "autonome":
+        systeme += ("\nMODE AUTONOME : tes outils d'écriture EXÉCUTENT immédiatement. "
+                    "Agis avec prudence (vérifie avant d'écrire) puis rends compte de ce "
+                    "que tu as fait, sans demander de confirmation après coup.")
+    else:
+        systeme += ("\nMODE VALIDATION : tes outils d'écriture ne font que PROPOSER ; "
+                    "l'utilisateur confirme d'un clic sur la carte affichée. Prépare la "
+                    "proposition complète, puis dis simplement qu'elle attend sa validation.")
+    if contexte:
+        systeme += "\n" + contexte
+    if roster_txt:
+        systeme += f"\n\nSalariés (anonymisés) :\n{roster_txt}"
 
     if moteur == "claude":
         texte, outils, actions = _boucle_claude(systeme, msgs, annuaire, table, executer, modele)

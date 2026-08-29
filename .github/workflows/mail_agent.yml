@@ -1,0 +1,24 @@
+name: E-mail envoyé par l'Agent RH
+
+# Le serveur PythonAnywhere gratuit ne peut pas faire de SMTP sortant : quand
+# l'agent RH décide d'envoyer un e-mail (relance, convocation…), il déclenche ce
+# workflow (repository_dispatch « mail_agent ») et le runner l'envoie via Gmail.
+
+on:
+  repository_dispatch:
+    types: [mail_agent]
+
+jobs:
+  envoi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Envoyer le mail
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: python mail_agent_sender.py
