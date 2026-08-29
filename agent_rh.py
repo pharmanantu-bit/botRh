@@ -67,6 +67,10 @@ SYSTEM_AGENT = (
     "statut ; appliquer_suggestion / ignorer_suggestion, cocher_checklist, "
     "changer_statut, valider_document, retyper_document, generer_attestation et "
     "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"
+    "- MAILS RH : mails_rh_du_jour donne la synthèse des e-mails reçus (comptable, "
+    "salariés, administratif). Quand une tâche en découle (préparer un document, "
+    "relancer quelqu'un, noter une échéance), PROPOSE l'action avec l'outil adapté au "
+    "lieu de seulement la citer. Si la synthèse est ancienne, propose actualiser_mails.\n"
     "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
     "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
@@ -480,6 +484,36 @@ OUTILS_SPECS += [
     },
 ]
 
+# --- Outils MAILS RH & ÉQUIPE (phase 3) ---
+OUTILS_SPECS += [
+    {
+        "nom": "mails_rh_du_jour",
+        "description": "Synthèse des e-mails RH reçus (cabinet comptable, salariés, "
+                       "administratif) produite par l'assistant : résumé, tâches à faire "
+                       "avec priorité, choses à mettre en place, échéances, alertes. Sans "
+                       "date : la plus récente disponible. Sert à répondre à « qu'a demandé "
+                       "le comptable ? », « qu'y a-t-il dans les mails aujourd'hui ? ».",
+        "params": {"date": ("string", "Date AAAA-MM-JJ (optionnel, défaut = dernière synthèse)")},
+        "requis": [],
+    },
+    {
+        "nom": "actualiser_mails",
+        "description": "Relance la lecture de la boîte mail RH et la génération de la "
+                       "synthèse du jour (quelques minutes, via le runner). À proposer "
+                       "quand la dernière synthèse date d'hier ou plus.",
+        "params": {},
+        "requis": [],
+    },
+    {
+        "nom": "documents_manquants_equipe",
+        "description": "Pour toute l'équipe active : documents obligatoires manquants "
+                       "(contrat, RIB, pièce d'identité), documents à valider, checklists "
+                       "d'arrivée incomplètes. Vue d'ensemble pour la ronde.",
+        "params": {},
+        "requis": [],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
@@ -487,7 +521,7 @@ OUTILS_ECRITURE = {
     "corriger_releve", "valider_releve", "envoyer_recap_comptable", "annuler_derniere_action",
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
-    "envoyer_attestation",
+    "envoyer_attestation", "actualiser_mails",
 }
 # Outils PAIE : validation par l'utilisateur OBLIGATOIRE, même en mode autonome.
 OUTILS_PAIE = {"corriger_releve", "valider_releve", "envoyer_recap_comptable"}

@@ -36,7 +36,8 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_p
                  paie_envoi_file, PROFILS_FILE, DOCS_DIR, DOCS_INDEX, charger_docs_index,
                  sauvegarder_docs_index, docs_manquants, TACHES_ARRIVEE, TACHES_DEPART,
                  FAMILLES_DOCS, alertes_completes, _analyser_document, _doc_analysable,
-                 _valeur_profil_pour, _purger_propositions, CIBLES_SENSIBLES)
+                 _valeur_profil_pour, _purger_propositions, CIBLES_SENSIBLES, ASSISTANT_FILE,
+                 DOCS_REQUIS)
 import crypto_rh
 import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, run_agent
@@ -129,7 +130,7 @@ def marquer_annulee(annulation_id):
 # de retour en arrière dans le désordre). Les e-mails partis ne se rappellent pas.
 
 OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable",
-                        "envoyer_attestation"}
+                        "envoyer_attestation", "actualiser_mails"}
 OUTILS_MAIL_PARTIEL = {"traiter_demande_conges", "envoyer_demande_collaborateur",
                        "ajouter_absence"}   # écrivent ET peuvent prévenir par mail
 
@@ -1441,6 +1442,100 @@ def _w_envoyer_attestation(args, annuaire, executer):
 
 OUTILS_LECTURE_DOSSIER = {"dossier_salarie": _o_dossier_salarie}
 
+# --- Outils MAILS RH & ÉQUIPE ---------------------------------------------------------
+
+def _o_mails_rh_du_jour(args, annuaire):
+    resumes = _lire_json(ASSISTANT_FILE)
+    if not isinstance(resumes, dict) or not resumes:
+        return ("Aucune synthèse de mails disponible. Lance actualiser_mails (ou le bouton "
+                "« Actualiser » de la page Assistant).")
+    dates = sorted(resumes)
+    d = (args.get("date") or "").strip()
+    if d and d not in resumes:
+        return f"Pas de synthèse pour le {d}. Dates disponibles : {', '.join(dates[-10:])}."
+    d = d or dates[-1]
+    r = resumes[d]
+    meta = r.get("_meta") or {}
+    lignes = [f"Synthèse des mails RH du {d} (générée le {r.get('genere_le', '?')}, "
+              f"{meta.get('nb_mails', '?')} mail(s))"]
+    try:
+        age = (date.today() - datetime.strptime(d, "%Y-%m-%d").date()).days
+        if age >= 1:
+            lignes[0] += f" — ATTENTION : elle date d'il y a {age} jour(s), propose actualiser_mails"
+    except ValueError:
+        pass
+    if r.get("resume_texte"):
+        lignes.append(r["resume_texte"])
+    prio = {"haute": "!!!", "moyenne": "!!", "basse": "!"}
+    taches = r.get("taches_a_faire") or []
+    if taches:
+        lignes.append("Tâches à faire :")
+        for t in taches:
+            l = f"- [{prio.get((t.get('priorite') or '').lower(), '')}] {t.get('titre', '')}"
+            if t.get("detail"):
+                l += f" — {t['detail']}"
+            if t.get("source_mail"):
+                l += f" (source : {t['source_mail']})"
+            lignes.append(l)
+    amp = r.get("a_mettre_en_place") or []
+    if amp:
+        lignes.append("À mettre en place :")
+        lignes += [f"- {x.get('titre', '')}" + (f" — {x['detail']}" if x.get("detail") else "") for x in amp]
+    ech = r.get("echeances") or []
+    if ech:
+        lignes.append("Échéances :")
+        lignes += [f"- {x.get('libelle', '')} : {x.get('date_limite', '?')}"
+                   + (f" ({x['source']})" if x.get("source") else "") for x in ech]
+    al = r.get("alertes") or []
+    if al:
+        lignes.append("Alertes : " + " ; ".join(str(a) for a in al))
+    if not (taches or amp or ech or al):
+        lignes.append("Rien à faire d'après les mails.")
+    return "\n".join(lignes)
+
+
+def _o_documents_manquants_equipe(args, annuaire):
+    lignes = []
+    for lab, e in _actifs(annuaire):
+        prof = charger_profils().get(e["email"], {})
+        pb = []
+        manq = docs_manquants(e["email"])
+        if manq:
+            pb.append("manquant(s) : " + ", ".join(manq))
+        av = [d for d in _docs_de(e["email"]) if d.get("a_valider")]
+        if av:
+            pb.append(f"{len(av)} document(s) à valider")
+        restantes = [t for t in TACHES_ARRIVEE if t not in prof.get("check_arrivee", [])]
+        if restantes and len(restantes) < len(TACHES_ARRIVEE):
+            pb.append(f"checklist d'arrivée incomplète ({len(restantes)} restante(s))")
+        if pb:
+            lignes.append(f"- {lab} : " + " ; ".join(pb))
+    if not lignes:
+        return "Dossiers de l'équipe complets : rien à signaler. ✅"
+    return (f"Dossiers incomplets ({len(lignes)} salarié(s)) — documents requis : "
+            + ", ".join(DOCS_REQUIS) + " :\n" + "\n".join(lignes))
+
+
+def _w_actualiser_mails(args, annuaire, executer):
+    resume = "Relecture de la boîte mail RH et régénération de la synthèse (runner GitHub, quelques minutes)"
+    if not executer:
+        return resume, True
+    if current_app.config.get("TESTING"):
+        return resume + " (TEST : non lancé)", True
+    if not os.getenv("GITHUB_TOKEN"):
+        return "Impossible depuis cet environnement (GITHUB_TOKEN absent) : utilise le bouton « Actualiser » de la page Assistant sur le serveur.", False
+    try:
+        declencher_workflow("assistant_refresh", {"origine": "agent"})
+    except Exception as ex:
+        return f"Échec du lancement : {type(ex).__name__}", False
+    return resume + " — lancée, la synthèse apparaîtra dans mails_rh_du_jour", True
+
+
+OUTILS_LECTURE_MAILS = {
+    "mails_rh_du_jour": _o_mails_rh_du_jour,
+    "documents_manquants_equipe": _o_documents_manquants_equipe,
+}
+
 OUTILS_ECRITURE_IMPL = {
     "ajouter_absence": _w_ajouter_absence,
     "supprimer_absence": _w_supprimer_absence,
@@ -1465,6 +1560,7 @@ OUTILS_ECRITURE_IMPL = {
     "retyper_document": _w_retyper_document,
     "generer_attestation": _w_generer_attestation,
     "envoyer_attestation": _w_envoyer_attestation,
+    "actualiser_mails": _w_actualiser_mails,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
@@ -1480,7 +1576,7 @@ LIBELLES_OUTILS = {
     "analyser_documents": "📑 Analyse", "cocher_checklist": "☑️ Checklist",
     "changer_statut": "🟢 Statut", "valider_document": "📄 Document",
     "retyper_document": "📄 Document", "generer_attestation": "📄 Attestation",
-    "envoyer_attestation": "📧 Attestation",
+    "envoyer_attestation": "📧 Attestation", "actualiser_mails": "📬 Mails",
 }
 
 
@@ -1494,6 +1590,8 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         return OUTILS_LECTURE_PAIE[nom](args, annuaire)
     if nom in OUTILS_LECTURE_DOSSIER:
         return OUTILS_LECTURE_DOSSIER[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_MAILS:
+        return OUTILS_LECTURE_MAILS[nom](args, annuaire)
     if nom in OUTILS_ECRITURE_IMPL:
         fn = OUTILS_ECRITURE_IMPL[nom]
         # PAIE : jamais d'exécution directe, même en mode autonome.
@@ -1575,14 +1673,21 @@ def repondre(texte_utilisateur, origine="chat", contexte=""):
 
 BRIEF_RONDE = (
     "Fais ta RONDE quotidienne de gestion RH. Passe en revue, dans l'ordre : "
-    "1) releves_manquants — si la clôture (le 25) est dans 3 jours ou moins, envoie une "
+    "1) mails_rh_du_jour — si la synthèse date d'hier ou plus, lance actualiser_mails ; "
+    "relève les tâches de priorité haute et les échéances, et pour chacune PROPOSE "
+    "l'action concrète avec l'outil adapté (préparer un document, relancer, noter au "
+    "journal, ajouter une absence…) ; "
+    "2) releves_manquants — si la clôture (le 25) est dans 3 jours ou moins, envoie une "
     "relance (envoyer_relance) à chaque retardataire ; "
-    "2) demandes_conges_en_attente — accepte (traiter_demande_conges) uniquement si le "
+    "3) demandes_conges_en_attente — accepte (traiter_demande_conges) uniquement si le "
     "solde restant couvre les jours demandés, qu'aucune absence ne chevauche et "
     "qu'aucun autre salarié n'est déjà absent sur la période ; sinon laisse en attente "
     "et explique pourquoi ; "
-    "3) echeances_a_venir et absences_en_cours — signale ce qui mérite attention "
-    "(fin de CDD, période d'essai, visite médicale, retour d'absence) sans rien écrire. "
+    "4) echeances_a_venir et absences_en_cours — signale ce qui mérite attention "
+    "(fin de CDD, période d'essai, visite médicale, retour d'absence) sans rien écrire ; "
+    "5) documents_manquants_equipe — signale les dossiers incomplets, et propose "
+    "d'envoyer un e-mail (envoyer_mail) au salarié pour réclamer ce qui manque quand "
+    "un document obligatoire est absent. "
     "Termine par un compte-rendu court et structuré : ce que tu as fait, ce qui attend "
     "ma décision, ce à quoi je dois penser. Si tout est en ordre, dis-le en une phrase. "
     "Ne touche pas à la paie (aucune correction/validation de relevé, aucun envoi au "
