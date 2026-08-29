@@ -21,7 +21,10 @@ import json
 
 from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
+    definir_echeance,
 )
+
+BUDGET_SECONDES = 240   # temps total max par question (cron : curl --max-time 300)
 from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 
 MAX_TOURS = 8  # borne le nombre d'allers-retours d'outils (coût/latence)
@@ -778,11 +781,23 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
     Renvoie {"reply": <texte ré-identifié>, "outils_utilises": [...], "actions": [...]}.
     Les `actions` (boutons à confirmer) ne sont jamais passées au LLM ; leurs libellés
     et brouillons en « Employé X » sont ré-identifiés en local pour l'affichage."""
+    definir_echeance(BUDGET_SECONDES)
     table, inverse = construire_table(employes or [])
     annuaire = annuaire_pseudo(employes or [])
-    # Pseudonymise les messages de l'utilisateur AVANT tout envoi au modèle.
-    msgs = [{"role": m["role"], "content": pseudonymiser_texte(m.get("content", ""), table)}
-            for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    # Pseudonymise les messages de l'utilisateur AVANT tout envoi au modèle, et
+    # fusionne les tours consécutifs de même rôle (l'API Claude exige l'alternance ;
+    # une ronde échouée laisse un tour « user » orphelin).
+    msgs = []
+    for m in messages:
+        if m.get("role") not in ("user", "assistant") or not m.get("content"):
+            continue
+        c = pseudonymiser_texte(m.get("content", ""), table)
+        if msgs and msgs[-1]["role"] == m["role"]:
+            msgs[-1]["content"] += "\n\n" + c
+        else:
+            msgs.append({"role": m["role"], "content": c})
+    if msgs and msgs[0]["role"] == "assistant":
+        msgs = msgs[1:]
     systeme = SYSTEM_AGENT + "\n\n" + contexte_date()
     if mode == "autonome":
         systeme += ("\nMODE AUTONOME : tes outils d'écriture EXÉCUTENT immédiatement. "

@@ -140,6 +140,24 @@ def _extraire_json(texte):
     return json.loads(m.group(0))
 
 
+import threading as _threading
+_ECHEANCE = _threading.local()
+
+
+def definir_echeance(secondes):
+    """Budget de temps TOTAL pour la question en cours (tous appels et attentes
+    429 compris), par thread. Au-delà, _post_json abandonne au lieu d'attendre :
+    le cron (curl --max-time 300) et l'utilisateur ne restent pas bloqués."""
+    import time
+    _ECHEANCE.t = time.time() + secondes
+
+
+def _reste():
+    import time
+    t = getattr(_ECHEANCE, "t", None)
+    return None if t is None else t - time.time()
+
+
 def _post_json(url, headers, charge, timeout=60, essais=4):
     """POST JSON avec reprise automatique.
     - 429 (limite de débit) : le palier gratuit Mistral plafonne à 25 000 tokens
@@ -150,9 +168,12 @@ def _post_json(url, headers, charge, timeout=60, essais=4):
     import time
     data = json.dumps(charge).encode("utf-8")
     for k in range(essais):
+        reste = _reste()
+        if reste is not None and reste <= 5:
+            raise TimeoutError("budget de temps épuisé (limite de débit IA)")
         req = urllib.request.Request(url, data=data, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with urllib.request.urlopen(req, timeout=min(timeout, reste) if reste else timeout) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or k == essais - 1:
@@ -162,9 +183,12 @@ def _post_json(url, headers, charge, timeout=60, essais=4):
                     attente = min(float(e.headers.get("Retry-After") or 0), 60) or 20
                 except ValueError:
                     attente = 20
-                time.sleep(attente)
             else:
-                time.sleep(2 ** k)
+                attente = 2 ** k
+            reste = _reste()
+            if reste is not None and attente > reste - 10:
+                raise TimeoutError("budget de temps épuisé (limite de débit IA)") from e
+            time.sleep(attente)
 
 
 # --- Moteurs interchangeables ---

@@ -124,7 +124,7 @@
       « <em>Qui travaille samedi ?</em> » · « <em>Accepte les congés de Léa</em> » ·
       « <em>Envoie une relance à ceux qui n'ont pas rendu leur relevé</em> » ·
       « <em>Solde de congés de Karim ?</em> »<br>
-      🔒 Les prénoms sont masqués avant l'IA (pseudonymisation RGPD).
+      🔒 Les salariés sont masqués avant l'IA (pseudonymisation RGPD) ; les candidats au recrutement sont transmis nominativement (Mistral, hébergé UE).
     </div>
     {% endif %}
     {% set ns = namespace(jour='') %}
@@ -160,7 +160,7 @@
               href="https://mail.google.com/mail/?view=cm&fs=1&to={{ a.to | urlencode }}&su={{ a.subject | urlencode }}&body={{ a.body | urlencode }}">Ouvrir dans Gmail</a></div></div>
           {% elif a.type == 'post' %}
           <div class="carte"><div class="lbl">{{ a.label }}</div>
-            <div class="btns"><button type="button" class="ok" onclick="posterAction(this, {{ a.url | tojson }}, {{ a.fields | tojson }})">Confirmer</button></div></div>
+            <div class="btns"><button type="button" class="ok" onclick='posterAction(this, {{ a.url | tojson }}, {{ a.fields | tojson }})'>Confirmer</button></div></div>
           {% endif %}
         {% endfor %}
       {% endif %}

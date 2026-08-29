@@ -194,6 +194,17 @@ def enregistrer_annulation(outil, resume, etat_avant, etat_apres=None):
     return aid
 
 
+def _restaurer(etat):
+    """Réécrit les fichiers tels qu'ils étaient (None = n'existait pas)."""
+    for f, contenu in (etat or {}).items():
+        if contenu is None:
+            if os.path.exists(f):
+                os.remove(f)
+        else:
+            with open(f, "w", encoding="utf-8") as fp:
+                fp.write(contenu)
+
+
 def derniere_annulable():
     return next((a for a in reversed(charger_annulations()) if not a.get("annulee")), None)
 
@@ -227,13 +238,23 @@ def annuler(annulation_id=None, origine="chat"):
         marquer_annulee(derniere["id"])
         return ("Annulation refusée : " + ", ".join(modifies) + " a été modifié depuis cette action "
                 "(par toi ou par une autre action). Corrige à la main pour ne rien écraser."), False
-    for f, contenu in (derniere.get("etat") or {}).items():
-        if contenu is None:
-            if os.path.exists(f):
-                os.remove(f)
-        else:
-            with open(f, "w", encoding="utf-8") as fp:
-                fp.write(contenu)
+    # Fichiers (PDF d'attestation…) créés par l'action : présents dans l'index
+    # d'après, absents de celui d'avant -> supprimés du disque (pas d'orphelin nominatif).
+    etat = derniere.get("etat") or {}
+    if DOCS_INDEX in etat:
+        try:
+            av = json.loads(etat.get(DOCS_INDEX) or "{}")
+            ap = json.loads((apres.get(DOCS_INDEX) or "{}"))
+            ids_av = {d.get("id") for lst in av.values() for d in lst}
+            for lst in ap.values():
+                for d in lst:
+                    if d.get("id") not in ids_av and d.get("fichier"):
+                        chemin = os.path.join(DOCS_DIR, d["fichier"])
+                        if os.path.exists(chemin):
+                            os.remove(chemin)
+        except (ValueError, OSError):
+            current_app.logger.exception("Nettoyage des fichiers d'une action annulée")
+    _restaurer(etat)
     derniere["annulee"] = True
     derniere["annulee_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     _ecrire_json(ANNULATIONS_FILE, lst)
@@ -289,10 +310,14 @@ def _label_de(emp, annuaire):
 
 
 def _date(s):
-    try:
-        return datetime.strptime((s or "").strip(), "%Y-%m-%d").date()
-    except ValueError:
-        return None
+    """AAAA-MM-JJ (attendu du modèle) ou JJ/MM/AAAA, JJ-MM-AAAA, JJ.MM.AAAA."""
+    v = (s or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(v, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _fr(d):
@@ -587,6 +612,16 @@ def _w_traiter_demande_conges(args, annuaire, executer):
     absences = PE.charger_absences()
     if decision == "accepter" and d1 and d2 and PE.absence_chevauchante(absences, dm["email"], d1, d2):
         return f"Refusé : la demande de {lab} chevauche une absence déjà enregistrée.", False
+    if decision == "accepter" and d1 and d2:
+        try:
+            p1, p2 = PE.periode_conges()
+            bilan = PE.bilan_cp(dm["email"], absences, PE.charger_changements(), PE.charger_conges(), p1, p2)
+            demandes_j = PE._jours_ouvrables_cp(d1, d2, d1, d2)
+            if demandes_j > float(bilan.get("restant") or 0):
+                return (f"Refusé : solde de congés insuffisant pour {lab} "
+                        f"({bilan.get('restant')} j restant(s), {demandes_j} j demandé(s))."), False
+        except Exception:
+            current_app.logger.exception("Contrôle du solde CP (agent)")
     resume = (f"Demande de congés de {lab} du {_fr(d1)} au {_fr(d2)} : "
               + ("ACCEPTÉE" if decision == "accepter" else "REFUSÉE"))
     if decision == "refuser" and args.get("motif_refus"):
@@ -757,6 +792,15 @@ def _w_envoyer_relance(args, annuaire, executer):
     if not act.get("body"):
         return "Impossible de composer la relance.", False
     corps = act["body"].replace(f"Bonjour {lab},", f"Bonjour {e['prenom']},")
+    profils = charger_profils()
+    prof = profils.get(e["email"], {})
+    derniere = prof.get("derniere_relance_agent", "")
+    try:
+        dd = datetime.strptime(derniere, "%Y-%m-%d").date() if derniere else None
+    except ValueError:
+        dd = None
+    if dd and (date.today() - dd).days < 3:
+        return f"{lab} a déjà été relancé(e) le {_fr(dd)} : pas de nouvelle relance avant 3 jours.", False
     resume = f"Relance du relevé d'heures à {lab} — objet « {act.get('subject')} »"
     if not executer:
         return resume, True
@@ -766,6 +810,9 @@ def _w_envoyer_relance(args, annuaire, executer):
         statut = _envoyer_mail_reel(e["email"], act.get("subject", "Rappel"), corps)
     except Exception as ex:
         return f"Échec de la relance à {lab} : {type(ex).__name__}.", False
+    prof["derniere_relance_agent"] = date.today().isoformat()
+    profils[e["email"]] = prof
+    sauvegarder_profils(profils)
     return resume + f" → {statut}", True
 
 
@@ -1070,7 +1117,14 @@ def _w_envoyer_recap_comptable(args, annuaire, executer):
     if not executer:
         return resume, True
     _ecrire_json(paie_envoi_file(mois, annee), construire_resume_paie(mois, annee))
-    declencher_workflow("envoi_comptable", {"mois": mois, "annee": annee, "destinataires": dest})
+    try:
+        declencher_workflow("envoi_comptable", {"mois": mois, "annee": annee, "destinataires": dest})
+    except Exception as ex:
+        try:
+            os.remove(paie_envoi_file(mois, annee))
+        except OSError:
+            pass
+        return f"Envoi NON parti ({type(ex).__name__}) : rien n'a été transmis au comptable.", False
     return resume, True
 
 
@@ -1575,6 +1629,9 @@ OUTILS_LECTURE_RECRUTEMENT = {sp["nom"] for sp in OUTILS_SPECS_RECRUTEMENT}
 
 
 def _candidat(ref):
+    tous = REC.charger_candidats()
+    if ref in tous:                       # identifiant stable (cartes à confirmer)
+        return ref, tous[ref], None
     cid, c = REC._resoudre_candidat(ref)
     if cid is None:
         return None, None, REC._msg_resolution(c)
@@ -1807,6 +1864,38 @@ LIBELLES_OUTILS = {
 }
 
 
+def _stabiliser_args(args, annuaire):
+    """Arguments venus du modèle (« Employé X », noms de candidats) -> arguments
+    sûrs : salarié désigné par son E-MAIL, candidat par son IDENTIFIANT (deux
+    homonymes ne se confondent plus), et textes libres (corps de mail, note,
+    motif…) ré-identifiés (plus d'« Employé X » dans un mail ou un journal)."""
+    a = dict(args or {})
+    if a.get("employe") and str(a["employe"]).strip().lower() not in ("tous", "toutes", "tout", "all", "*"):
+        e = _employe(a["employe"], annuaire)
+        if e:
+            a["employe"] = e["email"]
+    if a.get("candidat"):
+        cid, _, err = _candidat(a["candidat"])
+        if not err:
+            a["candidat"] = cid
+    _, inverse = construire_table(charger_employes())
+    return reidentifier(a, inverse)
+
+
+def _executer_protege(nom, fn, args, annuaire, avant):
+    """Exécute une écriture ; en cas d'exception, remet les fichiers comme avant
+    (pas d'état à moitié écrit) et renvoie un échec explicite."""
+    try:
+        return fn(args, annuaire, True)
+    except Exception as ex:
+        current_app.logger.exception("Outil %s : exception, état restauré", nom)
+        try:
+            _restaurer(avant)
+        except OSError:
+            current_app.logger.exception("Restauration après exception")
+        return f"erreur interne ({type(ex).__name__}) — aucune modification conservée", False
+
+
 def executer_outil(nom, args, annuaire, mode, origine="chat"):
     """Callback unique pour agent_rh.run_agent. Lecture -> texte. Écriture ->
     exécute (autonome) ou propose (validation : {resultat, action carte})."""
@@ -1827,10 +1916,12 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         fn = OUTILS_ECRITURE_IMPL[nom]
         # PAIE et DÉCISIONS RH : jamais d'exécution directe, même en mode autonome.
         if mode == "autonome" and nom not in OUTILS_PAIE and nom not in OUTILS_DECISION:
+            args = _stabiliser_args(args, annuaire)
             avant = _instantane(args)
-            texte, ok = fn(args, annuaire, True)
+            texte, ok = _executer_protege(nom, fn, args, annuaire, avant)
             if ok:
-                journaliser(nom, texte, mode, origine)
+                if nom != "annuler_derniere_action":   # annuler() se journalise lui-même
+                    journaliser(nom, texte, mode, origine)
                 aid = enregistrer_annulation(nom, texte, avant, _instantane(args))
                 if not aid:
                     return f"FAIT : {texte}"
@@ -1844,7 +1935,7 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         suffixe = (" — PAIE : validation obligatoire" if nom in OUTILS_PAIE
                    else " — DÉCISION RH : validation obligatoire" if nom in OUTILS_DECISION else "")
         return {"resultat": f"PROPOSITION (en attente de validation par l'utilisateur) : {texte}",
-                "action": {"type": "confirmer", "outil": nom, "args": args,
+                "action": {"type": "confirmer", "outil": nom, "args": _stabiliser_args(args, annuaire),
                            "label": LIBELLES_OUTILS.get(nom, nom) + suffixe, "resume": texte}}
     return executer_outil_agent(nom, args, annuaire)   # outils historiques (app.py)
 
@@ -1856,10 +1947,11 @@ def confirmer_action(outil, args, origine="carte"):
         return f"Outil inconnu : {outil}", False, None
     annuaire = annuaire_pseudo(charger_employes())
     avant = _instantane(args or {})
-    texte, ok = fn(args or {}, annuaire, True)
+    texte, ok = _executer_protege(outil, fn, args or {}, annuaire, avant)
     aid = None
     if ok:
-        journaliser(outil, texte, "validation", origine)
+        if outil != "annuler_derniere_action":
+            journaliser(outil, texte, "validation", origine)
         aid = enregistrer_annulation(outil, texte, avant, _instantane(args or {}))
     return texte, ok, aid
 
@@ -1887,7 +1979,9 @@ def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_C
     conv = charger_conversation()
     messages = [{"role": m["role"], "content": m["content"]}
                 for m in conv if m.get("role") in ("user", "assistant")
-                and not m.get("systeme")][-nb_contexte:]
+                and not m.get("systeme") and not m.get("erreur")
+                and not (m.get("role") == "user" and m.get("origine") == "ronde"
+                         and m.get("content") != texte_utilisateur)][-nb_contexte:]
     employes = charger_employes()
     annuaire = annuaire_pseudo(employes)
     roster = _roster_pseudo(annuaire, charger_profils())
@@ -1951,7 +2045,7 @@ def _detail_erreur_ia(e):
         return {401: "clé API refusée (vérifie MISTRAL_API_KEY / ANTHROPIC_API_KEY)",
                 429: "limite de débit Mistral atteinte (palier gratuit : 25 000 tokens/minute) — attends une minute et réessaie, ou active la facturation sur console.mistral.ai",
                 }.get(e.code, f"erreur HTTP {e.code} du moteur IA") + "."
-    if isinstance(e, RuntimeError):
+    if isinstance(e, (RuntimeError, TimeoutError)):
         return f"{e}"
     return f"{type(e).__name__} — vérifie la clé API / le réseau et réessaie."
 
@@ -2075,6 +2169,7 @@ def ronde_machine():
         return _json({"ok": True, "mode": res["mode"], "reply": res["reply"]})
     except Exception as e:
         current_app.logger.exception("Ronde agent (machine) : échec")
+        ajouter_message("assistant", f"⚠️ Ronde interrompue : {_detail_erreur_ia(e)}", erreur=True)
         return _json({"ok": False, "error": type(e).__name__}, 502)
 
 

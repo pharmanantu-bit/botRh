@@ -1973,12 +1973,18 @@ def admin_envoyer_comptable():
         return redirect(url_for("admin_mois", msg="comptable_erreur"))
     resume = construire_resume_paie(mois, annee)
     _appliquer_ajustements_comptable(resume, request.form)
+    # Le résumé figé doit exister AVANT le dispatch (le runner le relit via
+    # /export_resume_paie), mais il ne doit pas rester si l'envoi n'est pas parti.
     _ecrire_json(paie_envoi_file(mois, annee), resume)
     try:
         declencher_workflow("envoi_comptable", {
             "mois": mois, "annee": annee, "destinataires": destinataires})
     except Exception:
         app.logger.exception("Échec du déclenchement de l'envoi comptable")
+        try:
+            os.remove(paie_envoi_file(mois, annee))
+        except OSError:
+            pass
         return redirect(url_for("admin_mois", msg="comptable_erreur"))
     return redirect(url_for("admin_mois", msg="comptable_ok"))
 
@@ -1994,10 +2000,10 @@ def admin_employe():
     if not emp:
         abort(404)
     # Nettoie les suggestions devenues inutiles (champ rempli entre-temps, doublons
-    # d'anciennes analyses multi-documents) avant affichage.
-    _profils_tmp = charger_profils()
-    if email in _profils_tmp and _purger_propositions(_profils_tmp[email]):
-        sauvegarder_profils(_profils_tmp)
+    # d'anciennes analyses multi-documents) pour l'AFFICHAGE seulement : pas
+    # d'écriture sur un GET (éviterait d'écraser une écriture concurrente).
+    _prof_aff = json.loads(json.dumps(profil_de(email)))
+    _purger_propositions(_prof_aff)
     mois_data = []
     for m in range(1, 13):
         r = reponse_de(charger_reponses(m, annee), emp["prenom"], emp["email"])
@@ -2041,7 +2047,7 @@ def admin_employe():
                            taches_arrivee=TACHES_ARRIVEE, taches_depart=TACHES_DEPART,
                            check_arrivee=profil_de(email).get("check_arrivee", []),
                            check_depart=profil_de(email).get("check_depart", []),
-                           propositions=_propositions_affichage(profil_de(email).get("propositions", []), profil_de(email)),
+                           propositions=_propositions_affichage(_prof_aff.get("propositions", []), _prof_aff),
                            iban=crypto_rh.dechiffrer(profil_de(email).get("iban", "")) if profil_de(email).get("iban") else "")
 
 
