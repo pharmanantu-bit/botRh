@@ -48,6 +48,9 @@
     .carte .ok:hover { background: #176030; }
     .carte .ok:disabled { background: #9aa7b5; cursor: default; }
     .carte .fait { color: #1F7A3D; font-weight: bold; margin-top: 6px; }
+    .carte .undo { background: #fff; color: #7a5b00; border: 1px solid #e0c268; padding: 3px 9px; font-size: 0.82em; margin-left: 8px; }
+    .carte .undo:hover { background: #fff8e1; }
+    .carte .undo:disabled { color: #9aa7b5; border-color: #ccc; cursor: default; }
     .carte.done { border-left-color: #9aa7b5; opacity: 0.85; }
     .carte .lien { background: #1F4E79; color: #fff; text-decoration: none; display: inline-block; }
 
@@ -132,8 +135,14 @@
           <div class="carte{% if a.fait %} done{% endif %}" data-id="{{ m.id }}" data-idx="{{ loop.index0 }}">
             <div class="lbl">{{ a.label }} · proposition</div>
             <div class="res">{{ a.resume }}</div>
-            {% if a.fait %}<div class="fait">✓ Confirmé le {{ a.fait_le }}</div>
+            {% if a.fait %}<div class="fait">✓ Confirmé le {{ a.fait_le }}{% if a.annulee %} · ↩ annulé{% elif a.annulation_id %} <button type="button" class="undo" data-aid="{{ a.annulation_id }}" onclick="annuler(this)" title="Rétablir l'état d'avant">↩ Annuler</button>{% endif %}</div>
             {% else %}<div class="btns"><button type="button" class="ok" onclick="confirmer(this)">✅ Confirmer</button></div>{% endif %}
+          </div>
+          {% elif a.type == 'fait' %}
+          <div class="carte done" data-id="{{ m.id }}" data-idx="{{ loop.index0 }}">
+            <div class="lbl">{{ a.label }} · exécuté</div>
+            <div class="res">{{ a.resume }}</div>
+            <div class="fait">✓ Fait{% if a.annulee %} · ↩ annulé{% elif a.annulation_id %} <button type="button" class="undo" data-aid="{{ a.annulation_id }}" onclick="annuler(this)" title="Rétablir l'état d'avant">↩ Annuler</button>{% endif %}</div>
           </div>
           {% elif a.type == 'lien' %}
           <div class="carte"><a class="lien" href="{{ a.url }}" target="_blank" rel="noopener" style="border-radius:7px;padding:7px 12px;font-weight:bold;">{{ a.label }}</a></div>
@@ -194,6 +203,12 @@
       c.querySelector('.lbl').textContent = (a.label || 'Action') + ' · proposition';
       c.querySelector('.res').textContent = a.resume || '';
       c.querySelector('button').addEventListener('click', function () { confirmer(this); });
+    } else if (a.type === 'fait') {
+      c.classList.add('done');
+      c.innerHTML = '<div class="lbl"></div><div class="res"></div><div class="fait">✓ Fait</div>';
+      c.querySelector('.lbl').textContent = (a.label || 'Action') + ' · exécuté';
+      c.querySelector('.res').textContent = a.resume || '';
+      if (a.annulation_id) boutonAnnuler(c.querySelector('.fait'), a.annulation_id);
     } else if (a.type === 'lien') {
       const l = document.createElement('a'); l.className = 'lien'; l.href = a.url; l.target = '_blank'; l.rel = 'noopener';
       l.style.cssText = 'border-radius:7px;padding:7px 12px;font-weight:bold;'; l.textContent = a.label || 'Ouvrir'; c.appendChild(l);
@@ -221,9 +236,27 @@
       if (d.ok) {
         c.classList.add('done'); c.querySelector('.btns').remove();
         const f = document.createElement('div'); f.className = 'fait'; f.textContent = '✓ Confirmé'; c.appendChild(f);
+        if (d.annulation_id) boutonAnnuler(f, d.annulation_id);
         bulle('sys', '✅ Fait : ' + d.resultat);
       } else { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ ' + (d.resultat || d.error || 'Échec')); }
     } catch (e) { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ Connexion impossible.'); }
+  }
+  function boutonAnnuler(conteneur, aid) {
+    const u = document.createElement('button'); u.type = 'button'; u.className = 'undo'; u.dataset.aid = aid;
+    u.title = "Rétablir l'état d'avant"; u.textContent = '↩ Annuler';
+    u.addEventListener('click', function () { annuler(this); }); conteneur.appendChild(u);
+  }
+  async function annuler(b) {
+    if (!confirm("Annuler cette action et rétablir l'état d'avant ?")) return;
+    b.disabled = true; b.textContent = '⏳';
+    try {
+      const r = await fetch('/admin/agent/annuler', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
+        body: JSON.stringify({ annulation_id: b.dataset.aid }) });
+      const d = await r.json();
+      if (d.ok) { b.replaceWith(document.createTextNode(' · ↩ annulé')); bulle('sys', '↩ ' + d.resultat); }
+      else { b.disabled = false; b.textContent = '↩ Annuler'; bulle('bot err', '⚠️ ' + (d.resultat || d.error || 'Échec')); }
+    } catch (e) { b.disabled = false; b.textContent = '↩ Annuler'; bulle('bot err', '⚠️ Connexion impossible.'); }
   }
   async function posterAction(b, url, fields) {
     b.disabled = true;

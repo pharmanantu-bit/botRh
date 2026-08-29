@@ -58,6 +58,13 @@ SYSTEM_AGENT = (
     "« PROPOSITION » (l'utilisateur confirmera d'un clic). Rapporte EXACTEMENT ce "
     "statut : ne dis jamais qu'une chose est faite si l'outil a répondu PROPOSITION, "
     "et ne redemande pas confirmation si l'outil a répondu FAIT.\n"
+    "- RELEVÉS D'HEURES & PAIE : releve_du_mois / stats_heures répondent aux questions "
+    "chiffrées (heures sup, soldes) ; corriger_releve, valider_releve et "
+    "envoyer_recap_comptable touchent à la PAIE : ils renvoient TOUJOURS une "
+    "PROPOSITION à confirmer, même en mode autonome. Avant d'envoyer au comptable, "
+    "appelle apercu_recap_comptable et résume-le à l'utilisateur.\n"
+    "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
+    "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
     "PRÉPARER un brouillon ou un lien à ouvrir : ne prétends jamais que c'est envoyé.\n"
     "- Réponds toujours en français, clairement, et synthétise le résultat des "
@@ -279,11 +286,109 @@ OUTILS_SPECS = [
 # Outils qui MODIFIENT des données ou ENVOIENT quelque chose. En mode « validation »
 # l'implémentation renvoie une PROPOSITION (carte à confirmer) ; en mode « autonome »
 # elle exécute. Décision prise côté app (agent_outils.executer), jamais par le LLM.
+# --- Outils RELEVÉS D'HEURES & PAIE (phase 1) + ANNULATION ---
+OUTILS_SPECS += [
+    {
+        "nom": "releve_du_mois",
+        "description": "Relevés d'heures d'un mois : par salarié, H+ / H−, statut "
+                       "(validé, à valider, corrigé, manquant) et commentaire. Avec "
+                       "`employe`, donne aussi le détail jour par jour s'il existe.",
+        "params": {
+            "mois": ("integer", "Mois 1-12 (optionnel, défaut = mois courant)"),
+            "annee": ("integer", "Année (optionnel)"),
+            "employe": ("string", "Étiquette « Employé X » pour le détail d'une seule personne (optionnel)"),
+        },
+        "requis": [],
+    },
+    {
+        "nom": "stats_heures",
+        "description": "Statistiques d'heures sur une période (plusieurs mois) : total "
+                       "H+, H− et solde par salarié, et par mois si un seul salarié. "
+                       "Sert aux questions du type « combien d'heures sup en juin ? », "
+                       "« qui fait le plus d'heures depuis janvier ? ».",
+        "params": {
+            "mois_debut": ("integer", "Mois de début 1-12 (optionnel, défaut = 6 mois en arrière)"),
+            "annee_debut": ("integer", "Année de début (optionnel)"),
+            "mois_fin": ("integer", "Mois de fin 1-12 (optionnel, défaut = mois courant)"),
+            "annee_fin": ("integer", "Année de fin (optionnel)"),
+            "employe": ("string", "Étiquette « Employé X » (optionnel)"),
+        },
+        "requis": [],
+    },
+    {
+        "nom": "apercu_recap_comptable",
+        "description": "Aperçu du dossier PAIE du mois tel qu'il partirait au "
+                       "cabinet comptable : par salarié, heures, majorations 25/50, "
+                       "complémentaires, sujétion, congés ; puis ce qui bloque l'envoi "
+                       "(relevés non validés, manquants, destinataires). À appeler AVANT "
+                       "envoyer_recap_comptable.",
+        "params": {
+            "mois": ("integer", "Mois 1-12 (optionnel, défaut = mois courant)"),
+            "annee": ("integer", "Année (optionnel)"),
+        },
+        "requis": [],
+    },
+    {
+        "nom": "corriger_releve",
+        "description": "PAIE — corrige les TOTAUX H+ / H− du relevé d'un salarié pour un "
+                       "mois (erreur de saisie), ou saisit le relevé s'il ne l'a pas rendu. "
+                       "La déclaration d'origine est conservée et le relevé repasse « à "
+                       "valider ». Toujours soumis à validation de l'utilisateur.",
+        "params": {
+            "employe": ("string", "Étiquette « Employé X »"),
+            "heures_plus": ("number", "Nouveau total d'heures en plus (décimal, ex. 4.5)"),
+            "heures_moins": ("number", "Nouveau total d'heures en moins (décimal)"),
+            "motif": ("string", "Motif de la correction (obligatoire, court)"),
+            "mois": ("integer", "Mois 1-12 (optionnel, défaut = mois courant)"),
+            "annee": ("integer", "Année (optionnel)"),
+        },
+        "requis": ["employe", "heures_plus", "heures_moins", "motif"],
+    },
+    {
+        "nom": "valider_releve",
+        "description": "PAIE — marque un relevé reçu comme VALIDÉ par la pharmacie (ou "
+                       "annule sa validation) avant l'envoi au comptable. employe = "
+                       "« tous » valide d'un coup tous les relevés reçus non validés du mois.",
+        "params": {
+            "employe": ("string", "Étiquette « Employé X », ou « tous »"),
+            "valide": ("boolean", "true = valider (défaut), false = retirer la validation"),
+            "mois": ("integer", "Mois 1-12 (optionnel, défaut = mois courant)"),
+            "annee": ("integer", "Année (optionnel)"),
+        },
+        "requis": ["employe"],
+    },
+    {
+        "nom": "envoyer_recap_comptable",
+        "description": "PAIE — envoie le dossier paie du mois à l'expert-comptable "
+                       "(mail + Excel). Refusé s'il reste des relevés non validés. "
+                       "Irréversible ; toujours soumis à validation de l'utilisateur. "
+                       "Appelle d'abord apercu_recap_comptable et montre-le.",
+        "params": {
+            "mois": ("integer", "Mois 1-12 (optionnel, défaut = mois courant)"),
+            "annee": ("integer", "Année (optionnel)"),
+        },
+        "requis": [],
+    },
+    {
+        "nom": "annuler_derniere_action",
+        "description": "Annule la DERNIÈRE action que tu as exécutée (planning, "
+                       "absence, relevé, fiche…) en rétablissant l'état d'avant, comme un "
+                       "Ctrl+Z. Les e-mails déjà partis ne peuvent pas être rappelés. "
+                       "À utiliser quand l'utilisateur dit « annule », « reviens en "
+                       "arrière », « c'était une erreur ».",
+        "params": {},
+        "requis": [],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
     "ajouter_note_journal", "mettre_a_jour_profil", "envoyer_mail", "envoyer_relance",
+    "corriger_releve", "valider_releve", "envoyer_recap_comptable", "annuler_derniere_action",
 }
+# Outils PAIE : validation par l'utilisateur OBLIGATOIRE, même en mode autonome.
+OUTILS_PAIE = {"corriger_releve", "valider_releve", "envoyer_recap_comptable"}
 
 
 def _schema_props(spec):

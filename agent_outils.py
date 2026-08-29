@@ -31,16 +31,21 @@ from flask import Blueprint, request, render_template, redirect, url_for, sessio
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_profils,
                  sauvegarder_profils, collaborateur_actif, CHAMPS_PROFIL, API_CLE, MOIS_FR,
-                 executer_outil_agent, _roster_pseudo, _OUTILS_AGENT, declencher_workflow)
+                 executer_outil_agent, _roster_pseudo, _OUTILS_AGENT, declencher_workflow,
+                 charger_reponses, ecrire_reponses, reponses_file, construire_resume_paie,
+                 paie_envoi_file, PROFILS_FILE)
 import planning_equipe as PE
-from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, run_agent
+from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, run_agent
 from assistant_rh import annuaire_pseudo
+from tokens import tokens_valides, reponse_de, generer_token
 
 bp = Blueprint("agent", __name__)
 
 CONVERSATION_FILE = os.path.join(BASE_DIR, "agent_conversation.json")
 JOURNAL_FILE = os.path.join(BASE_DIR, "agent_journal.json")
 OPTIONS_FILE = os.path.join(BASE_DIR, "agent_options.json")
+ANNULATIONS_FILE = os.path.join(BASE_DIR, "agent_annulations.json")
+MAX_ANNULATIONS = 20        # instantanés conservés (les plus récents)
 MAX_MESSAGES = 400          # conservés dans la conversation (les plus récents)
 TOURS_CONTEXTE = 24         # messages envoyés au modèle à chaque question
 MAX_JOURNAL = 1000
@@ -88,7 +93,7 @@ def ajouter_message(role, content, **extra):
     return m
 
 
-def marquer_action_faite(msg_id, idx, resultat):
+def marquer_action_faite(msg_id, idx, resultat, annulation_id=None):
     """Marque la carte n° idx du message comme confirmée (texte du résultat)."""
     conv = charger_conversation()
     for m in conv:
@@ -97,8 +102,110 @@ def marquer_action_faite(msg_id, idx, resultat):
             if 0 <= idx < len(acts):
                 acts[idx]["fait"] = resultat
                 acts[idx]["fait_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                if annulation_id:
+                    acts[idx]["annulation_id"] = annulation_id
             break
     _ecrire_json(CONVERSATION_FILE, conv)
+
+
+def marquer_annulee(annulation_id):
+    """Marque comme annulée la carte liée à cet instantané (bouton ↩ grisé)."""
+    conv = charger_conversation()
+    for m in conv:
+        for a in m.get("actions") or []:
+            if a.get("annulation_id") == annulation_id:
+                a["annulee"] = True
+    _ecrire_json(CONVERSATION_FILE, conv)
+
+
+# --- Annulation (Ctrl+Z) : instantané des fichiers AVANT chaque écriture --------
+# Les données de botRh sont de petits fichiers JSON : avant d'exécuter un outil
+# d'écriture, on mémorise le contenu des fichiers qu'il peut toucher ; « annuler »
+# les réécrit tels quels. Seule la DERNIÈRE action non annulée est annulable (pas
+# de retour en arrière dans le désordre). Les e-mails partis ne se rappellent pas.
+
+OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable"}
+OUTILS_MAIL_PARTIEL = {"traiter_demande_conges", "envoyer_demande_collaborateur",
+                       "ajouter_absence"}   # écrivent ET peuvent prévenir par mail
+
+
+def _mois_annee(args):
+    now = datetime.now()
+    try:
+        mois = int(args.get("mois") or now.month)
+        annee = int(args.get("annee") or now.year)
+    except (TypeError, ValueError):
+        return now.month, now.year
+    if not 1 <= mois <= 12 or not 2000 <= annee <= 2100:
+        return now.month, now.year
+    return mois, annee
+
+
+def _fichiers_etat(args):
+    mois, annee = _mois_annee(args or {})
+    f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
+         PROFILS_FILE, reponses_file(mois, annee), reponses_file()]
+    return list(dict.fromkeys(f))
+
+
+def _instantane(args):
+    etat = {}
+    for f in _fichiers_etat(args):
+        try:
+            with open(f, encoding="utf-8") as fp:
+                etat[f] = fp.read()
+        except FileNotFoundError:
+            etat[f] = None
+    return etat
+
+
+def charger_annulations():
+    a = _lire_json(ANNULATIONS_FILE, [])
+    return a if isinstance(a, list) else []
+
+
+def enregistrer_annulation(outil, resume, etat_avant):
+    """Après une écriture réussie : conserve l'état d'avant. Renvoie l'id."""
+    if outil in OUTILS_IRREVERSIBLES or outil == "annuler_derniere_action":
+        return None
+    lst = charger_annulations()
+    aid = uuid.uuid4().hex[:10]
+    lst.append({"id": aid, "ts": datetime.now().strftime("%d/%m/%Y %H:%M"), "outil": outil,
+                "resume": resume, "etat": etat_avant, "annulee": False})
+    _ecrire_json(ANNULATIONS_FILE, lst[-MAX_ANNULATIONS:])
+    return aid
+
+
+def derniere_annulable():
+    return next((a for a in reversed(charger_annulations()) if not a.get("annulee")), None)
+
+
+def annuler(annulation_id=None, origine="chat"):
+    """Rétablit l'état d'avant la dernière action (ou celle demandée si c'est
+    bien la dernière non annulée). Renvoie (texte, ok)."""
+    lst = charger_annulations()
+    derniere = next((a for a in reversed(lst) if not a.get("annulee")), None)
+    if not derniere:
+        return "Rien à annuler : aucune action récente de l'agent.", False
+    if annulation_id and derniere.get("id") != annulation_id:
+        return ("Seule la dernière action peut être annulée (« "
+                f"{derniere.get('resume')} »). Annule-la d'abord."), False
+    for f, contenu in (derniere.get("etat") or {}).items():
+        if contenu is None:
+            if os.path.exists(f):
+                os.remove(f)
+        else:
+            with open(f, "w", encoding="utf-8") as fp:
+                fp.write(contenu)
+    derniere["annulee"] = True
+    derniere["annulee_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _ecrire_json(ANNULATIONS_FILE, lst)
+    marquer_annulee(derniere["id"])
+    texte = f"Annulé : {derniere.get('resume')} (état du {derniere.get('ts')} rétabli)"
+    if derniere.get("outil") in OUTILS_MAIL_PARTIEL:
+        texte += " — si un e-mail est parti au salarié, il ne peut pas être rappelé"
+    journaliser("annuler_derniere_action", texte, mode_agent(), origine)
+    return texte, True
 
 
 # --- Journal d'audit -------------------------------------------------------------
@@ -610,6 +717,327 @@ def _w_envoyer_relance(args, annuaire, executer):
     return resume + f" → {statut}", True
 
 
+# --- Outils RELEVÉS D'HEURES & PAIE ------------------------------------------------
+
+def _statut_releve(r):
+    if r is None:
+        return "manquant"
+    if r.get("correction"):
+        st = "corrigé"
+    elif r.get("saisi_par_admin"):
+        st = "saisi par la pharmacie"
+    else:
+        st = "reçu"
+    return st + (", validé" if r.get("valide") else ", à valider")
+
+
+def _h(x):
+    try:
+        v = float(x or 0)
+    except (TypeError, ValueError):
+        return "0"
+    return f"{v:g}"
+
+
+def _lignes_releves(annuaire, cible=None):
+    """Salariés à lister : actifs + (si demandé) le salarié ciblé même inactif."""
+    lst = list(_actifs(annuaire))
+    if cible and all(e["email"] != cible["email"] for _, e in lst):
+        lst.append((_label_de(cible, annuaire), cible))
+    return lst
+
+
+def _o_releve_du_mois(args, annuaire):
+    mois, annee = _mois_annee(args)
+    cible = _employe(args.get("employe"), annuaire) if args.get("employe") else None
+    if args.get("employe") and not cible:
+        return "Salarié introuvable (utilise une étiquette « Employé X »)."
+    reps = charger_reponses(mois, annee)
+    lignes = [f"Relevés d'heures de {MOIS_FR[mois]} {annee} :"]
+    nb_manq = 0
+    for lab, e in _lignes_releves(annuaire, cible):
+        if cible and e["email"] != cible["email"]:
+            continue
+        r = reponse_de(reps, e["prenom"], e["email"])
+        if r is None:
+            nb_manq += 1
+            lignes.append(f"- {lab} : manquant")
+            continue
+        l = (f"- {lab} : H+ {_h(r.get('heures_plus'))} / H− {_h(r.get('heures_moins'))}"
+             f" — {_statut_releve(r)}")
+        if r.get("commentaire"):
+            l += f" — « {str(r['commentaire'])[:120]} »"
+        if r.get("correction"):
+            l += f" (corrigé le {r['correction'].get('le', '?')} : {r['correction'].get('motif', '')})"
+        lignes.append(l)
+        if cible:
+            if r.get("declare"):
+                d = r["declare"]
+                lignes.append(f"  Déclaré à l'origine par le salarié : H+ {_h(d.get('heures_plus'))} "
+                              f"/ H− {_h(d.get('heures_moins'))}")
+            if r.get("jours"):
+                lignes.append("  Détail jour par jour : " + " ; ".join(
+                    f"{j.get('label')} +{_h(j.get('plus'))}/−{_h(j.get('moins'))}" for j in r["jours"]))
+            else:
+                lignes.append("  (pas de détail jour par jour)")
+    if not cible:
+        lignes.append(f"{nb_manq} relevé(s) manquant(s).")
+    return "\n".join(lignes)
+
+
+def _mois_range(args):
+    now = datetime.now()
+    try:
+        mf = int(args.get("mois_fin") or now.month)
+        af = int(args.get("annee_fin") or now.year)
+        if args.get("mois_debut"):
+            md = int(args["mois_debut"])
+            ad = int(args.get("annee_debut") or af)
+        else:
+            ad, md0 = divmod(af * 12 + (mf - 1) - 5, 12)
+            md = md0 + 1
+    except (TypeError, ValueError):
+        mf, af = now.month, now.year
+        ad, md0 = divmod(af * 12 + mf - 6, 12)
+        md = md0 + 1
+    out, a, m = [], ad, md
+    while (a, m) <= (af, mf) and len(out) < 24:
+        out.append((m, a))
+        m += 1
+        if m > 12:
+            m, a = 1, a + 1
+    return out
+
+
+def _o_stats_heures(args, annuaire):
+    cible = _employe(args.get("employe"), annuaire) if args.get("employe") else None
+    if args.get("employe") and not cible:
+        return "Salarié introuvable (utilise une étiquette « Employé X »)."
+    periode = _mois_range(args)
+    if not periode:
+        return "Période invalide."
+    tot = {}       # email -> [plus, moins, nb_mois]
+    par_mois = []  # pour un seul salarié
+    for m, a in periode:
+        reps = charger_reponses(m, a)
+        if not reps:
+            continue
+        for lab, e in annuaire.items():
+            if cible and e["email"] != cible["email"]:
+                continue
+            r = reponse_de(reps, e["prenom"], e["email"])
+            if r is None:
+                continue
+            p, mo = float(r.get("heures_plus") or 0), float(r.get("heures_moins") or 0)
+            t = tot.setdefault(e["email"], [0.0, 0.0, 0])
+            t[0] += p
+            t[1] += mo
+            t[2] += 1
+            if cible:
+                par_mois.append(f"- {MOIS_FR[m]} {a} : H+ {_h(p)} / H− {_h(mo)} (solde {_h(p - mo)})")
+    (m1, a1), (m2, a2) = periode[0], periode[-1]
+    entete = f"Heures de {MOIS_FR[m1]} {a1} à {MOIS_FR[m2]} {a2} :"
+    if not tot:
+        return entete + " aucun relevé sur la période."
+    lignes = [entete]
+    if cible:
+        lignes += par_mois
+        p, mo, n = tot[cible["email"]]
+        lignes.append(f"Total {_label_de(cible, annuaire)} sur {n} mois : H+ {_h(p)} / H− {_h(mo)} "
+                      f"(solde {_h(p - mo)})")
+        return "\n".join(lignes)
+    classement = sorted(tot.items(), key=lambda x: -(x[1][0] - x[1][1]))
+    for email, (p, mo, n) in classement:
+        lab = next((lab for lab, e in annuaire.items() if e["email"] == email), "?")
+        lignes.append(f"- {lab} : H+ {_h(p)} / H− {_h(mo)} (solde {_h(p - mo)}, {n} relevé(s))")
+    tp, tm = sum(v[0] for v in tot.values()), sum(v[1] for v in tot.values())
+    lignes.append(f"Équipe : H+ {_h(tp)} / H− {_h(tm)} (solde {_h(tp - tm)})")
+    return "\n".join(lignes)
+
+
+def _blocages_envoi_comptable(mois, annee):
+    """Ce qui empêche l'envoi au comptable. Renvoie (liste de textes, recus, dest)."""
+    reps = charger_reponses(mois, annee)
+    profils = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils.get(e["email"], {}))
+                or reponse_de(reps, e["prenom"], e["email"])]
+    recus = [r for r in (reponse_de(reps, e["prenom"], e["email"]) for e in employes) if r]
+    bloc = []
+    if not recus:
+        bloc.append("aucun relevé reçu ce mois")
+    nv = sum(1 for r in recus if not r.get("valide"))
+    if nv:
+        bloc.append(f"{nv} relevé(s) reçu(s) non validé(s) (valider_releve)")
+    dest = (os.getenv("COMPTA_EMAILS") or "").strip()
+    if not dest:
+        bloc.append("aucun destinataire comptable configuré (COMPTA_EMAILS)")
+    if not os.getenv("GITHUB_TOKEN"):
+        bloc.append("envoi impossible depuis cet environnement (GITHUB_TOKEN absent)")
+    return bloc, recus, dest
+
+
+def _o_apercu_recap_comptable(args, annuaire):
+    mois, annee = _mois_annee(args)
+    resume = construire_resume_paie(mois, annee)
+    lignes = [f"Dossier paie {MOIS_FR[mois]} {annee} (tel qu'il partirait au comptable) :"]
+    for it in resume:
+        lab = next((lab for lab, e in annuaire.items() if e["email"] == it.get("email")),
+                   it.get("prenom", "?"))
+        if it.get("statut") == "manquant":
+            l = f"- {lab} : relevé MANQUANT"
+        else:
+            l = (f"- {lab} : H+ {_h(it.get('plus'))} / H− {_h(it.get('moins'))} (solde {_h(it.get('solde'))}) "
+                 f"— {'validé' if it.get('valide') else 'À VALIDER'}")
+            if it.get("statut") == "ok":
+                l += (f" ; sup 25 % {_h(it.get('sup25'))} h, sup 50 % {_h(it.get('sup50'))} h, "
+                      f"complémentaires {_h(it.get('complementaires'))} h, sujétion {_h(it.get('sujetion'))} h")
+            elif it.get("statut") == "sans_detail":
+                l += " ; pas de détail jour par jour → ventilation 25/50 impossible"
+            elif it.get("statut") == "sans_contrat":
+                l += " ; heures contractuelles non renseignées sur la fiche → ventilation impossible"
+        if it.get("conges"):
+            l += f" ; congés payés : {it['conges']}"
+        lignes.append(l)
+    bloc, _, dest = _blocages_envoi_comptable(mois, annee)
+    fige = paie_envoi_file(mois, annee)
+    if os.path.exists(fige):
+        lignes.append("Déjà envoyé au comptable le "
+                      + datetime.fromtimestamp(os.path.getmtime(fige)).strftime("%d/%m/%Y %H:%M") + ".")
+    if bloc:
+        lignes.append("Envoi BLOQUÉ : " + " ; ".join(bloc) + ".")
+    else:
+        lignes.append(f"Prêt à envoyer à : {dest}.")
+    return "\n".join(lignes)
+
+
+def _w_corriger_releve(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    try:
+        hp = round(float(args.get("heures_plus") or 0), 2)
+        hm = round(float(args.get("heures_moins") or 0), 2)
+    except (TypeError, ValueError):
+        return "Heures invalides (nombres décimaux attendus).", False
+    if hp < 0 or hm < 0 or hp > 300 or hm > 300:
+        return "Heures hors limites (0 à 300).", False
+    motif = (args.get("motif") or "").strip()
+    if not motif:
+        return "Motif de correction obligatoire.", False
+    mois, annee = _mois_annee(args)
+    lab = _label_de(e, annuaire)
+    reps = charger_reponses(mois, annee)
+    r, tok = None, None
+    for t in tokens_valides(e["prenom"], e["email"]):
+        if reps.get(t) is not None:
+            r, tok = reps[t], t
+            break
+    if r is None:
+        resume = (f"Saisie du relevé de {lab} pour {MOIS_FR[mois]} {annee} (non rendu) : "
+                  f"H+ {_h(hp)} / H− {_h(hm)} — {motif}")
+    else:
+        if float(r.get("heures_plus") or 0) == hp and float(r.get("heures_moins") or 0) == hm:
+            return f"Le relevé de {lab} indique déjà H+ {_h(hp)} / H− {_h(hm)} : rien à corriger.", False
+        resume = (f"Correction du relevé de {lab} ({MOIS_FR[mois]} {annee}) : "
+                  f"H+ {_h(r.get('heures_plus'))} → {_h(hp)}, H− {_h(r.get('heures_moins'))} → {_h(hm)} — {motif}")
+        if r.get("jours"):
+            resume += " (détail jour par jour conservé tel quel, à revoir sur la page Historique si besoin)"
+    if not executer:
+        return resume, True
+    now = datetime.now()
+    if r is None:
+        reps[generer_token(e["prenom"], e["email"])] = {
+            "prenom": e["prenom"], "heures_plus": hp, "heures_moins": hm, "commentaire": motif,
+            "date_signature": now.strftime("%d/%m/%Y"), "signature": "Saisie pharmacie (agent RH)",
+            "date": now.strftime("%d/%m/%Y %H:%M"), "mois": mois, "annee": annee, "jours": [],
+            "saisi_par_admin": True, "valide": True,
+            "date_validation": now.strftime("%d/%m/%Y %H:%M")}
+    else:
+        r.setdefault("declare", {"heures_plus": r.get("heures_plus"),
+                                 "heures_moins": r.get("heures_moins"),
+                                 "jours": json.loads(json.dumps(r.get("jours") or []))})
+        r["heures_plus"], r["heures_moins"] = hp, hm
+        r["correction"] = {"le": now.strftime("%d/%m/%Y %H:%M"), "motif": motif + " (agent RH)"}
+        r["valide"], r["date_validation"] = False, ""
+        reps[tok] = r
+    ecrire_reponses(reps, mois, annee)
+    return resume, True
+
+
+def _w_valider_releve(args, annuaire, executer):
+    mois, annee = _mois_annee(args)
+    v = args.get("valide")
+    valide = True if v is None else (str(v).lower() in ("true", "1", "oui", "yes"))
+    reps = charger_reponses(mois, annee)
+    cibles = []   # (label, token, r)
+    if (args.get("employe") or "").strip().lower() in ("tous", "toutes", "tout", "all", "*"):
+        for lab, e in _actifs(annuaire):
+            for t in tokens_valides(e["prenom"], e["email"]):
+                r = reps.get(t)
+                if r is not None and bool(r.get("valide")) != valide:
+                    cibles.append((lab, t, r))
+                    break
+        if not cibles:
+            return (f"Tous les relevés reçus de {MOIS_FR[mois]} {annee} sont déjà "
+                    f"{'validés' if valide else 'non validés'}."), False
+    else:
+        e = _employe(args.get("employe"), annuaire)
+        if not e:
+            return "Salarié introuvable (ou « tous »).", False
+        lab = _label_de(e, annuaire)
+        for t in tokens_valides(e["prenom"], e["email"]):
+            if reps.get(t) is not None:
+                cibles.append((lab, t, reps[t]))
+                break
+        if not cibles:
+            return f"{lab} n'a pas rendu son relevé de {MOIS_FR[mois]} {annee} : rien à valider.", False
+        if bool(cibles[0][2].get("valide")) == valide:
+            return f"Le relevé de {lab} est déjà {'validé' if valide else 'non validé'}.", False
+    action = "Validation" if valide else "Retrait de la validation"
+    resume = (f"{action} du relevé de {MOIS_FR[mois]} {annee} pour : "
+              + ", ".join(lab for lab, _, _ in cibles))
+    if executer:
+        for _, t, r in cibles:
+            r["valide"] = valide
+            r["date_validation"] = datetime.now().strftime("%d/%m/%Y %H:%M") if valide else ""
+            reps[t] = r
+        ecrire_reponses(reps, mois, annee)
+    return resume, True
+
+
+def _w_envoyer_recap_comptable(args, annuaire, executer):
+    mois, annee = _mois_annee(args)
+    bloc, recus, dest = _blocages_envoi_comptable(mois, annee)
+    if bloc:
+        return "Envoi refusé : " + " ; ".join(bloc) + ".", False
+    resume = (f"Envoi du dossier paie de {MOIS_FR[mois]} {annee} ({len(recus)} relevé(s)) "
+              f"à {dest} — irréversible")
+    if os.path.exists(paie_envoi_file(mois, annee)):
+        resume += " (déjà envoyé une fois : ce sera un renvoi)"
+    if not executer:
+        return resume, True
+    _ecrire_json(paie_envoi_file(mois, annee), construire_resume_paie(mois, annee))
+    declencher_workflow("envoi_comptable", {"mois": mois, "annee": annee, "destinataires": dest})
+    return resume, True
+
+
+def _w_annuler_derniere_action(args, annuaire, executer):
+    d = derniere_annulable()
+    if not d:
+        return "Rien à annuler : aucune action récente de l'agent.", False
+    resume = f"Annulation de la dernière action : {d.get('resume')} ({d.get('ts')})"
+    if not executer:
+        return resume, True
+    return annuler(d["id"])
+
+
+OUTILS_LECTURE_PAIE = {
+    "releve_du_mois": _o_releve_du_mois,
+    "stats_heures": _o_stats_heures,
+    "apercu_recap_comptable": _o_apercu_recap_comptable,
+}
+
 OUTILS_ECRITURE_IMPL = {
     "ajouter_absence": _w_ajouter_absence,
     "supprimer_absence": _w_supprimer_absence,
@@ -621,6 +1049,10 @@ OUTILS_ECRITURE_IMPL = {
     "mettre_a_jour_profil": _w_mettre_a_jour_profil,
     "envoyer_mail": _w_envoyer_mail,
     "envoyer_relance": _w_envoyer_relance,
+    "corriger_releve": _w_corriger_releve,
+    "valider_releve": _w_valider_releve,
+    "envoyer_recap_comptable": _w_envoyer_recap_comptable,
+    "annuler_derniere_action": _w_annuler_derniere_action,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
@@ -630,6 +1062,8 @@ LIBELLES_OUTILS = {
     "traiter_demande_conges": "✅ Congés", "envoyer_demande_collaborateur": "📨 Demande",
     "ajouter_note_journal": "📝 Journal", "mettre_a_jour_profil": "👤 Fiche",
     "envoyer_mail": "📧 E-mail", "envoyer_relance": "⏰ Relance",
+    "corriger_releve": "🧾 Relevé (paie)", "valider_releve": "✅ Relevé (paie)",
+    "envoyer_recap_comptable": "📤 Comptable (paie)", "annuler_derniere_action": "↩ Annulation",
 }
 
 
@@ -639,20 +1073,30 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
     args = args or {}
     if nom in OUTILS_LECTURE_PLANNING:
         return OUTILS_LECTURE_PLANNING[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_PAIE:
+        return OUTILS_LECTURE_PAIE[nom](args, annuaire)
     if nom in OUTILS_ECRITURE_IMPL:
         fn = OUTILS_ECRITURE_IMPL[nom]
-        if mode == "autonome":
+        # PAIE : jamais d'exécution directe, même en mode autonome.
+        if mode == "autonome" and nom not in OUTILS_PAIE:
+            avant = _instantane(args)
             texte, ok = fn(args, annuaire, True)
             if ok:
                 journaliser(nom, texte, mode, origine)
-                return f"FAIT : {texte}"
+                aid = enregistrer_annulation(nom, texte, avant)
+                if not aid:
+                    return f"FAIT : {texte}"
+                return {"resultat": f"FAIT : {texte}",
+                        "action": {"type": "fait", "outil": nom, "label": LIBELLES_OUTILS.get(nom, nom),
+                                   "resume": texte, "annulation_id": aid}}
             return f"ÉCHEC : {texte}"
         texte, ok = fn(args, annuaire, False)
         if not ok:
             return f"ÉCHEC : {texte}"
+        suffixe = " — PAIE : validation obligatoire" if nom in OUTILS_PAIE else ""
         return {"resultat": f"PROPOSITION (en attente de validation par l'utilisateur) : {texte}",
                 "action": {"type": "confirmer", "outil": nom, "args": args,
-                           "label": LIBELLES_OUTILS.get(nom, nom), "resume": texte}}
+                           "label": LIBELLES_OUTILS.get(nom, nom) + suffixe, "resume": texte}}
     return executer_outil_agent(nom, args, annuaire)   # outils historiques (app.py)
 
 
@@ -660,12 +1104,15 @@ def confirmer_action(outil, args, origine="carte"):
     """Exécute pour de bon une carte confirmée (args ré-identifiés : prénoms)."""
     fn = OUTILS_ECRITURE_IMPL.get(outil)
     if not fn:
-        return f"Outil inconnu : {outil}", False
+        return f"Outil inconnu : {outil}", False, None
     annuaire = annuaire_pseudo(charger_employes())
+    avant = _instantane(args or {})
     texte, ok = fn(args or {}, annuaire, True)
+    aid = None
     if ok:
         journaliser(outil, texte, "validation", origine)
-    return texte, ok
+        aid = enregistrer_annulation(outil, texte, avant)
+    return texte, ok, aid
 
 
 # --- Boucle de conversation ------------------------------------------------------
@@ -718,7 +1165,9 @@ BRIEF_RONDE = (
     "3) echeances_a_venir et absences_en_cours — signale ce qui mérite attention "
     "(fin de CDD, période d'essai, visite médicale, retour d'absence) sans rien écrire. "
     "Termine par un compte-rendu court et structuré : ce que tu as fait, ce qui attend "
-    "ma décision, ce à quoi je dois penser. Si tout est en ordre, dis-le en une phrase."
+    "ma décision, ce à quoi je dois penser. Si tout est en ordre, dis-le en une phrase. "
+    "Ne touche pas à la paie (aucune correction/validation de relevé, aucun envoi au "
+    "comptable) pendant la ronde."
 )
 
 
@@ -781,10 +1230,23 @@ def confirmer():
         return _json({"error": "carte introuvable"}, 404)
     if act.get("fait"):
         return _json({"error": "déjà confirmée", "resultat": act["fait"]}, 409)
-    texte, ok = confirmer_action(act.get("outil"), act.get("args") or {})
+    texte, ok, aid = confirmer_action(act.get("outil"), act.get("args") or {})
     if ok:
-        marquer_action_faite(msg_id, idx, texte)
+        marquer_action_faite(msg_id, idx, texte, aid)
         ajouter_message("assistant", f"✅ Fait : {texte}", systeme=True)
+    return _json({"ok": ok, "resultat": texte, "annulation_id": aid}, 200 if ok else 422)
+
+
+@bp.route("/admin/agent/annuler", methods=["POST"])
+def annuler_route():
+    """Bouton ↩ d'une carte (ou « annuler la dernière action ») : rétablit
+    l'état d'avant. Seule la dernière action non annulée est acceptée."""
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    data = request.get_json(force=True, silent=True) or {}
+    texte, ok = annuler(data.get("annulation_id") or None, origine="carte")
+    if ok:
+        ajouter_message("assistant", f"↩ {texte}", systeme=True)
     return _json({"ok": ok, "resultat": texte}, 200 if ok else 422)
 
 
