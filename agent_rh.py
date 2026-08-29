@@ -79,6 +79,10 @@ SYSTEM_AGENT = (
     "envoyer_mail_candidat). Ne confonds jamais un candidat et un salarié : n'utilise "
     "jamais un outil salarié pour un candidat, ni l'inverse. L'analyse IA d'un CV est "
     "consultative : la décision (entretien, refus, embauche) est toujours humaine.\n"
+    "- MÉMOIRE : tes souvenirs durables sont listés sous « MÉMOIRE » ; tiens-en compte "
+    "sans les répéter. Quand l'utilisateur t'apprend une règle, une habitude ou une "
+    "préférence valable dans le temps (« retiens que… », « désormais… », « le comptable "
+    "préfère… »), appelle memoriser. Jamais de donnée de santé en mémoire.\n"
     "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
     "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
@@ -548,6 +552,31 @@ OUTILS_SPECS += list(OUTILS_SPECS_RECRUTEMENT) + [
     },
 ]
 
+# --- Outils MÉMOIRE (phase 5) ---
+OUTILS_SPECS += [
+    {
+        "nom": "memoriser",
+        "description": "Retient durablement un fait ou une préférence donnés par "
+                       "l'utilisateur (ex. « le comptable veut le récap le 25 », « le "
+                       "mardi c'est jour de livraison », « Employé B ne travaille jamais le "
+                       "samedi »). Une phrase courte. Pas de donnée de santé.",
+        "params": {"texte": ("string", "Le fait à retenir, en une phrase")},
+        "requis": ["texte"],
+    },
+    {
+        "nom": "oublier",
+        "description": "Efface un souvenir (id donné par souvenirs, ou début du texte).",
+        "params": {"souvenir": ("string", "Id du souvenir, ou texte approximatif")},
+        "requis": ["souvenir"],
+    },
+    {
+        "nom": "souvenirs",
+        "description": "Liste ce que tu as retenu (avec les ids).",
+        "params": {},
+        "requis": [],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
@@ -556,6 +585,7 @@ OUTILS_ECRITURE = {
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
     "envoyer_attestation", "actualiser_mails", "changer_statut_candidat", "envoyer_mail_candidat",
+    "memoriser", "oublier",
 }
 # Décisions RH sur une personne (AI Act) : validation humaine obligatoire, même en autonome.
 OUTILS_DECISION = {"changer_statut_candidat"}

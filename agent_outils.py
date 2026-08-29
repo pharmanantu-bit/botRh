@@ -43,7 +43,7 @@ import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION, run_agent
 from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 import recrutement as REC
-from assistant_rh import annuaire_pseudo
+from assistant_rh import annuaire_pseudo, construire_table, pseudonymiser_texte, reidentifier
 from tokens import tokens_valides, reponse_de, generer_token
 
 bp = Blueprint("agent", __name__)
@@ -52,6 +52,8 @@ CONVERSATION_FILE = os.path.join(BASE_DIR, "agent_conversation.json")
 JOURNAL_FILE = os.path.join(BASE_DIR, "agent_journal.json")
 OPTIONS_FILE = os.path.join(BASE_DIR, "agent_options.json")
 ANNULATIONS_FILE = os.path.join(BASE_DIR, "agent_annulations.json")
+MEMOIRE_FILE = os.path.join(BASE_DIR, "agent_memoire.json")
+MAX_SOUVENIRS = 40
 MAX_ANNULATIONS = 20        # instantanés conservés (les plus récents)
 MAX_MESSAGES = 400          # conservés dans la conversation (les plus récents)
 TOURS_CONTEXTE = 24         # messages envoyés au modèle à chaque question
@@ -152,7 +154,8 @@ def _mois_annee(args):
 def _fichiers_etat(args):
     mois, annee = _mois_annee(args or {})
     f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
-         PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, reponses_file(mois, annee), reponses_file()]
+         PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, MEMOIRE_FILE,
+         reponses_file(mois, annee), reponses_file()]
     return list(dict.fromkeys(f))
 
 
@@ -1604,6 +1607,130 @@ def _w_envoyer_mail_candidat(args, annuaire, executer):
         REC.sauvegarder_candidats(cands)
     return resume + f"\n→ {etat}", True
 
+# --- Mémoire persistante --------------------------------------------------------------
+# Faits durables donnés par l'utilisateur, stockés EN CLAIR (prénoms réels) sur le
+# serveur ; pseudonymisés au moment d'être injectés dans le contexte du modèle.
+
+def charger_memoire():
+    m = _lire_json(MEMOIRE_FILE, [])
+    return m if isinstance(m, list) else []
+
+
+def sauvegarder_memoire(lst):
+    _ecrire_json(MEMOIRE_FILE, lst[-MAX_SOUVENIRS:])
+
+
+def memoire_contexte(table):
+    """Bloc « MÉMOIRE » pseudonymisé pour le system prompt ('' si vide)."""
+    souvenirs = charger_memoire()
+    if not souvenirs:
+        return ""
+    lignes = [f"- {pseudonymiser_texte(x.get('texte', ''), table)}" for x in souvenirs]
+    return "MÉMOIRE (faits durables donnés par l'utilisateur) :\n" + "\n".join(lignes)
+
+
+def _w_memoriser(args, annuaire, executer):
+    texte = " ".join((args.get("texte") or "").split()).strip()[:300]
+    if len(texte) < 4:
+        return "Rien à retenir (texte vide).", False
+    # Le modèle parle en « Employé X » : on ré-identifie localement avant de stocker.
+    _, inverse = construire_table(charger_employes())
+    clair = reidentifier(texte, inverse)
+    if any(_simplifie(clair) == _simplifie(x.get("texte")) for x in charger_memoire()):
+        return f"Déjà en mémoire : « {clair} ».", False
+    resume = f"Retenir : « {clair} »"
+    if executer:
+        lst = charger_memoire()
+        lst.append({"id": uuid.uuid4().hex[:8], "texte": clair,
+                    "ts": datetime.now().strftime("%d/%m/%Y %H:%M")})
+        sauvegarder_memoire(lst)
+    return resume, True
+
+
+def _w_oublier(args, annuaire, executer):
+    ref = (args.get("souvenir") or "").strip()
+    lst = charger_memoire()
+    if not lst:
+        return "La mémoire est vide.", False
+    cible = next((x for x in lst if x.get("id") == ref), None)
+    if not cible:
+        _, inverse = construire_table(charger_employes())
+        r = _simplifie(reidentifier(ref, inverse))
+        cands = [x for x in lst if r and (r in _simplifie(x.get("texte")) or _simplifie(x.get("texte")).startswith(r))]
+        if len(cands) == 1:
+            cible = cands[0]
+        elif len(cands) > 1:
+            return "Plusieurs souvenirs correspondent : " + " ; ".join(f"[{x['id']}] {x['texte']}" for x in cands), False
+    if not cible:
+        return "Souvenir introuvable (utilise l'id donné par souvenirs).", False
+    resume = f"Oublier : « {cible.get('texte')} »"
+    if executer:
+        sauvegarder_memoire([x for x in lst if x.get("id") != cible.get("id")])
+    return resume, True
+
+
+def _o_souvenirs(args, annuaire):
+    lst = charger_memoire()
+    if not lst:
+        return "Je n'ai encore rien retenu."
+    return "Ce que je retiens :\n" + "\n".join(f"- [{x.get('id')}] {x.get('texte')} ({x.get('ts', '')[:10]})" for x in lst)
+
+
+OUTILS_LECTURE_MEMOIRE = {"souvenirs": _o_souvenirs}
+
+
+# --- Suggestions proactives (calcul local, aucun appel IA) ---------------------------
+
+def suggestions_proactives():
+    """Puces « 💡 » au-dessus de la saisie : chacune = un message prêt à envoyer."""
+    out = []
+    auj = date.today()
+    try:
+        employes = charger_employes()
+        profils = charger_profils()
+        actifs = [e for e in employes if collaborateur_actif(profils.get(e["email"], {}))]
+        reps = charger_reponses()
+        manq = [e for e in actifs if not reponse_de(reps, e["prenom"], e["email"])]
+        if manq and auj.day >= 20:
+            out.append({"ico": "⏰", "texte": f"{len(manq)} relevé(s) d'heures manquant(s)",
+                        "prompt": "Qui n'a pas rendu son relevé ce mois-ci ? Prépare les relances."})
+        recus_nv = [e for e in actifs if (reponse_de(reps, e["prenom"], e["email"]) or {}).get("valide") is False
+                    or (reponse_de(reps, e["prenom"], e["email"]) and not reponse_de(reps, e["prenom"], e["email"]).get("valide"))]
+        if recus_nv and auj.day >= 24:
+            out.append({"ico": "🧾", "texte": f"{len(recus_nv)} relevé(s) à valider avant la paie",
+                        "prompt": "Montre-moi le dossier paie du mois et ce qui reste à valider."})
+        en_att = [d for d in PE.charger_demandes_cp() if d.get("statut") == "en_attente"]
+        if en_att:
+            out.append({"ico": "🏖️", "texte": f"{len(en_att)} demande(s) de congés en attente",
+                        "prompt": "Quelles demandes de congés sont en attente ? Dis-moi lesquelles je peux accepter."})
+        nb_al = sum(1 for e in actifs for a in alertes_completes(e["email"], profils.get(e["email"], {}))
+                    if a.get("niveau") in ("rouge", "orange"))
+        if nb_al:
+            out.append({"ico": "⚠️", "texte": f"{nb_al} échéance(s) à surveiller",
+                        "prompt": "Quelles sont les échéances RH à venir ?"})
+        idx = charger_docs_index()
+        nb_av = sum(1 for e in actifs for d in idx.get(e["email"], []) if d.get("a_valider"))
+        if nb_av:
+            out.append({"ico": "📄", "texte": f"{nb_av} document(s) à valider",
+                        "prompt": "Quels documents sont à valider dans les dossiers ?"})
+        resumes = _lire_json(ASSISTANT_FILE)
+        derniere = max(resumes) if isinstance(resumes, dict) and resumes else None
+        if not derniere or derniere < auj.isoformat():
+            out.append({"ico": "📬", "texte": "Synthèse des mails pas à jour" if derniere else "Aucune synthèse de mails",
+                        "prompt": "Qu'y a-t-il dans les mails RH ? Actualise si besoin."})
+        conv = charger_conversation()
+        nb_cartes = sum(1 for m in conv for a in m.get("actions") or []
+                        if a.get("type") == "confirmer" and not a.get("fait"))
+        if nb_cartes:
+            out.append({"ico": "✅", "texte": f"{nb_cartes} proposition(s) à confirmer dans la conversation",
+                        "prompt": ""})
+        derniere_ronde = next((m.get("ts", "") for m in reversed(conv) if m.get("origine") == "ronde"), "")
+        if derniere_ronde[:10] < auj.isoformat():
+            out.append({"ico": "🔁", "texte": "Ronde du jour pas encore faite", "prompt": "__ronde__"})
+    except Exception:
+        current_app.logger.exception("Suggestions proactives")
+    return out[:6]
+
 OUTILS_ECRITURE_IMPL = {
     "ajouter_absence": _w_ajouter_absence,
     "supprimer_absence": _w_supprimer_absence,
@@ -1631,6 +1758,8 @@ OUTILS_ECRITURE_IMPL = {
     "actualiser_mails": _w_actualiser_mails,
     "changer_statut_candidat": _w_changer_statut_candidat,
     "envoyer_mail_candidat": _w_envoyer_mail_candidat,
+    "memoriser": _w_memoriser,
+    "oublier": _w_oublier,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
@@ -1648,6 +1777,7 @@ LIBELLES_OUTILS = {
     "retyper_document": "📄 Document", "generer_attestation": "📄 Attestation",
     "envoyer_attestation": "📧 Attestation", "actualiser_mails": "📬 Mails",
     "changer_statut_candidat": "🧑‍💼 Candidat", "envoyer_mail_candidat": "📧 Candidat",
+    "memoriser": "🧠 Mémoire", "oublier": "🧠 Mémoire",
 }
 
 
@@ -1663,6 +1793,8 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         return OUTILS_LECTURE_DOSSIER[nom](args, annuaire)
     if nom in OUTILS_LECTURE_MAILS:
         return OUTILS_LECTURE_MAILS[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_MEMOIRE:
+        return OUTILS_LECTURE_MEMOIRE[nom](args, annuaire)
     if nom in OUTILS_LECTURE_RECRUTEMENT:
         return REC.executer_outil_recrutement(nom, args)   # str ou {resultat, action mailto}
     if nom in OUTILS_ECRITURE_IMPL:
@@ -1734,6 +1866,10 @@ def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_C
     annuaire = annuaire_pseudo(employes)
     roster = _roster_pseudo(annuaire, charger_profils())
     moteur, modele = _moteur()
+    table, _ = construire_table(employes)
+    mem = memoire_contexte(table)
+    if mem:
+        contexte = (contexte + "\n\n" if contexte else "") + mem
 
     def _exec(nom, args, ann):
         return executer_outil(nom, args, ann, mode, origine)
@@ -1809,7 +1945,22 @@ def page():
     return render_template("admin_agent.html", conversation=conv, journal=journal,
                            mode=mode_agent(), moteur=moteur,
                            outils_libelles=LIBELLES_OUTILS,
+                           suggestions=suggestions_proactives(), memoire=charger_memoire(),
                            msg=request.args.get("msg", ""))
+
+
+@bp.route("/admin/agent/oublier", methods=["POST"])
+def oublier_route():
+    """Bouton du panneau Mémoire : efface un souvenir."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    sid = request.form.get("id", "")
+    lst = charger_memoire()
+    cible = next((x for x in lst if x.get("id") == sid), None)
+    if cible:
+        sauvegarder_memoire([x for x in lst if x.get("id") != sid])
+        journaliser("oublier", f"Oublier : « {cible.get('texte')} »", mode_agent(), "panneau")
+    return redirect(url_for("agent.page"))
 
 
 @bp.route("/admin/agent/chat", methods=["POST"])

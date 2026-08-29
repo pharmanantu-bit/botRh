@@ -33,4 +33,5 @@ planning_demandes_admin.json
 agent_conversation.json
 agent_journal.json
 agent_annulations.json
+agent_memoire.json
 agent_options.json

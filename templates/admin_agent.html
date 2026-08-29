@@ -51,6 +51,14 @@
     .carte .undo { background: #fff; color: #7a5b00; border: 1px solid #e0c268; padding: 3px 9px; font-size: 0.82em; margin-left: 8px; }
     .carte .undo:hover { background: #fff8e1; }
     .carte .undo:disabled { color: #9aa7b5; border-color: #ccc; cursor: default; }
+    /* Suggestions proactives (puces au-dessus de la saisie) */
+    .puces { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 10px 0; background: #f0f0f0; }
+    .puce { border: 1px solid #c9d6e4; background: #fff; color: #1F4E79; border-radius: 14px; padding: 4px 10px; font-size: 0.8em; cursor: pointer; white-space: nowrap; }
+    .puce:hover { background: #e8f0f8; }
+    .puce.info { cursor: default; color: #555; }
+    /* Mémoire (panneau) */
+    .souv { border-left: 3px solid #8e6cc1; padding: 5px 8px; margin: 6px 0; font-size: 0.86em; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .souv .x { background: none; border: 1px solid #ccc; border-radius: 6px; padding: 2px 8px; cursor: pointer; color: #9C0006; font-size: 0.85em; }
     .carte.done { border-left-color: #9aa7b5; opacity: 0.85; }
     .carte .lien { background: #1F4E79; color: #fff; text-decoration: none; display: inline-block; }
 
@@ -159,6 +167,20 @@
     {% endfor %}
   </div>
 
+  {% if suggestions %}
+  <div class="puces" id="puces">
+    {% for s in suggestions %}
+      {% if s.prompt == '__ronde__' %}
+      <button type="button" class="puce" onclick="document.getElementById('btnRonde').closest('form').requestSubmit()" title="Lancer la ronde">{{ s.ico }} {{ s.texte }}</button>
+      {% elif s.prompt %}
+      <button type="button" class="puce" data-prompt="{{ s.prompt }}" onclick="envoyerPuce(this)" title="Envoyer cette question à l'agent">{{ s.ico }} {{ s.texte }}</button>
+      {% else %}
+      <span class="puce info">{{ s.ico }} {{ s.texte }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <form class="saisie" id="form">
     <textarea id="inp" rows="1" placeholder="Écris à l'agent…" autocomplete="off"></textarea>
     <button type="submit" class="env" id="btn" title="Envoyer">➤</button>
@@ -171,6 +193,18 @@
       La ronde quotidienne tourne chaque matin (cron GitHub → <code>/agent_ronde</code>) : relevés en retard, demandes de congés, échéances.
       <span class="danger">Le mode autonome exécute sans te demander</span> — repasse en « Je valide » pour retrouver les cartes de confirmation.
     </div>
+    <h2 style="margin-top:14px;">🧠 Mémoire de l'agent</h2>
+    <div class="aide">Ce que l'agent retient d'une conversation à l'autre (« retiens que… »). Stocké sur le serveur, pseudonymisé avant d'être transmis à l'IA.</div>
+    {% for s in memoire %}
+    <div class="souv"><span>{{ s.texte }} <span class="m" style="color:#888;">({{ s.ts[:10] }})</span></span>
+      <form method="POST" action="/admin/agent/oublier" style="margin:0;" onsubmit="return confirm('Oublier ce souvenir ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ s.id }}">
+        <button type="submit" class="x" title="Oublier">✕</button>
+      </form></div>
+    {% else %}
+    <div class="jl">Rien en mémoire pour l'instant.</div>
+    {% endfor %}
+    <h2 style="margin-top:14px;">📋 Actions exécutées</h2>
     {% for j in journal %}
     <div class="jl"><span class="m">{{ j.ts }} · {{ j.mode }} · {{ j.origine }}</span><br><span class="o">{{ outils_libelles.get(j.outil, j.outil) }}</span> — {{ j.resume }}</div>
     {% else %}
@@ -240,6 +274,11 @@
         bulle('sys', '✅ Fait : ' + d.resultat);
       } else { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ ' + (d.resultat || d.error || 'Échec')); }
     } catch (e) { b.disabled = false; b.textContent = '✅ Confirmer'; bulle('bot err', '⚠️ Connexion impossible.'); }
+  }
+  function envoyerPuce(b) {
+    inp.value = b.dataset.prompt || ''; b.remove();
+    const p = document.getElementById('puces'); if (p && !p.querySelector('.puce')) p.remove();
+    document.getElementById('form').requestSubmit();
   }
   function boutonAnnuler(conteneur, aid) {
     const u = document.createElement('button'); u.type = 'button'; u.className = 'undo'; u.dataset.aid = aid;
