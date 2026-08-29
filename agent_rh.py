@@ -22,6 +22,7 @@ import json
 from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
 )
+from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 
 MAX_TOURS = 8  # borne le nombre d'allers-retours d'outils (coût/latence)
 
@@ -71,6 +72,13 @@ SYSTEM_AGENT = (
     "salariés, administratif). Quand une tâche en découle (préparer un document, "
     "relancer quelqu'un, noter une échéance), PROPOSE l'action avec l'outil adapté au "
     "lieu de seulement la citer. Si la synthèse est ancienne, propose actualiser_mails.\n"
+    "- RECRUTEMENT : les CANDIDATS sont désignés par leur vrai nom (jamais par une "
+    "étiquette Employé X) et gérés uniquement avec les outils candidats "
+    "(lister_candidats, fiche_candidat, rechercher_candidat, classer_candidats, "
+    "preparer_mail_convocation, preparer_mail_refus, changer_statut_candidat, "
+    "envoyer_mail_candidat). Ne confonds jamais un candidat et un salarié : n'utilise "
+    "jamais un outil salarié pour un candidat, ni l'inverse. L'analyse IA d'un CV est "
+    "consultative : la décision (entretien, refus, embauche) est toujours humaine.\n"
     "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
     "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
@@ -514,6 +522,32 @@ OUTILS_SPECS += [
     },
 ]
 
+# --- Outils RECRUTEMENT (phase 4) : mêmes outils que l'agent recrutement (lecture +
+# brouillons), plus deux écritures. Cloison RGPD : les candidats sont désignés par leur
+# vrai nom (données déjà transmises au modèle pour l'analyse de CV) ; les salariés
+# restent pseudonymisés. Un outil candidat ne touche jamais un dossier salarié.
+OUTILS_SPECS += list(OUTILS_SPECS_RECRUTEMENT) + [
+    {
+        "nom": "changer_statut_candidat",
+        "description": "RECRUTEMENT — change le statut d'un candidat (Reçu, À contacter, "
+                       "Entretien, Retenu, Refusé, Embauché). Décision humaine : toujours "
+                       "soumise à validation de l'utilisateur.",
+        "params": {"candidat": ("string", "Nom ou prénom du candidat"),
+                   "statut": ("string", "Nouveau statut")},
+        "requis": ["candidat", "statut"],
+    },
+    {
+        "nom": "envoyer_mail_candidat",
+        "description": "RECRUTEMENT — envoie un e-mail à un candidat (convocation, "
+                       "refus, demande de pièces…). Prépare d'abord le texte avec "
+                       "preparer_mail_convocation / preparer_mail_refus si utile. Irréversible.",
+        "params": {"candidat": ("string", "Nom ou prénom du candidat"),
+                   "sujet": ("string", "Objet"),
+                   "corps": ("string", "Corps du mail (texte brut)")},
+        "requis": ["candidat", "sujet", "corps"],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
@@ -521,8 +555,10 @@ OUTILS_ECRITURE = {
     "corriger_releve", "valider_releve", "envoyer_recap_comptable", "annuler_derniere_action",
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
-    "envoyer_attestation", "actualiser_mails",
+    "envoyer_attestation", "actualiser_mails", "changer_statut_candidat", "envoyer_mail_candidat",
 }
+# Décisions RH sur une personne (AI Act) : validation humaine obligatoire, même en autonome.
+OUTILS_DECISION = {"changer_statut_candidat"}
 # Outils PAIE : validation par l'utilisateur OBLIGATOIRE, même en mode autonome.
 OUTILS_PAIE = {"corriger_releve", "valider_releve", "envoyer_recap_comptable"}
 

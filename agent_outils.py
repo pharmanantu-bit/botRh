@@ -40,7 +40,9 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_p
                  DOCS_REQUIS)
 import crypto_rh
 import planning_equipe as PE
-from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, run_agent
+from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION, run_agent
+from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
+import recrutement as REC
 from assistant_rh import annuaire_pseudo
 from tokens import tokens_valides, reponse_de, generer_token
 
@@ -130,7 +132,7 @@ def marquer_annulee(annulation_id):
 # de retour en arrière dans le désordre). Les e-mails partis ne se rappellent pas.
 
 OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable",
-                        "envoyer_attestation", "actualiser_mails"}
+                        "envoyer_attestation", "actualiser_mails", "envoyer_mail_candidat"}
 OUTILS_MAIL_PARTIEL = {"traiter_demande_conges", "envoyer_demande_collaborateur",
                        "ajouter_absence"}   # écrivent ET peuvent prévenir par mail
 
@@ -150,7 +152,7 @@ def _mois_annee(args):
 def _fichiers_etat(args):
     mois, annee = _mois_annee(args or {})
     f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
-         PROFILS_FILE, DOCS_INDEX, reponses_file(mois, annee), reponses_file()]
+         PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, reponses_file(mois, annee), reponses_file()]
     return list(dict.fromkeys(f))
 
 
@@ -1536,6 +1538,72 @@ OUTILS_LECTURE_MAILS = {
     "documents_manquants_equipe": _o_documents_manquants_equipe,
 }
 
+# --- Outils RECRUTEMENT ---------------------------------------------------------------
+# Lecture + brouillons : délégués à recrutement.executer_outil_recrutement (vraies
+# données candidats, pas de pseudonymisation — cloison : jamais de dossier salarié).
+
+OUTILS_LECTURE_RECRUTEMENT = {sp["nom"] for sp in OUTILS_SPECS_RECRUTEMENT}
+
+
+def _candidat(ref):
+    cid, c = REC._resoudre_candidat(ref)
+    if cid is None:
+        return None, None, REC._msg_resolution(c)
+    return cid, c, None
+
+
+def _w_changer_statut_candidat(args, annuaire, executer):
+    cid, c, err = _candidat(args.get("candidat"))
+    if err:
+        return err, False
+    statut = _correspondance(args.get("statut"), REC.STATUTS_RECRUTEMENT)
+    if not statut:
+        return "Statut inconnu. Statuts : " + ", ".join(REC.STATUTS_RECRUTEMENT) + ".", False
+    nom = f"{c.get('prenom', '')} {c.get('nom', '')}".strip()
+    ancien = c.get("statut") or "?"
+    if ancien == statut:
+        return f"{nom} est déjà « {statut} ».", False
+    resume = f"Candidat {nom} : statut « {ancien} » → « {statut} »"
+    if executer:
+        cands = REC.charger_candidats()
+        cands[cid]["statut"] = statut
+        if statut in ("Entretien", "Retenu", "Refusé", "Embauché"):
+            cands[cid].setdefault("journal", []).append({
+                "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"),
+                "type": "Décision RH",
+                "note": f"⚖️ Décision humaine (confirmée dans l'agent RH) : statut « {statut} » "
+                        "(analyse IA consultative, sans valeur décisionnelle)."})
+        REC.sauvegarder_candidats(cands)
+    return resume, True
+
+
+def _w_envoyer_mail_candidat(args, annuaire, executer):
+    cid, c, err = _candidat(args.get("candidat"))
+    if err:
+        return err, False
+    sujet, corps = (args.get("sujet") or "").strip(), (args.get("corps") or "").strip()
+    if not sujet or not corps:
+        return "Sujet ou corps vide.", False
+    if not c.get("email") or "@" not in c["email"]:
+        return "Ce candidat n'a pas d'adresse e-mail enregistrée.", False
+    nom = f"{c.get('prenom', '')} {c.get('nom', '')}".strip()
+    resume = f"E-mail à {nom} ({c['email']}) — objet « {sujet} » :\n{corps}"
+    if not executer:
+        return resume, True
+    if current_app.config.get("TESTING"):
+        return resume + "\n(TEST : non envoyé)", True
+    try:
+        etat = _envoyer_mail_reel(c["email"], sujet, corps)
+    except Exception as ex:
+        return f"Échec de l'envoi : {ex}", False
+    cands = REC.charger_candidats()
+    if cid in cands:
+        cands[cid].setdefault("journal", []).append({
+            "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"),
+            "type": "E-mail", "note": f"E-mail envoyé par l'agent RH — « {sujet} »"})
+        REC.sauvegarder_candidats(cands)
+    return resume + f"\n→ {etat}", True
+
 OUTILS_ECRITURE_IMPL = {
     "ajouter_absence": _w_ajouter_absence,
     "supprimer_absence": _w_supprimer_absence,
@@ -1561,6 +1629,8 @@ OUTILS_ECRITURE_IMPL = {
     "generer_attestation": _w_generer_attestation,
     "envoyer_attestation": _w_envoyer_attestation,
     "actualiser_mails": _w_actualiser_mails,
+    "changer_statut_candidat": _w_changer_statut_candidat,
+    "envoyer_mail_candidat": _w_envoyer_mail_candidat,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
@@ -1577,6 +1647,7 @@ LIBELLES_OUTILS = {
     "changer_statut": "🟢 Statut", "valider_document": "📄 Document",
     "retyper_document": "📄 Document", "generer_attestation": "📄 Attestation",
     "envoyer_attestation": "📧 Attestation", "actualiser_mails": "📬 Mails",
+    "changer_statut_candidat": "🧑‍💼 Candidat", "envoyer_mail_candidat": "📧 Candidat",
 }
 
 
@@ -1592,10 +1663,12 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         return OUTILS_LECTURE_DOSSIER[nom](args, annuaire)
     if nom in OUTILS_LECTURE_MAILS:
         return OUTILS_LECTURE_MAILS[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_RECRUTEMENT:
+        return REC.executer_outil_recrutement(nom, args)   # str ou {resultat, action mailto}
     if nom in OUTILS_ECRITURE_IMPL:
         fn = OUTILS_ECRITURE_IMPL[nom]
-        # PAIE : jamais d'exécution directe, même en mode autonome.
-        if mode == "autonome" and nom not in OUTILS_PAIE:
+        # PAIE et DÉCISIONS RH : jamais d'exécution directe, même en mode autonome.
+        if mode == "autonome" and nom not in OUTILS_PAIE and nom not in OUTILS_DECISION:
             avant = _instantane(args)
             texte, ok = fn(args, annuaire, True)
             if ok:
@@ -1610,7 +1683,8 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         texte, ok = fn(args, annuaire, False)
         if not ok:
             return f"ÉCHEC : {texte}"
-        suffixe = " — PAIE : validation obligatoire" if nom in OUTILS_PAIE else ""
+        suffixe = (" — PAIE : validation obligatoire" if nom in OUTILS_PAIE
+                   else " — DÉCISION RH : validation obligatoire" if nom in OUTILS_DECISION else "")
         return {"resultat": f"PROPOSITION (en attente de validation par l'utilisateur) : {texte}",
                 "action": {"type": "confirmer", "outil": nom, "args": args,
                            "label": LIBELLES_OUTILS.get(nom, nom) + suffixe, "resume": texte}}
