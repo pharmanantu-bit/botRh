@@ -48,6 +48,12 @@ SYSTEM_AGENT = (
     "qu'il faut (planning du jour, solde de congés, demandes en attente) avec les outils "
     "de LECTURE. Si une information indispensable manque (date, motif, horaires…), "
     "demande-la au lieu de deviner.\n"
+    "- Quand l'utilisateur t'ANNONCE un fait RH (« X est malade jusqu'à mercredi », "
+    "« Y sera en formation lundi », « Z arrive à 10h demain », « accepte les congés de "
+    "W »), c'est une demande d'ENREGISTREMENT : appelle l'outil d'écriture adapté "
+    "(ajouter_absence pour plusieurs jours, modifier_horaires_jour pour un jour) dès "
+    "que tu as les informations, puis réponds à sa question. Ne te contente JAMAIS de "
+    "reformuler le fait comme s'il était déjà enregistré.\n"
     "- Chaque outil d'écriture renvoie son résultat réel : « FAIT » (exécuté) ou "
     "« PROPOSITION » (l'utilisateur confirmera d'un clic). Rapporte EXACTEMENT ce "
     "statut : ne dis jamais qu'une chose est faite si l'outil a répondu PROPOSITION, "
@@ -450,9 +456,9 @@ def contexte_date(aujourdhui=None):
                     for k in range(1, 15))
     return (f"Aujourd'hui : {jours[d.weekday()]} {d.strftime('%d/%m/%Y')} (ISO {d.isoformat()}).\n"
             f"Jours suivants : {cal}.\n"
-            f"« {jours[(d + _td(days=1)).weekday()]} prochain » = le premier {jours[(d + _td(days=1)).weekday()]} "
-            f"après aujourd'hui, soit {(d + _td(days=1)).isoformat()} ; même logique pour les autres jours "
-            "(le PREMIER à venir, pas celui de la semaine suivante).\n"
+            "Correspondances OBLIGATOIRES (« X prochain » = le PREMIER X après aujourd'hui) : "
+            + ", ".join(f"{jours[(d + _td(days=k)).weekday()]} prochain = {(d + _td(days=k)).isoformat()}"
+                        for k in range(1, 8)) + ".\n"
             "Utilise EXACTEMENT ces dates ISO dans les outils (vérifie le jour de la semaine).")
 
 

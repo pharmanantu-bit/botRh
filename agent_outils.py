@@ -670,8 +670,15 @@ def confirmer_action(outil, args, origine="carte"):
 
 # --- Boucle de conversation ------------------------------------------------------
 
+MODELE_AGENT_DEFAUT = {"mistral": "mistral-medium-latest", "claude": "claude-sonnet-4-5"}
+
+
 def _moteur():
-    return os.getenv("ASSISTANT_MOTEUR", "mistral"), (os.getenv("ASSISTANT_MODELE") or None)
+    """Moteur + modèle. Sans ASSISTANT_MODELE, l'agent prend un modèle « medium » :
+    testé le 29/08/2026, mistral-small confond « lundi prochain » et n'appelle pas
+    les outils d'écriture ; mistral-medium fait les deux correctement."""
+    moteur = os.getenv("ASSISTANT_MOTEUR", "mistral")
+    return moteur, (os.getenv("ASSISTANT_MODELE") or MODELE_AGENT_DEFAUT.get(moteur))
 
 
 def repondre(texte_utilisateur, origine="chat", contexte=""):
