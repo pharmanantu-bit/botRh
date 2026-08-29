@@ -15,6 +15,7 @@ import os
 import re
 import json
 import urllib.request
+import urllib.error
 
 SYSTEM_PROMPT = (
     "Tu es l'assistant RH d'une pharmacie d'officine en France. Tu reçois les e-mails "
@@ -139,11 +140,20 @@ def _extraire_json(texte):
     return json.loads(m.group(0))
 
 
-def _post_json(url, headers, charge, timeout=60):
+def _post_json(url, headers, charge, timeout=60, essais=4):
+    """POST JSON avec reprise automatique sur 429 (limite de débit : l'agent
+    enchaîne plusieurs appels par question) et sur 5xx : attente 1, 2, 4 s."""
+    import time
     data = json.dumps(charge).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    for k in range(essais):
+        req = urllib.request.Request(url, data=data, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or k == essais - 1:
+                raise
+            time.sleep(2 ** k)
 
 
 # --- Moteurs interchangeables ---

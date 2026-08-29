@@ -1181,6 +1181,18 @@ def ronde():
 
 # --- Routes ----------------------------------------------------------------------
 
+def _detail_erreur_ia(e):
+    """Message lisible pour l'utilisateur selon l'erreur du moteur IA."""
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):
+        return {401: "clé API refusée (vérifie MISTRAL_API_KEY / ANTHROPIC_API_KEY)",
+                429: "trop de requêtes en même temps (limite de débit Mistral) — réessaie dans quelques secondes",
+                }.get(e.code, f"erreur HTTP {e.code} du moteur IA") + "."
+    if isinstance(e, RuntimeError):
+        return f"{e}"
+    return f"{type(e).__name__} — vérifie la clé API / le réseau et réessaie."
+
+
 def _json(data, status=200):
     return current_app.response_class(json.dumps(data, ensure_ascii=False),
                                       status=status, mimetype="application/json")
@@ -1211,9 +1223,9 @@ def chat():
         return _json(repondre(texte[:4000]))
     except Exception as e:
         current_app.logger.exception("Agent RH : échec")
-        ajouter_message("assistant", f"⚠️ Je n'ai pas pu répondre ({type(e).__name__}). "
-                                     "Vérifie la clé API / le réseau et réessaie.", erreur=True)
-        return _json({"error": f"Service IA indisponible ({type(e).__name__})."}, 502)
+        detail = _detail_erreur_ia(e)
+        ajouter_message("assistant", f"⚠️ Je n'ai pas pu répondre : {detail}", erreur=True)
+        return _json({"error": f"Service IA indisponible : {detail}"}, 502)
 
 
 @bp.route("/admin/agent/confirmer", methods=["POST"])
