@@ -3170,34 +3170,6 @@ def executer_outil_agent(nom, args, annuaire):
     return fn(args or {}, annuaire, charger_profils())
 
 
-@app.route("/admin/assistant/chat", methods=["POST"])
-def admin_assistant_chat():
-    """Compatibilité : l'ancien chat de la page Assistant délègue à l'agent RH
-    (agent_outils.repondre — conversation persistante, modes validation/autonome).
-    Accepte {message} ou l'ancien format {messages:[...]} (dernier message user)."""
-    if not session.get("admin"):
-        return app.response_class(json.dumps({"error": "non autorisé"}),
-                                  status=403, mimetype="application/json")
-    data = request.get_json(force=True, silent=True) or {}
-    texte = (data.get("message") or "").strip()
-    if not texte:
-        msgs = data.get("messages") or []
-        texte = next((m.get("content", "") for m in reversed(msgs)
-                      if isinstance(m, dict) and m.get("role") == "user"), "").strip()
-    if not texte:
-        return app.response_class(json.dumps({"error": "message vide"}),
-                                  status=400, mimetype="application/json")
-    try:
-        from agent_outils import repondre
-        return app.response_class(json.dumps(repondre(texte[:4000]), ensure_ascii=False),
-                                  mimetype="application/json")
-    except Exception as e:
-        app.logger.exception("Agent RH indisponible")
-        return app.response_class(
-            json.dumps({"error": f"Service IA indisponible ({type(e).__name__})."}, ensure_ascii=False),
-            status=502, mimetype="application/json")
-
-
 @app.route("/export_reponses")
 def export_reponses():
     """Renvoie les réponses (qui a rempli son relevé) du mois demandé, pour que
