@@ -342,8 +342,12 @@ def _lire_json(path, defaut=None):
     return copy.deepcopy(entree[1])
 
 def _ecrire_json(path, data):
-    with open(path, "w", encoding="utf-8") as fp:
+    # Écriture ATOMIQUE : fichier temporaire puis remplacement d'un coup, pour
+    # ne jamais laisser un JSON tronqué si le processus est coupé en pleine écriture.
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fp:
         json.dump(data, fp, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
     try:
         _JSON_CACHE[path] = (os.path.getmtime(path), copy.deepcopy(data))
     except OSError:

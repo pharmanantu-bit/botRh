@@ -268,7 +268,9 @@ def bilan_cp(em, absences, changements, conges, p1, p2):
     cf = conges.get(em) if isinstance(conges.get(em), dict) else {}
     droit = cf.get("droit", CONGES_DROIT_DEFAUT)
     report = cf.get("report", 0)
-    poses, detail, plages = 0, [], []
+    # Chaque jour ouvrable est compté UNE fois, même si plusieurs absences
+    # « Congés payés » se chevauchent (sinon double décompte du solde).
+    jours_cp, detail, plages = set(), [], []
     for a in absences:
         if a.get("email") != em or a.get("motif") != "Congés payés":
             continue
@@ -281,9 +283,14 @@ def bilan_cp(em, absences, changements, conges, p1, p2):
             continue
         n = _jours_ouvrables_cp(d1, d2, p1, p2)
         if n:
-            poses += n
+            d = max(d1, p1)
+            while d <= min(d2, p2):
+                if d.isoweekday() <= 6 and not ferie_de(d):
+                    jours_cp.add(d)
+                d += timedelta(days=1)
             plages.append((d1, d2))
             detail.append((d1, f"Du {d1.strftime('%d/%m/%y')} au {d2.strftime('%d/%m/%y')} : {n} j"))
+    poses = len(jours_cp)
     # Jours ponctuels « Congés payés » (jour vidé), hors plages déjà comptées.
     for diso, parem in changements.items():
         ch = (parem or {}).get(em)
@@ -297,7 +304,8 @@ def bilan_cp(em, absences, changements, conges, p1, p2):
             continue
         if any(a1 <= d0 <= a2 for a1, a2 in plages):
             continue
-        poses += 1
+        jours_cp.add(d0)
+        poses = len(jours_cp)
         detail.append((d0, f"Le {d0.strftime('%d/%m/%y')} : 1 j"))
     return {"droit": droit, "report": report, "poses": poses,
             "restant": round(droit + report - poses, 1),
@@ -376,6 +384,9 @@ def meme_que_trame(creneaux_chg, creneaux_trame):
 def creneaux_trame_jour(trame, email, date_obj):
     """Créneaux de la trame pour un collaborateur à une date réelle (gère la rotation)."""
     if not trame:
+        return []
+    membres = trame.get("membres")
+    if membres is not None and email not in membres:   # retiré de la trame → aucune heure
         return []
     rot = semaine_rotation(trame, date_obj)
     return _jours_sem(trame, email, rot).get(str(date_obj.isoweekday()), []) or []
@@ -552,6 +563,26 @@ def creneau_valide(c):
     return d is not None and f is not None and f > d
 
 
+def creneau_incoherent(deb, fin):
+    """True si deux heures saisies forment un créneau fin ≤ début (à rejeter)."""
+    a, b = _minutes(deb), _minutes(fin)
+    return a is not None and b is not None and b <= a
+
+
+def fusionner_creneaux(creneaux):
+    """Trie et fusionne les créneaux valides qui se chevauchent ou se touchent
+    (évite de compter deux fois les heures communes)."""
+    cr = sorted((_minutes(c["debut"]), _minutes(c["fin"]))
+                for c in (creneaux or []) if creneau_valide(c))
+    out = []
+    for a, b in cr:
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [{"debut": _hhmm(a), "fin": _hhmm(b)} for a, b in out]
+
+
 def duree_creneau(c):
     d, f = _minutes(c.get("debut")), _minutes(c.get("fin"))
     if d is None or f is None or f <= d:
@@ -640,7 +671,7 @@ def semaine_rotation(trame, lundi):
     except (ValueError, TypeError):
         sd = trame.get("semaine_demarrage", SEMAINES[0])
         return sd if sd in SEMAINES else SEMAINES[0]
-    nb = max(1, int(trame.get("nb_semaines") or len(SEMAINES)))
+    nb = max(1, min(len(SEMAINES), int(trame.get("nb_semaines") or len(SEMAINES))))
     start = SEMAINES.index(trame["semaine_demarrage"]) if trame.get("semaine_demarrage") in SEMAINES else 0
     semaines_ecoulees = (_lundi(lundi) - _lundi(dem)).days // 7
     idx = (start + semaines_ecoulees) % nb
@@ -1050,7 +1081,11 @@ def vue():
                             emp_sm.append(emap[em2])
                             vus.add(em2)
                 if opts.get("lignes_vides") == "masquer":
-                    emp_sm = [e for e in emp_sm if total_semaine(_jours_sem(act_l, e["email"], rot)) > 0]
+                    # Heures EFFECTIVES (trame + ponctuels − absences − fériés) :
+                    # un remplaçant hors trame avec un ponctuel reste affiché.
+                    emp_sm = [e for e in emp_sm
+                              if any(creneaux_effectifs_jour(act_l, e["email"], lundi + timedelta(days=k),
+                                                             changements, absences) for k in range(7))]
                 fin = lundi + timedelta(days=6)
                 titre = f"{lundi.strftime('%d/%m')} – {fin.strftime('%d/%m/%Y')} · Semaine {rot}"
                 # Compteur hebdo par collaborateur : heures EFFECTIVES de la
@@ -1753,7 +1788,7 @@ def creer_trame():
     t = _nouvelle_trame((request.form.get("commentaire") or "").strip())
     t["date_demarrage"] = (request.form.get("date_demarrage") or "").strip()
     try:
-        t["nb_semaines"] = max(1, min(15, int(request.form.get("nb_semaines", 2))))
+        t["nb_semaines"] = max(1, min(len(SEMAINES), int(request.form.get("nb_semaines", 2))))
     except ValueError:
         t["nb_semaines"] = 2
     src = trame_par_id(data, request.form.get("importer", ""))
@@ -1822,8 +1857,11 @@ def enregistrer_trame():
             creneaux = []
             for s in range(2):
                 base = f"tr__{e['email']}__{sem}__{j}__{s}__"
-                deb = (request.form.get(base + "debut") or "").strip()
-                fin = (request.form.get(base + "fin") or "").strip()
+                deb = _norm_hhmm(request.form.get(base + "debut"))
+                fin = _norm_hhmm(request.form.get(base + "fin"))
+                if creneau_incoherent(deb, fin):
+                    return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem,
+                                            msg="creneau_invalide"))
                 if deb and fin:
                     creneaux.append({"debut": deb, "fin": fin})
             creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
@@ -1932,6 +1970,15 @@ def traiter_demande_cp():
         return redirect(url_for(".vue", onglet="conges", msg="cp_deja"))
     if action == "accepter":
         absences = charger_absences()
+        try:
+            dd1 = datetime.strptime(dm.get("debut", ""), "%Y-%m-%d").date()
+            dd2 = datetime.strptime(dm.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            dd1 = dd2 = None
+        if dd1 and dd2 and absence_chevauchante(absences, dm["email"], dd1, dd2):
+            return redirect(url_for(".vue", onglet="conges", msg="absence_chevauche"))
+        if dd1 and dd2:
+            _purger_ponctuels_couverts(dm["email"], dd1, dd2)
         aid = datetime.now().strftime("%Y%m%d%H%M%S%f")
         absences.append({"id": aid, "email": dm["email"],
                          "debut": dm.get("debut", ""), "fin": dm.get("fin", ""),
@@ -2106,8 +2153,9 @@ def repondre_demande_admin():
                 existants = [c for c in creneaux_effectifs_jour(
                     act, emp["email"], d_obj, chgs, absences_l)
                     if creneau_valide(c)] if act else []
-                creneaux = existants + [{"debut": dm.get("h_debut", ""), "fin": dm.get("h_fin", "")}]
-                creneaux.sort(key=lambda c: _minutes(c["debut"]) or 0)
+                # Fusion : un créneau qui chevauche la trame ne compte pas deux fois.
+                creneaux = fusionner_creneaux(
+                    existants + [{"debut": dm.get("h_debut", ""), "fin": dm.get("h_fin", "")}])
                 chgs.setdefault(d_obj.isoformat(), {})[emp["email"]] = {
                     "motif": "Heures sup/récup/échanges", "creneaux": creneaux,
                     "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
@@ -2138,6 +2186,9 @@ def enregistrer_changement():
         for s in (1, 2):
             deb = _norm_hhmm(request.form.get(f"h{s}d"))
             fin = _norm_hhmm(request.form.get(f"h{s}f"))
+            if creneau_incoherent(deb, fin):
+                return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                        msg="creneau_invalide", _anchor=f"j-{date_iso}"))
             if deb and fin:
                 creneaux.append({"debut": deb, "fin": fin})
         creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
@@ -2223,6 +2274,9 @@ def saisie_ponctuelle():
         for s in (1, 2):
             deb = _norm_hhmm(request.form.get(f"h{s}d_{em}"))
             fin = _norm_hhmm(request.form.get(f"h{s}f_{em}"))
+            if creneau_incoherent(deb, fin):
+                return redirect(url_for(".vue", onglet="planning", ponctuel=1, date=date_iso,
+                                        msg="creneau_invalide"))
             if deb and fin:
                 creneaux.append({"debut": deb, "fin": fin})
         creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
@@ -2278,13 +2332,55 @@ def ajouter_absence():
         if d2 < d1:
             d1, d2 = d2, d1
         absences = charger_absences()
+        if absence_chevauchante(absences, email, d1, d2):
+            return redirect(url_for(".vue", onglet="planning", absence=1, msg="absence_chevauche"))
+        purges = _purger_ponctuels_couverts(email, d1, d2)
         absences.append({
             "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
             "email": email, "debut": d1.isoformat(), "fin": d2.isoformat(),
             "motif": motif,
             "commentaire": commentaire})
         sauvegarder_absences(absences)
+        return redirect(url_for(".vue", onglet="planning", absence=1, msg="absence_ok", purges=purges))
     return redirect(url_for(".vue", onglet="planning", absence=1))
+
+
+def absence_chevauchante(absences, email, d1, d2):
+    """Absence déjà enregistrée pour ce collaborateur sur une date de [d1..d2] ?"""
+    for a in absences:
+        if a.get("email") != email:
+            continue
+        try:
+            a1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
+            a2 = datetime.strptime(a.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if a1 <= d2 and d1 <= a2:
+            return a
+    return None
+
+
+def _purger_ponctuels_couverts(email, d1, d2):
+    """Retire les changements ponctuels AVEC horaires de ce collaborateur dans
+    [d1..d2] : ils contrediraient l'absence (le ponctuel a priorité dans
+    creneaux_effectifs_jour). Les jours vidés (autre motif) sont conservés.
+    Renvoie le nombre de ponctuels retirés."""
+    data = charger_changements()
+    n = 0
+    for diso in list(data.keys()):
+        try:
+            d = datetime.strptime(diso, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        ch = (data.get(diso) or {}).get(email)
+        if d1 <= d <= d2 and ch and (ch.get("creneaux") or []):
+            del data[diso][email]
+            if not data[diso]:
+                del data[diso]
+            n += 1
+    if n:
+        sauvegarder_changements(data)
+    return n
 
 
 @bp.route("/admin/planning-equipe/absence/supprimer", methods=["POST"])
@@ -2450,6 +2546,8 @@ def _parse_horaires_form(form):
                 base = f"h__{s}__{j}__{slot}__"
                 deb = _norm_hhmm(form.get(base + "debut"))
                 fin = _norm_hhmm(form.get(base + "fin"))
+                if creneau_incoherent(deb, fin):
+                    raise ValueError("creneau_invalide")
                 if deb and fin:
                     creneaux.append({"debut": deb, "fin": fin})
             creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
@@ -2469,7 +2567,10 @@ def enregistrer_horaires_collab():
     trame = trame_par_id(data, tid)
     if not trame:
         return redirect(url_for(".vue", onglet="trame", msg="no_trame"))
-    trame.setdefault("employes", {})[email] = _parse_horaires_form(request.form)
+    try:
+        trame.setdefault("employes", {})[email] = _parse_horaires_form(request.form)
+    except ValueError:
+        return redirect(url_for(".vue", onglet="trame", trame=tid, msg="creneau_invalide"))
     trame["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     sauvegarder_trames(data)
     # Retour direct à la page Trame (vue d'équipe) après validation.
@@ -2489,7 +2590,10 @@ def copier_semaine():
     trame = trame_par_id(data, tid)
     if not trame:
         return redirect(url_for(".vue", onglet="trame", msg="no_trame"))
-    emp_data = _parse_horaires_form(request.form)
+    try:
+        emp_data = _parse_horaires_form(request.form)
+    except ValueError:
+        return redirect(url_for(".vue", onglet="trame", trame=tid, msg="creneau_invalide"))
     sens = request.form.get("copier_sens", "")     # ex. "A:B"
     if ":" in sens:
         src, dst = sens.split(":", 1)
@@ -2570,7 +2674,7 @@ def imprimer_collaborateur():
     if not emp:
         abort(404)
     couleur = couleurs_map(charger_employes(), charger_profils()).get(email, "#888")
-    fmt = request.args.get("format", "grille")
+    fmt = "texte" if request.args.get("format") == "texte" else "grille"
     semaines = []
     for s in SEMAINES:
         info = {"sem": s, "total": total_semaine(_jours_sem(trame, email, s))}
@@ -2601,6 +2705,8 @@ def enregistrer_ouverture():
         for r in range(2):
             deb = _norm_hhmm(request.form.get(f"ouv__{j}__{r}__debut"))
             fin = _norm_hhmm(request.form.get(f"ouv__{j}__{r}__fin"))
+            if creneau_incoherent(deb, fin):
+                return redirect(url_for(".vue", onglet="trame", trame=tid, msg="creneau_invalide"))
             if deb and fin:
                 plages.append([deb, fin])
         horaires[str(j)] = plages
@@ -2622,7 +2728,7 @@ def enregistrer_config():
     trame["commentaire"] = (request.form.get("commentaire") or "").strip()
     trame["semaine_demarrage"] = request.form.get("semaine_demarrage", "A")
     try:
-        trame["nb_semaines"] = max(1, min(15, int(request.form.get("nb_semaines", 2))))
+        trame["nb_semaines"] = max(1, min(len(SEMAINES), int(request.form.get("nb_semaines", 2))))
     except ValueError:
         trame["nb_semaines"] = 2
     sauvegarder_trames(data)

@@ -137,6 +137,9 @@
   {% if msg == 'dem_annulee' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Demande annulée.</div>{% endif %}
   {% if msg == 'dem_dates' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Dates ou horaires invalides (la demande doit être à venir, fin après début).</div>{% endif %}
   {% if msg == 'dem_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Demande incomplète — choisis un collaborateur et un type.</div>{% endif %}
+  {% if msg == 'creneau_invalide' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Créneau invalide</strong> — l'heure de fin doit être après l'heure de début. Rien n'a été enregistré.</div>{% endif %}
+  {% if msg == 'absence_chevauche' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Une absence existe déjà sur ces dates pour ce collaborateur — rien n'a été ajouté. Supprime-la ou ajuste les dates.</div>{% endif %}
+  {% if msg == 'absence_ok' %}<div class="msg">Absence enregistrée.{% if request.args.get('purges', '0') not in ('0', '') %} {{ request.args.get('purges') }} changement(s) ponctuel(s) avec horaires sur ces dates ont été retirés (remplacés par l'absence).{% endif %}</div>{% endif %}
   {% if msg == 'motif_requis' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Motif obligatoire</strong> — la modification sans motif n'a <strong>pas</strong> été enregistrée. Choisis un motif (retard, congés, heures sup…) puis valide à nouveau.</div>{% endif %}
 
   <div class="ongs">
@@ -591,7 +594,7 @@
             {% for lt in liste_trames %}<option value="{{ lt.id }}">{{ lt.label }}</option>{% endfor %}
           </select>
         </div>
-        <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="15" value="2" style="width:70px;"></div>
+        <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="2" value="2" style="width:70px;"></div>
         <div style="flex:1; min-width:160px;"><label>Commentaire</label><input type="text" name="commentaire" placeholder="ex: planning d'été"></div>
         <button class="btn" type="submit">Ajouter la nouvelle trame</button>
       </form>
@@ -633,7 +636,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tid" value="{{ tid }}">
           <div><label>Date de démarrage</label><input type="date" name="date_demarrage" value="{{ trame.date_demarrage }}"></div>
-          <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="15" value="{{ trame.nb_semaines }}" style="width:70px;"></div>
+          <div><label>Semaines tournantes</label><input type="number" name="nb_semaines" min="1" max="2" value="{{ trame.nb_semaines }}" style="width:70px;"></div>
           <div><label>Semaine de démarrage</label>
             <select name="semaine_demarrage">{% for s in semaines %}<option value="{{ s }}" {% if trame.semaine_demarrage == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
           </div>
