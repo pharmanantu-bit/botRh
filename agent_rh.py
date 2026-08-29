@@ -63,6 +63,10 @@ SYSTEM_AGENT = (
     "envoyer_recap_comptable touchent à la PAIE : ils renvoient TOUJOURS une "
     "PROPOSITION à confirmer, même en mode autonome. Avant d'envoyer au comptable, "
     "appelle apercu_recap_comptable et résume-le à l'utilisateur.\n"
+    "- DOSSIER SALARIÉ : dossier_salarie donne documents, suggestions, checklists et "
+    "statut ; appliquer_suggestion / ignorer_suggestion, cocher_checklist, "
+    "changer_statut, valider_document, retyper_document, generer_attestation et "
+    "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"
     "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
     "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
@@ -381,11 +385,109 @@ OUTILS_SPECS += [
     },
 ]
 
+# --- Outils DOSSIER SALARIÉ (phase 2) ---
+OUTILS_SPECS += [
+    {
+        "nom": "dossier_salarie",
+        "description": "Dossier complet d'un salarié : documents déposés (id, type, "
+                       "à valider, expiration), documents requis manquants, suggestions "
+                       "extraites des documents en attente (id), checklists d'arrivée / "
+                       "de départ (cochées / restantes), statut (actif, inactif, archivé) "
+                       "et alertes. À appeler avant toute action sur le dossier.",
+        "params": {"employe": ("string", "Étiquette « Employé X »")},
+        "requis": ["employe"],
+    },
+    {
+        "nom": "appliquer_suggestion",
+        "description": "Applique une suggestion extraite d'un document (écrit le champ "
+                       "dans la fiche). suggestion = id donné par dossier_salarie, ou "
+                       "« toutes ».",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "suggestion": ("string", "Id de la suggestion, ou « toutes »")},
+        "requis": ["employe", "suggestion"],
+    },
+    {
+        "nom": "ignorer_suggestion",
+        "description": "Écarte une suggestion extraite d'un document sans rien écrire. "
+                       "suggestion = id, ou « toutes ».",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "suggestion": ("string", "Id de la suggestion, ou « toutes »")},
+        "requis": ["employe", "suggestion"],
+    },
+    {
+        "nom": "analyser_documents",
+        "description": "Relit les documents exploitables du dossier (contrat, avenant, "
+                       "promesse, RIB) et génère des suggestions de pré-remplissage à "
+                       "valider. N'écrit rien dans la fiche.",
+        "params": {"employe": ("string", "Étiquette « Employé X »")},
+        "requis": ["employe"],
+    },
+    {
+        "nom": "cocher_checklist",
+        "description": "Coche (ou décoche) une tâche de la checklist d'ARRIVÉE ou de "
+                       "DÉPART d'un salarié (ex. « badge remis », « RIB reçu », « blouse "
+                       "rendue »). tache = libellé approximatif accepté.",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "liste": ("string", "arrivee | depart"),
+                   "tache": ("string", "Libellé de la tâche (approximatif accepté)"),
+                   "coche": ("boolean", "true = cocher (défaut), false = décocher")},
+        "requis": ["employe", "liste", "tache"],
+    },
+    {
+        "nom": "changer_statut",
+        "description": "Change le statut d'un salarié : « actif » (relevés + planning), "
+                       "« inactif » (en poste mais exclu des relevés et du planning : "
+                       "longue absence, pas encore arrivé), « archive » (a quitté "
+                       "l'entreprise, dossier conservé).",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "statut": ("string", "actif | inactif | archive")},
+        "requis": ["employe", "statut"],
+    },
+    {
+        "nom": "valider_document",
+        "description": "Marque un document auto-classé comme vérifié (retire l'étiquette "
+                       "« à valider »). document = id donné par dossier_salarie, ou "
+                       "« tous ».",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "document": ("string", "Id du document, ou « tous »")},
+        "requis": ["employe", "document"],
+    },
+    {
+        "nom": "retyper_document",
+        "description": "Corrige le type d'un document déposé (ex. classé « Autre » alors "
+                       "que c'est un contrat). Types possibles : ceux listés par l'outil "
+                       "en cas d'erreur.",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "document": ("string", "Id du document"),
+                   "type": ("string", "Nouveau type (libellé approximatif accepté)")},
+        "requis": ["employe", "document", "type"],
+    },
+    {
+        "nom": "generer_attestation",
+        "description": "Génère l'attestation de travail en PDF, la range dans les "
+                       "documents du salarié et note l'événement au journal. Renvoie "
+                       "un lien pour l'ouvrir.",
+        "params": {"employe": ("string", "Étiquette « Employé X »")},
+        "requis": ["employe"],
+    },
+    {
+        "nom": "envoyer_attestation",
+        "description": "Génère l'attestation de travail (PDF) et l'ENVOIE par e-mail au "
+                       "salarié, en pièce jointe. Irréversible.",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "message": ("string", "Petit mot d'accompagnement (optionnel)")},
+        "requis": ["employe"],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
     "ajouter_note_journal", "mettre_a_jour_profil", "envoyer_mail", "envoyer_relance",
     "corriger_releve", "valider_releve", "envoyer_recap_comptable", "annuler_derniere_action",
+    "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
+    "changer_statut", "valider_document", "retyper_document", "generer_attestation",
+    "envoyer_attestation",
 }
 # Outils PAIE : validation par l'utilisateur OBLIGATOIRE, même en mode autonome.
 OUTILS_PAIE = {"corriger_releve", "valider_releve", "envoyer_recap_comptable"}

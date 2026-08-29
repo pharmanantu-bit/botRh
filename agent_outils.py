@@ -33,7 +33,11 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_p
                  sauvegarder_profils, collaborateur_actif, CHAMPS_PROFIL, API_CLE, MOIS_FR,
                  executer_outil_agent, _roster_pseudo, _OUTILS_AGENT, declencher_workflow,
                  charger_reponses, ecrire_reponses, reponses_file, construire_resume_paie,
-                 paie_envoi_file, PROFILS_FILE)
+                 paie_envoi_file, PROFILS_FILE, DOCS_DIR, DOCS_INDEX, charger_docs_index,
+                 sauvegarder_docs_index, docs_manquants, TACHES_ARRIVEE, TACHES_DEPART,
+                 FAMILLES_DOCS, alertes_completes, _analyser_document, _doc_analysable,
+                 _valeur_profil_pour, _purger_propositions, CIBLES_SENSIBLES)
+import crypto_rh
 import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, run_agent
 from assistant_rh import annuaire_pseudo
@@ -124,7 +128,8 @@ def marquer_annulee(annulation_id):
 # les réécrit tels quels. Seule la DERNIÈRE action non annulée est annulable (pas
 # de retour en arrière dans le désordre). Les e-mails partis ne se rappellent pas.
 
-OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable"}
+OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable",
+                        "envoyer_attestation"}
 OUTILS_MAIL_PARTIEL = {"traiter_demande_conges", "envoyer_demande_collaborateur",
                        "ajouter_absence"}   # écrivent ET peuvent prévenir par mail
 
@@ -144,7 +149,7 @@ def _mois_annee(args):
 def _fichiers_etat(args):
     mois, annee = _mois_annee(args or {})
     f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
-         PROFILS_FILE, reponses_file(mois, annee), reponses_file()]
+         PROFILS_FILE, DOCS_INDEX, reponses_file(mois, annee), reponses_file()]
     return list(dict.fromkeys(f))
 
 
@@ -658,17 +663,32 @@ def _w_mettre_a_jour_profil(args, annuaire, executer):
     return resume, True
 
 
-def _envoyer_mail_reel(dest, sujet, corps):
-    """Runner GitHub si GITHUB_TOKEN (serveur), sinon SMTP direct (local)."""
+def _envoyer_mail_reel(dest, sujet, corps, piece=None):
+    """Runner GitHub si GITHUB_TOKEN (serveur), sinon SMTP direct (local).
+    piece : (nom_fichier, octets) optionnel — PDF joint."""
     if os.getenv("GITHUB_TOKEN"):
-        declencher_workflow("mail_agent", {"to": dest, "subject": sujet, "body": corps})
+        charge = {"to": dest, "subject": sujet, "body": corps}
+        if piece:
+            import base64
+            charge["attachment_name"] = piece[0]
+            charge["attachment_b64"] = base64.b64encode(piece[1]).decode("ascii")
+        declencher_workflow("mail_agent", charge)
         return "envoi confié au runner GitHub (quelques minutes)"
     import smtplib
     from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
     user, pwd = os.getenv("GMAIL_USER"), os.getenv("GMAIL_APP_PASSWORD")
     if not user or not pwd:
         raise RuntimeError("ni GITHUB_TOKEN ni identifiants Gmail : envoi impossible")
-    msg = MIMEText(corps, "plain", "utf-8")
+    if piece:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(corps, "plain", "utf-8"))
+        pj = MIMEApplication(piece[1], Name=piece[0])
+        pj["Content-Disposition"] = f'attachment; filename="{piece[0]}"'
+        msg.attach(pj)
+    else:
+        msg = MIMEText(corps, "plain", "utf-8")
     msg["From"], msg["To"], msg["Subject"] = user, dest, sujet
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as s:
         s.login(user, pwd)
@@ -1038,6 +1058,389 @@ OUTILS_LECTURE_PAIE = {
     "apercu_recap_comptable": _o_apercu_recap_comptable,
 }
 
+# --- Outils DOSSIER SALARIÉ ---------------------------------------------------------
+
+def _simplifie(t):
+    """Minuscules sans accents ni ponctuation, pour les correspondances approximatives."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
+
+
+def _correspondance(voulu, candidats):
+    """Retrouve un libellé parmi `candidats` à partir d'un texte approximatif :
+    égalité, inclusion, puis recouvrement de mots (≥ 2 mots communs ou 1 mot rare)."""
+    v = _simplifie(voulu)
+    if not v:
+        return None
+    simp = {c: _simplifie(c) for c in candidats}
+    for c, sc in simp.items():
+        if sc == v:
+            return c
+    inclus = [c for c, sc in simp.items() if v in sc or sc in v]
+    if len(inclus) == 1:
+        return inclus[0]
+    mots_v = set(v.split())
+    scores = []
+    for c, sc in simp.items():
+        commun = mots_v & set(sc.split())
+        commun -= {"de", "du", "des", "la", "le", "les", "et", "a", "d"}
+        if commun:
+            scores.append((len(commun), c))
+    scores.sort(reverse=True)
+    if scores and (len(scores) == 1 or scores[0][0] > scores[1][0]):
+        return scores[0][1]
+    return None
+
+
+TOUS_TYPES_DOCS = [t for lst in FAMILLES_DOCS.values() for t in lst]
+
+
+def _docs_de(email):
+    return charger_docs_index().get(email, [])
+
+
+def _doc_par_id(email, doc_id):
+    doc_id = (doc_id or "").strip()
+    return next((d for d in _docs_de(email) if d.get("id") == doc_id), None)
+
+
+def _statut_texte(prof):
+    if prof.get("statut") == "archive":
+        return "archivé (a quitté l'entreprise)"
+    return "actif" if collaborateur_actif(prof) else "inactif (exclu des relevés et du planning)"
+
+
+def _valeur_suggestion_affichable(p):
+    """Valeur d'une suggestion SANS donnée sensible (IBAN masqué)."""
+    if p.get("chiffre") or p.get("cible") in CIBLES_SENSIBLES:
+        clair = crypto_rh.dechiffrer(p.get("valeur", "")) if p.get("chiffre") else p.get("valeur", "")
+        return f"IBAN se terminant par {str(clair)[-4:]}" if clair else "IBAN"
+    return p.get("apercu") or p.get("valeur", "")
+
+
+def _o_dossier_salarie(args, annuaire):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable (utilise une étiquette « Employé X »)."
+    lab = _label_de(e, annuaire)
+    prof = charger_profils().get(e["email"], {})
+    lignes = [f"Dossier de {lab} — statut : {_statut_texte(prof)}."]
+    docs = _docs_de(e["email"])
+    if docs:
+        lignes.append("Documents :")
+        for d in docs:
+            l = f"- [{d.get('id')}] {d.get('type', '?')} — {d.get('libelle') or d.get('nom_original', '')} (ajouté le {d.get('date_ajout', '?')})"
+            if d.get("a_valider"):
+                l += " — À VALIDER (classement automatique)"
+            if d.get("expiration"):
+                l += f" — expire le {d['expiration']}"
+            lignes.append(l)
+    else:
+        lignes.append("Aucun document déposé.")
+    manq = docs_manquants(e["email"])
+    lignes.append("Documents requis manquants : " + (", ".join(manq) if manq else "aucun ✅"))
+    props = prof.get("propositions") or []
+    if props:
+        lignes.append("Suggestions extraites des documents (à confirmer) :")
+        for p in props:
+            actuel = _valeur_profil_pour(prof, p.get("cible", ""))
+            l = f"- [{p.get('id')}] {p.get('libelle') or p.get('cible')} : {_valeur_suggestion_affichable(p)}"
+            if actuel and p.get("cible") != "iban":
+                l += f" (actuellement : {actuel})"
+            lignes.append(l)
+    else:
+        lignes.append("Aucune suggestion en attente.")
+    for typ, taches, cle in (("arrivée", TACHES_ARRIVEE, "check_arrivee"),
+                             ("départ", TACHES_DEPART, "check_depart")):
+        faites = [t for t in prof.get(cle, []) if t in taches]
+        restantes = [t for t in taches if t not in faites]
+        lignes.append(f"Checklist {typ} : {len(faites)}/{len(taches)} — restantes : "
+                      + (", ".join(restantes) if restantes else "aucune ✅"))
+    al = alertes_completes(e["email"], prof)
+    if al:
+        lignes.append("Alertes : " + " ; ".join(a.get("texte", "") for a in al))
+    return "\n".join(lignes)
+
+
+def _suggestions_ciblees(prof, ref):
+    props = prof.get("propositions") or []
+    ref = (ref or "").strip()
+    if ref.lower() in ("toutes", "tous", "tout", "all", "*"):
+        return props
+    return [p for p in props if p.get("id") == ref]
+
+
+def _appliquer_une_suggestion(prof, p):
+    cible, valeur = p.get("cible", ""), p.get("valeur", "")
+    if cible.startswith("profil:"):
+        champ = cible.split(":", 1)[1]
+        if champ in {c for c, _ in CHAMPS_PROFIL}:
+            prof[champ] = valeur
+    elif cible == "iban":
+        prof["iban"] = valeur
+        ca = prof.setdefault("check_arrivee", [])
+        if "RIB reçu" in TACHES_ARRIVEE and "RIB reçu" not in ca:
+            ca.append("RIB reçu")
+    prof["propositions"] = [x for x in prof.get("propositions", []) if x.get("id") != p.get("id")]
+
+
+def _w_appliquer_suggestion(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    profils = charger_profils()
+    prof = profils.get(e["email"], {})
+    cibles = _suggestions_ciblees(prof, args.get("suggestion"))
+    if not cibles:
+        return "Suggestion introuvable (utilise l'id donné par dossier_salarie, ou « toutes »).", False
+    lab = _label_de(e, annuaire)
+    resume = f"Application dans la fiche de {lab} : " + " ; ".join(
+        f"{p.get('libelle') or p.get('cible')} = {_valeur_suggestion_affichable(p)}" for p in cibles)
+    if executer:
+        for p in cibles:
+            _appliquer_une_suggestion(prof, p)
+        _purger_propositions(prof)
+        profils[e["email"]] = prof
+        sauvegarder_profils(profils)
+    return resume, True
+
+
+def _w_ignorer_suggestion(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    profils = charger_profils()
+    prof = profils.get(e["email"], {})
+    cibles = _suggestions_ciblees(prof, args.get("suggestion"))
+    if not cibles:
+        return "Suggestion introuvable (utilise l'id donné par dossier_salarie, ou « toutes »).", False
+    ids = {p.get("id") for p in cibles}
+    resume = f"Suggestions écartées pour {_label_de(e, annuaire)} : " + ", ".join(
+        p.get("libelle") or p.get("cible") for p in cibles)
+    if executer:
+        prof["propositions"] = [x for x in prof.get("propositions", []) if x.get("id") not in ids]
+        profils[e["email"]] = prof
+        sauvegarder_profils(profils)
+    return resume, True
+
+
+def _w_analyser_documents(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    docs = [d for d in _docs_de(e["email"]) if _doc_analysable(d.get("type", ""))]
+    if not docs:
+        return "Aucun document exploitable (contrat, avenant, promesse, RIB) dans ce dossier.", False
+    lab = _label_de(e, annuaire)
+    resume = f"Analyse de {len(docs)} document(s) de {lab} : " + ", ".join(d.get("type", "?") for d in docs)
+    if not executer:
+        return resume, True
+    nb = 0
+    for d in docs:
+        try:
+            nb += _analyser_document(e["email"], d)
+        except Exception:
+            current_app.logger.exception("Analyse document (agent)")
+    return resume + f" — {nb} suggestion(s) ajoutée(s), à valider", True
+
+
+def _w_cocher_checklist(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    liste = _simplifie(args.get("liste"))
+    if liste.startswith("arriv") or liste in ("onboarding", "entree"):
+        typ, taches, cle = "arrivée", TACHES_ARRIVEE, "check_arrivee"
+    elif liste.startswith("depart") or liste in ("offboarding", "sortie"):
+        typ, taches, cle = "départ", TACHES_DEPART, "check_depart"
+    else:
+        return "Liste invalide : arrivee | depart.", False
+    tache = _correspondance(args.get("tache"), taches)
+    if not tache:
+        return f"Tâche introuvable dans la checklist {typ}. Tâches : " + ", ".join(taches) + ".", False
+    c = args.get("coche")
+    coche = True if c is None else str(c).lower() in ("true", "1", "oui", "yes")
+    profils = charger_profils()
+    prof = profils.get(e["email"], {})
+    faites = [t for t in prof.get(cle, []) if t in taches]
+    if coche and tache in faites:
+        return f"« {tache} » est déjà coché pour {_label_de(e, annuaire)}.", False
+    if not coche and tache not in faites:
+        return f"« {tache} » n'est pas coché pour {_label_de(e, annuaire)}.", False
+    resume = f"Checklist {typ} de {_label_de(e, annuaire)} : « {tache} » {'coché' if coche else 'décoché'}"
+    if executer:
+        faites = [t for t in taches if (t in faites and t != tache) or (coche and t == tache)]
+        prof[cle] = faites
+        profils[e["email"]] = prof
+        sauvegarder_profils(profils)
+        restantes = [t for t in taches if t not in faites]
+        resume += f" — restantes : {', '.join(restantes) if restantes else 'aucune ✅'}"
+    return resume, True
+
+
+def _w_changer_statut(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    st = _simplifie(args.get("statut"))
+    if st.startswith("archiv"):
+        st = "archive"
+    elif st.startswith("inactif") or st in ("pause", "suspendu"):
+        st = "inactif"
+    elif st.startswith("actif") or st in ("reactiver", "reactive", "en poste"):
+        st = "actif"
+    else:
+        return "Statut invalide : actif | inactif | archive.", False
+    profils = charger_profils()
+    prof = profils.get(e["email"], {})
+    actuel = ("archive" if prof.get("statut") == "archive"
+              else "actif" if collaborateur_actif(prof) else "inactif")
+    lab = _label_de(e, annuaire)
+    if actuel == st:
+        return f"{lab} est déjà {st}.", False
+    libelles = {"actif": "ACTIF (relevés + planning)", "inactif": "INACTIF (exclu des relevés et du planning, dossier conservé)",
+                "archive": "ARCHIVÉ (a quitté l'entreprise, dossier conservé)"}
+    resume = f"Statut de {lab} : {actuel} → {libelles[st]}"
+    if executer:
+        prof["statut"] = "archive" if st == "archive" else "actif"
+        if st != "archive":
+            prof["releves_actif"] = (st == "actif")
+        prof.setdefault("journal", []).append({
+            "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"), "type": "Autre",
+            "note": f"Statut passé à {libelles[st]} (agent RH)."})
+        profils[e["email"]] = prof
+        sauvegarder_profils(profils)
+    return resume, True
+
+
+def _w_valider_document(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    ref = (args.get("document") or "").strip()
+    docs = _docs_de(e["email"])
+    if ref.lower() in ("tous", "toutes", "tout", "all", "*"):
+        cibles = [d for d in docs if d.get("a_valider")]
+    else:
+        cibles = [d for d in docs if d.get("id") == ref and d.get("a_valider")]
+    if not cibles:
+        return "Aucun document « à valider » correspondant.", False
+    resume = f"Documents de {_label_de(e, annuaire)} marqués vérifiés : " + ", ".join(
+        f"{d.get('type')} ({d.get('libelle') or d.get('nom_original', '')})" for d in cibles)
+    if executer:
+        idx = charger_docs_index()
+        ids = {d.get("id") for d in cibles}
+        for d in idx.get(e["email"], []):
+            if d.get("id") in ids:
+                d["a_valider"] = False
+        sauvegarder_docs_index(idx)
+    return resume, True
+
+
+def _w_retyper_document(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    d = _doc_par_id(e["email"], args.get("document"))
+    if not d:
+        return "Document introuvable (utilise l'id donné par dossier_salarie).", False
+    typ = _correspondance(args.get("type"), TOUS_TYPES_DOCS)
+    if not typ:
+        return "Type inconnu. Types possibles : " + ", ".join(TOUS_TYPES_DOCS) + ".", False
+    if typ == d.get("type"):
+        return f"Ce document est déjà classé « {typ} ».", False
+    resume = (f"Document {d.get('libelle') or d.get('nom_original', '')} de {_label_de(e, annuaire)} : "
+              f"« {d.get('type')} » → « {typ} »")
+    if executer:
+        idx = charger_docs_index()
+        for x in idx.get(e["email"], []):
+            if x.get("id") == d.get("id"):
+                x["type"] = typ
+                x["a_valider"] = False
+        sauvegarder_docs_index(idx)
+    return resume, True
+
+
+def _pdf_attestation(e, prof):
+    import attestation_pdf
+    if not attestation_pdf.reportlab_disponible():
+        raise RuntimeError("reportlab indisponible : PDF impossible")
+    return attestation_pdf.generer_pdf_attestation(e, prof)
+
+
+def _ranger_attestation(e, prof, octets):
+    """Enregistre le PDF dans les documents du salarié + note au journal. Renvoie l'id."""
+    import hashlib
+    from app import humaniser_taille
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    doc_id = uuid.uuid4().hex[:12]
+    nom = f"Attestation_travail_{e.get('prenom', '')}_{datetime.now():%Y-%m-%d}.pdf".replace(" ", "_")
+    fichier = f"{doc_id}_{nom}"
+    with open(os.path.join(DOCS_DIR, fichier), "wb") as fp:
+        fp.write(octets)
+    idx = charger_docs_index()
+    idx.setdefault(e["email"], []).append({
+        "id": doc_id, "fichier": fichier, "nom_original": nom, "type": "Attestation employeur",
+        "libelle": f"Attestation de travail du {datetime.now():%d/%m/%Y}", "expiration": "",
+        "taille": humaniser_taille(len(octets)), "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "source": "agent", "a_valider": False, "sha": hashlib.sha256(octets).hexdigest()})
+    sauvegarder_docs_index(idx)
+    profils = charger_profils()
+    p = profils.get(e["email"], prof)
+    p.setdefault("journal", []).append({
+        "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"), "type": "Autre",
+        "note": "Attestation de travail générée (agent RH)."})
+    profils[e["email"]] = p
+    sauvegarder_profils(profils)
+    return doc_id
+
+
+def _w_generer_attestation(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable.", False
+    lab = _label_de(e, annuaire)
+    prof = charger_profils().get(e["email"], {})
+    resume = f"Attestation de travail de {lab} en PDF (poste : {prof.get('poste') or 'non renseigné'}, entrée : {prof.get('date_entree') or 'non renseignée'})"
+    if not executer:
+        return resume, True
+    try:
+        octets = _pdf_attestation(e, prof)
+    except Exception as ex:
+        return f"PDF impossible : {ex}", False
+    doc_id = _ranger_attestation(e, prof, octets)
+    return resume + f" — rangée dans ses documents : /admin/document/{doc_id}", True
+
+
+def _w_envoyer_attestation(args, annuaire, executer):
+    e = _employe(args.get("employe"), annuaire)
+    if not e or not e.get("email"):
+        return "Salarié introuvable.", False
+    lab = _label_de(e, annuaire)
+    prof = charger_profils().get(e["email"], {})
+    mot = (args.get("message") or "").strip()
+    corps = (f"Bonjour {e.get('prenom', '')},\n\n"
+             + (mot + "\n\n" if mot else "")
+             + "Vous trouverez ci-joint votre attestation de travail.\n\n"
+             "Bien cordialement,\nPharmacie Apothical Nanterre Université")
+    resume = f"Envoi de l'attestation de travail (PDF) à {lab} par e-mail :\n{corps}"
+    if not executer:
+        return resume, True
+    if current_app.config.get("TESTING"):
+        return resume + "\n(TEST : non envoyé)", True
+    try:
+        octets = _pdf_attestation(e, prof)
+        doc_id = _ranger_attestation(e, prof, octets)
+        nom = f"Attestation_travail_{e.get('prenom', '')}.pdf".replace(" ", "_")
+        etat = _envoyer_mail_reel(e["email"], "Votre attestation de travail", corps, (nom, octets))
+    except Exception as ex:
+        return f"Échec : {ex}", False
+    return resume + f"\n→ {etat} ; copie rangée dans ses documents (/admin/document/{doc_id})", True
+
+
+OUTILS_LECTURE_DOSSIER = {"dossier_salarie": _o_dossier_salarie}
+
 OUTILS_ECRITURE_IMPL = {
     "ajouter_absence": _w_ajouter_absence,
     "supprimer_absence": _w_supprimer_absence,
@@ -1053,6 +1456,15 @@ OUTILS_ECRITURE_IMPL = {
     "valider_releve": _w_valider_releve,
     "envoyer_recap_comptable": _w_envoyer_recap_comptable,
     "annuler_derniere_action": _w_annuler_derniere_action,
+    "appliquer_suggestion": _w_appliquer_suggestion,
+    "ignorer_suggestion": _w_ignorer_suggestion,
+    "analyser_documents": _w_analyser_documents,
+    "cocher_checklist": _w_cocher_checklist,
+    "changer_statut": _w_changer_statut,
+    "valider_document": _w_valider_document,
+    "retyper_document": _w_retyper_document,
+    "generer_attestation": _w_generer_attestation,
+    "envoyer_attestation": _w_envoyer_attestation,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
@@ -1064,6 +1476,11 @@ LIBELLES_OUTILS = {
     "envoyer_mail": "📧 E-mail", "envoyer_relance": "⏰ Relance",
     "corriger_releve": "🧾 Relevé (paie)", "valider_releve": "✅ Relevé (paie)",
     "envoyer_recap_comptable": "📤 Comptable (paie)", "annuler_derniere_action": "↩ Annulation",
+    "appliquer_suggestion": "🔎 Suggestion", "ignorer_suggestion": "🔎 Suggestion",
+    "analyser_documents": "📑 Analyse", "cocher_checklist": "☑️ Checklist",
+    "changer_statut": "🟢 Statut", "valider_document": "📄 Document",
+    "retyper_document": "📄 Document", "generer_attestation": "📄 Attestation",
+    "envoyer_attestation": "📧 Attestation",
 }
 
 
@@ -1075,6 +1492,8 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         return OUTILS_LECTURE_PLANNING[nom](args, annuaire)
     if nom in OUTILS_LECTURE_PAIE:
         return OUTILS_LECTURE_PAIE[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_DOSSIER:
+        return OUTILS_LECTURE_DOSSIER[nom](args, annuaire)
     if nom in OUTILS_ECRITURE_IMPL:
         fn = OUTILS_ECRITURE_IMPL[nom]
         # PAIE : jamais d'exécution directe, même en mode autonome.
