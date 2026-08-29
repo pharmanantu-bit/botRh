@@ -175,14 +175,21 @@ def charger_annulations():
     return a if isinstance(a, list) else []
 
 
-def enregistrer_annulation(outil, resume, etat_avant):
-    """Après une écriture réussie : conserve l'état d'avant. Renvoie l'id."""
+def enregistrer_annulation(outil, resume, etat_avant, etat_apres=None):
+    """Après une écriture réussie : conserve l'état d'AVANT (à rétablir) et l'état
+    d'APRÈS (pour vérifier, au moment d'annuler, que rien n'a bougé entre-temps).
+    Ne garde que les fichiers réellement modifiés par l'action. Renvoie l'id."""
     if outil in OUTILS_IRREVERSIBLES or outil == "annuler_derniere_action":
         return None
+    etat_apres = etat_apres or {}
+    touches = {f: c for f, c in (etat_avant or {}).items() if etat_apres.get(f) != c}
+    if not touches:
+        return None   # rien n'a changé sur disque : rien à annuler
     lst = charger_annulations()
     aid = uuid.uuid4().hex[:10]
     lst.append({"id": aid, "ts": datetime.now().strftime("%d/%m/%Y %H:%M"), "outil": outil,
-                "resume": resume, "etat": etat_avant, "annulee": False})
+                "resume": resume, "etat": touches,
+                "apres": {f: etat_apres.get(f) for f in touches}, "annulee": False})
     _ecrire_json(ANNULATIONS_FILE, lst[-MAX_ANNULATIONS:])
     return aid
 
@@ -201,6 +208,25 @@ def annuler(annulation_id=None, origine="chat"):
     if annulation_id and derniere.get("id") != annulation_id:
         return ("Seule la dernière action peut être annulée (« "
                 f"{derniere.get('resume')} »). Annule-la d'abord."), False
+    # Sécurité : si un fichier a été modifié depuis l'action (à la main dans botRh,
+    # ou par une autre action), on refuse plutôt que d'écraser ces changements.
+    apres = derniere.get("apres") or {}
+    modifies = []
+    for f, attendu in apres.items():
+        try:
+            with open(f, encoding="utf-8") as fp:
+                actuel = fp.read()
+        except FileNotFoundError:
+            actuel = None
+        if actuel != attendu:
+            modifies.append(os.path.basename(f))
+    if modifies:
+        derniere["annulee"] = True
+        derniere["annulee_le"] = "refusée : " + ", ".join(modifies)
+        _ecrire_json(ANNULATIONS_FILE, lst)
+        marquer_annulee(derniere["id"])
+        return ("Annulation refusée : " + ", ".join(modifies) + " a été modifié depuis cette action "
+                "(par toi ou par une autre action). Corrige à la main pour ne rien écraser."), False
     for f, contenu in (derniere.get("etat") or {}).items():
         if contenu is None:
             if os.path.exists(f):
@@ -1805,7 +1831,7 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
             texte, ok = fn(args, annuaire, True)
             if ok:
                 journaliser(nom, texte, mode, origine)
-                aid = enregistrer_annulation(nom, texte, avant)
+                aid = enregistrer_annulation(nom, texte, avant, _instantane(args))
                 if not aid:
                     return f"FAIT : {texte}"
                 return {"resultat": f"FAIT : {texte}",
@@ -1834,7 +1860,7 @@ def confirmer_action(outil, args, origine="carte"):
     aid = None
     if ok:
         journaliser(outil, texte, "validation", origine)
-        aid = enregistrer_annulation(outil, texte, avant)
+        aid = enregistrer_annulation(outil, texte, avant, _instantane(args or {}))
     return texte, ok, aid
 
 
