@@ -209,22 +209,71 @@ import extraction_pj  # lecture texte d'un document (pdfplumber, OCR si dispo) �
 # Cibles d'extraction sensibles -> chiffrées au repos (Fernet) dans profils_rh.json.
 CIBLES_SENSIBLES = {"iban"}
 
+def _norm_val(v):
+    """Normalise une valeur pour comparaison (espaces, casse, accents non touchés)."""
+    return " ".join(str(v or "").split()).strip().lower()
+
+
+def _valeur_profil_pour(prof, cible):
+    """Valeur ACTUELLE du profil pour une cible d'extraction ('profil:<champ>' ou
+    'iban'), en clair, ou '' si vide."""
+    if cible == "iban":
+        return crypto_rh.dechiffrer(prof.get("iban", "")) if prof.get("iban") else ""
+    if cible.startswith("profil:"):
+        return prof.get(cible.split(":", 1)[1], "") or ""
+    return ""
+
+
+def _valeur_prop_clair(p):
+    return crypto_rh.dechiffrer(p.get("valeur", "")) if p.get("chiffre") else p.get("valeur", "")
+
+
+def _purger_propositions(prof):
+    """Retire les suggestions devenues inutiles : valeur déjà présente dans le
+    profil, ou doublon (même champ + même valeur venant d'un autre document —
+    on garde la première). Renvoie True si la liste a changé."""
+    props = prof.get("propositions") or []
+    vues, gardees = set(), []
+    for p in props:
+        cible = p.get("cible", "")
+        val = _norm_val(_valeur_prop_clair(p))
+        if not val or val == _norm_val(_valeur_profil_pour(prof, cible)):
+            continue
+        if (cible, val) in vues:
+            continue
+        vues.add((cible, val))
+        gardees.append(p)
+    change = len(gardees) != len(props)
+    if change:
+        prof["propositions"] = gardees
+    return change
+
+
 def _ajouter_propositions(email, extraction, source_doc_id):
     """Enregistre les champs extraits d'une PJ comme PROPOSITIONS (à valider par
     l'admin), sans rien écrire dans le profil. Chiffre les cibles sensibles (IBAN).
-    Anti-doublon par (cible, source_doc_id). Renvoie le nombre d'ajouts."""
+    Anti-doublon : (cible, source_doc_id) déjà traité, valeur déjà dans le profil,
+    ou même (cible, valeur) déjà proposée par un autre document.
+    Renvoie le nombre d'ajouts."""
     if not extraction or not isinstance(extraction, list):
         return 0
     profils = charger_profils()
     prof = profils.get(email, {})
     props = prof.get("propositions", [])
     existantes = {(p.get("cible"), p.get("source_doc_id")) for p in props}
+    en_attente = {(p.get("cible"), _norm_val(_valeur_prop_clair(p))) for p in props}
     nb = 0
     for ex in extraction:
         cible = (ex.get("cible") or "").strip()
         valeur = (ex.get("valeur") or "").strip()
         if not cible or not valeur or (cible, source_doc_id) in existantes:
             continue
+        nv = _norm_val(valeur)
+        if nv == _norm_val(_valeur_profil_pour(prof, cible)):
+            continue  # le profil contient déjà cette valeur
+        if (cible, nv) in en_attente:
+            continue  # déjà proposé (autre document)
+        en_attente.add((cible, nv))
         sensible = cible in CIBLES_SENSIBLES
         props.append({
             "id": uuid.uuid4().hex[:10],
@@ -237,19 +286,25 @@ def _ajouter_propositions(email, extraction, source_doc_id):
             "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
         })
         nb += 1
-    if nb:
-        prof["propositions"] = props
+    prof["propositions"] = props
+    purge = _purger_propositions(prof)
+    if nb or purge:
         profils[email] = prof
         sauvegarder_profils(profils)
     return nb
 
-def _propositions_affichage(props):
-    """Prépare les propositions pour l'affichage (déchiffre les valeurs sensibles)."""
+def _propositions_affichage(props, prof=None):
+    """Prépare les propositions pour l'affichage (déchiffre les valeurs sensibles).
+    Si le profil est fourni et que le champ est déjà rempli avec une autre valeur,
+    indique « actuellement : … » pour que l'admin voie qu'il s'agit d'une correction."""
     out = []
     for p in props or []:
         aff = p.get("apercu", "") or p.get("libelle", "")
         if p.get("chiffre"):
             aff = f"{aff} — {crypto_rh.dechiffrer(p.get('valeur', ''))}"
+        actuel = _valeur_profil_pour(prof, p.get("cible", "")) if prof else ""
+        if actuel and p.get("cible") != "iban":
+            aff = f"{aff} (actuellement : {actuel})"
         out.append({"id": p.get("id"), "cible": p.get("cible"),
                     "libelle": p.get("libelle", ""), "affichage": aff})
     return out
@@ -1938,6 +1993,11 @@ def admin_employe():
     emp = next((e for e in charger_employes() if e["email"] == email), None)
     if not emp:
         abort(404)
+    # Nettoie les suggestions devenues inutiles (champ rempli entre-temps, doublons
+    # d'anciennes analyses multi-documents) avant affichage.
+    _profils_tmp = charger_profils()
+    if email in _profils_tmp and _purger_propositions(_profils_tmp[email]):
+        sauvegarder_profils(_profils_tmp)
     mois_data = []
     for m in range(1, 13):
         r = reponse_de(charger_reponses(m, annee), emp["prenom"], emp["email"])
@@ -1981,7 +2041,7 @@ def admin_employe():
                            taches_arrivee=TACHES_ARRIVEE, taches_depart=TACHES_DEPART,
                            check_arrivee=profil_de(email).get("check_arrivee", []),
                            check_depart=profil_de(email).get("check_depart", []),
-                           propositions=_propositions_affichage(profil_de(email).get("propositions", [])),
+                           propositions=_propositions_affichage(profil_de(email).get("propositions", []), profil_de(email)),
                            iban=crypto_rh.dechiffrer(profil_de(email).get("iban", "")) if profil_de(email).get("iban") else "")
 
 
@@ -2969,6 +3029,7 @@ def admin_employe_proposition_appliquer():
                 ca.append("RIB reçu")
                 prof["check_arrivee"] = ca
         prof["propositions"] = [p for p in prof.get("propositions", []) if p.get("id") != prop_id]
+        _purger_propositions(prof)  # retire les suggestions identiques venues d'autres documents
         profils[email] = prof
         sauvegarder_profils(profils)
     return redirect(url_for("admin_employe", email=email))
