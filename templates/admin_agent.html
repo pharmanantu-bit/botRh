@@ -68,6 +68,10 @@
     .saisie textarea:focus { outline: 2px solid #1F4E79; }
     .env { width: 44px; height: 44px; border-radius: 50%; border: none; background: #1F4E79; color: #fff; font-size: 1.2em; cursor: pointer; flex-shrink: 0; }
     .env:disabled { background: #9aa7b5; }
+    .mic { width: 44px; height: 44px; border-radius: 50%; border: none; background: #fff; color: #1F4E79; font-size: 1.2em; cursor: pointer; flex-shrink: 0; border: 1px solid #ccd; }
+    .mic.rec { background: #d9534f; color: #fff; border-color: #d9534f; animation: pulse 1.1s ease-in-out infinite; }
+    .mic:disabled { opacity: 0.5; cursor: default; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(217,83,79,0.55); } 50% { box-shadow: 0 0 0 9px rgba(217,83,79,0); } }
     .vide { align-self: center; text-align: center; color: #667; font-size: 0.88em; background: #fff8dc; border-radius: 10px; padding: 14px 16px; margin-top: 30px; max-width: 92%; line-height: 1.6; }
     .typing { align-self: flex-start; background: #fff; border-radius: 10px; padding: 8px 12px; font-size: 0.9em; color: #888; }
 
@@ -183,6 +187,7 @@
 
   <form class="saisie" id="form">
     <textarea id="inp" rows="1" placeholder="Écris à l'agent…" autocomplete="off"></textarea>
+    <button type="button" class="mic" id="mic" title="Dicter à la voix (français)" aria-label="Dicter à la voix" hidden>🎤</button>
     <button type="submit" class="env" id="btn" title="Envoyer">➤</button>
   </form>
 
@@ -324,6 +329,38 @@
   });
   inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('form').requestSubmit(); } });
   inp.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 130) + 'px'; });
+  // --- Commande vocale (Web Speech API : Chrome / Edge / Safari, HTTPS ou localhost) ---
+  (function () {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const mic = document.getElementById('mic');
+    if (!SR || !mic) return;
+    mic.hidden = false;
+    let rec = null, actif = false, base = '';
+    function stop() { if (rec) { try { rec.stop(); } catch (e) {} } }
+    function fin() { actif = false; mic.classList.remove('rec'); mic.textContent = '🎤'; mic.title = 'Dicter à la voix (français)'; inp.dispatchEvent(new Event('input')); inp.focus(); }
+    mic.addEventListener('click', function () {
+      if (actif) { stop(); return; }
+      rec = new SR();
+      rec.lang = 'fr-FR'; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+      base = inp.value.trim(); if (base) base += ' ';
+      rec.onstart = function () { actif = true; mic.classList.add('rec'); mic.textContent = '⏹'; mic.title = 'Arrêter la dictée'; inp.placeholder = 'Je vous écoute…'; };
+      rec.onresult = function (e) {
+        let finalTxt = '', interim = '';
+        for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finalTxt += t + ' '; else interim += t; }
+        inp.value = (base + finalTxt + interim).replace(/\s+/g, ' ').trimStart();
+        inp.dispatchEvent(new Event('input'));
+      };
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { bulle('bot err', '⚠️ Accès au micro refusé. Autorise le microphone pour ce site dans le navigateur.'); }
+        else if (e.error !== 'aborted' && e.error !== 'no-speech') { bulle('bot err', '⚠️ Dictée impossible (' + e.error + ').'); }
+        fin();
+      };
+      rec.onend = function () { inp.placeholder = "Écris à l'agent…"; fin(); };
+      try { rec.start(); } catch (e) { fin(); }
+    });
+    // Arrêt automatique quand on envoie le message.
+    document.getElementById('form').addEventListener('submit', stop);
+  })();
   bas();
 </script>
 </body>
