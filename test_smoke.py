@@ -656,6 +656,44 @@ if employes and cree_temp:
     if not ok_cj:
         echecs.append("correction jour par jour KO")
 
+# --- Agent RH : pièces jointes déposées dans le chat (dépôt, proposition de rangement,
+# consultation) — moteur fake, aucune écriture dans documents_rh ---
+if employes:
+    import agent_outils as AO
+    _pj = None
+    try:
+        _pj = AO.enregistrer_piece("justificatif_smoke.pdf", b"%PDF-1.4 smoke test botRh")
+        ok_pj = _pj["id"].startswith("pj_") and _pj["type_devine"] in AO.TOUS_TYPES_DOCS \
+            and any(x["id"] == _pj["id"] for x in AO.pieces_en_attente())
+        ok_ctx = _pj["id"] in AO.contexte_pieces()
+        def _exec_pj(nom, args, ann):
+            return AO.executer_outil(nom, args, ann, "validation")
+        with A.app.test_request_context():
+            _res = agent_rh.run_agent(
+                [{"role": "user", "content": f"range {_pj['id']} dans le dossier de {prenom0}"}],
+                employes, _exec_pj, moteur="fake")
+        _act = next((a for a in _res.get("actions") or [] if a.get("outil") == "ranger_piece_jointe"), None)
+        ok_prop = (_act is not None and _act.get("type") == "confirmer"
+                   and prenom0 in (_act.get("resume") or "")
+                   and _act.get("args", {}).get("employe") == employes[0]["email"]
+                   and AO._piece(_pj["id"]).get("range") is None)
+        with client.session_transaction() as s:
+            s["admin"] = True
+        _rv = client.get(f"/admin/agent/piece/{_pj['id']}")
+        ok_voir = _rv.status_code == 200 and client.get("/admin/agent/piece/pj_inconnu").status_code == 404
+        ok_pj_all = ok_pj and ok_ctx and ok_prop and ok_voir
+        print(("OK " if ok_pj_all else "KO ")
+              + f"[--] agent pièces jointes (dépôt={ok_pj} contexte={ok_ctx} proposition={ok_prop} consultation={ok_voir})")
+        if not ok_pj_all:
+            echecs.append("agent pièces jointes KO")
+    finally:
+        if _pj:
+            AO.sauvegarder_pieces([x for x in AO.charger_pieces() if x.get("id") != _pj["id"]])
+            try:
+                os.remove(os.path.join(AO.PJ_DIR, _pj["fichier"]))
+            except OSError:
+                pass
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 

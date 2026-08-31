@@ -37,7 +37,9 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_p
                  sauvegarder_docs_index, docs_manquants, TACHES_ARRIVEE, TACHES_DEPART,
                  FAMILLES_DOCS, alertes_completes, _analyser_document, _doc_analysable,
                  _valeur_profil_pour, _purger_propositions, CIBLES_SENSIBLES, ASSISTANT_FILE,
-                 DOCS_REQUIS)
+                 DOCS_REQUIS, EXT_DOCS_OK, deviner_type_doc, humaniser_taille)
+from werkzeug.utils import secure_filename
+import extraction_pj
 import crypto_rh
 import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION, run_agent
@@ -53,6 +55,10 @@ JOURNAL_FILE = os.path.join(BASE_DIR, "agent_journal.json")
 OPTIONS_FILE = os.path.join(BASE_DIR, "agent_options.json")
 ANNULATIONS_FILE = os.path.join(BASE_DIR, "agent_annulations.json")
 MEMOIRE_FILE = os.path.join(BASE_DIR, "agent_memoire.json")
+PJ_DIR = os.path.join(BASE_DIR, "agent_pieces_jointes")   # pièces déposées dans le chat
+PJ_INDEX = os.path.join(PJ_DIR, "index.json")
+PJ_JOURS_RETENTION = 7      # jours de conservation d'une pièce déjà rangée (permet ↩ Annuler)
+PJ_JOURS_ABANDON = 30       # jours avant purge d'une pièce jamais rangée
 MAX_SOUVENIRS = 40
 MAX_ANNULATIONS = 20        # instantanés conservés (les plus récents)
 MAX_MESSAGES = 400          # conservés dans la conversation (les plus récents)
@@ -154,7 +160,8 @@ def _mois_annee(args):
 def _fichiers_etat(args):
     mois, annee = _mois_annee(args or {})
     f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
-         PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, MEMOIRE_FILE,
+         PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, MEMOIRE_FILE, PJ_INDEX,
+         REC.CANDIDATS_DOCS_INDEX,
          reponses_file(mois, annee), reponses_file()]
     return list(dict.fromkeys(f))
 
@@ -1762,6 +1769,229 @@ def _o_souvenirs(args, annuaire):
 OUTILS_LECTURE_MEMOIRE = {"souvenirs": _o_souvenirs}
 
 
+# --- Pièces jointes déposées dans le chat --------------------------------------------
+# Une pièce (fichier ou photo) arrive par /admin/agent/piece, est stockée EN ATTENTE
+# dans PJ_DIR, puis l'agent demande comment la nommer et où la ranger et appelle
+# ranger_piece_jointe : le fichier est COPIÉ dans le dossier cible (documents_rh ou
+# candidats_docs) et l'entrée d'index créée. La pièce en attente reste quelques jours
+# (↩ Annuler restaure l'index ; le fichier d'attente permet de re-ranger).
+
+TYPES_CANDIDAT = ["CV", "Lettre de motivation", "Diplôme", "Pièce d'identité", "Autre / divers"]
+TYPES_SANTE = {"Arrêt de travail", "Visite médicale"}   # jamais d'extrait envoyé à l'IA
+PJ_EXTRAIT_MAX = 280
+
+
+def charger_pieces():
+    lst = _lire_json(PJ_INDEX) if os.path.exists(PJ_INDEX) else []
+    return lst if isinstance(lst, list) else []
+
+
+def sauvegarder_pieces(lst):
+    os.makedirs(PJ_DIR, exist_ok=True)
+    _ecrire_json(PJ_INDEX, lst)
+
+
+def _piece(ref):
+    ref = (ref or "").strip()
+    return next((p for p in charger_pieces() if p.get("id") == ref), None)
+
+
+def pieces_en_attente():
+    return [p for p in charger_pieces() if not p.get("range")]
+
+
+def purger_pieces():
+    """Supprime les fichiers d'attente périmés (rangés depuis > 7 j, abandonnés > 30 j)."""
+    lst = charger_pieces()
+    garde, now = [], datetime.now()
+    for p in lst:
+        try:
+            age = (now - datetime.strptime(p.get("ts", ""), "%Y-%m-%d %H:%M")).days
+        except ValueError:
+            age = 0
+        limite = PJ_JOURS_RETENTION if p.get("range") else PJ_JOURS_ABANDON
+        if age > limite:
+            try:
+                os.remove(os.path.join(PJ_DIR, p.get("fichier", "")))
+            except OSError:
+                pass
+            continue
+        garde.append(p)
+    if len(garde) != len(lst):
+        sauvegarder_pieces(garde)
+
+
+def enregistrer_piece(nom_original, octets):
+    """Stocke une pièce en attente et renvoie son enregistrement (type deviné,
+    extrait de texte pour l'agent — sauf documents de santé)."""
+    import hashlib
+    ext = os.path.splitext(nom_original or "")[1].lower()
+    if ext not in EXT_DOCS_OK:
+        raise ValueError("type")
+    if not octets:
+        raise ValueError("vide")
+    purger_pieces()
+    os.makedirs(PJ_DIR, exist_ok=True)
+    pid = "pj_" + uuid.uuid4().hex[:8]
+    stored = f"{pid}_{secure_filename(nom_original) or 'piece' + ext}"
+    with open(os.path.join(PJ_DIR, stored), "wb") as fp:
+        fp.write(octets)
+    try:
+        texte = extraction_pj.extraire_texte(nom_original, octets) or ""
+    except Exception:
+        texte = ""
+    typ = deviner_type_doc(nom_original, texte)
+    extrait = ""
+    if texte.strip() and typ not in TYPES_SANTE:
+        extrait = " ".join(texte.split())[:PJ_EXTRAIT_MAX]
+    p = {"id": pid, "fichier": stored, "nom_original": nom_original, "ext": ext,
+         "taille": humaniser_taille(len(octets)), "type_devine": typ, "extrait": extrait,
+         "texte_lu": bool(texte.strip()), "sha": hashlib.sha256(octets).hexdigest(),
+         "ts": datetime.now().strftime("%Y-%m-%d %H:%M"), "range": None}
+    lst = charger_pieces()
+    lst.append(p)
+    sauvegarder_pieces(lst)
+    return p
+
+
+def message_depot_piece(p, legende=""):
+    """Message « utilisateur » transmis à l'agent lors d'un dépôt (pseudonymisé
+    ensuite par run_agent comme tout message)."""
+    genre = {"pdf": "PDF", "docx": "Word", "doc": "Word"}.get(p["ext"].lstrip("."), "photo/image")
+    lignes = [f"📎 Pièce jointe déposée : « {p['nom_original']} » ({genre}, {p['taille']}) — id {p['id']}.",
+              f"Type probable : {p['type_devine']}."]
+    if p.get("extrait"):
+        lignes.append(f"Extrait du contenu : « {p['extrait']} »")
+    elif not p.get("texte_lu"):
+        lignes.append("Contenu non lisible automatiquement (photo ou scan) : demande à l'utilisateur de quoi il s'agit.")
+    if legende:
+        lignes.append(f"Message de l'utilisateur : {legende}")
+    else:
+        lignes.append("Demande-moi comment nommer cette pièce et où la ranger.")
+    return "\n".join(lignes)
+
+
+def contexte_pieces():
+    """Bloc système listant les pièces non rangées ('' si aucune)."""
+    att = pieces_en_attente()
+    if not att:
+        return ""
+    return ("PIÈCES JOINTES EN ATTENTE DE RANGEMENT :\n" + "\n".join(
+        f"- {p['id']} « {p['nom_original']} » ({p['taille']}, type probable : {p['type_devine']}, "
+        f"déposée le {p['ts'][8:10]}/{p['ts'][5:7]} à {p['ts'][11:]})" for p in att))
+
+
+def _o_pieces_en_attente(args, annuaire):
+    att = pieces_en_attente()
+    if not att:
+        return "Aucune pièce jointe en attente de rangement."
+    return "Pièces en attente :\n" + "\n".join(
+        f"- {p['id']} : « {p['nom_original']} » ({p['taille']}), type probable {p['type_devine']}, "
+        f"déposée le {p['ts']}" for p in att)
+
+
+def _date_iso_ou_vide(v):
+    v = (v or "").strip()
+    if not v:
+        return ""
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(v, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return None
+
+
+def _w_ranger_piece_jointe(args, annuaire, executer):
+    import shutil
+    p = _piece(args.get("piece"))
+    if not p:
+        return "Pièce introuvable (utilise l'id pj_… donné au dépôt ou par pieces_en_attente).", False
+    if p.get("range"):
+        return f"Cette pièce est déjà rangée ({p['range'].get('resume', '')}).", False
+    src = os.path.join(PJ_DIR, p.get("fichier", ""))
+    if not os.path.exists(src):
+        return "Le fichier de cette pièce n'est plus disponible : redépose-le.", False
+    dest = _simplifie(args.get("destination") or "")
+    libelle = " ".join((args.get("libelle") or "").split()).strip()[:120]
+    if not libelle:
+        return "Il manque le libellé (nom lisible) du document.", False
+    expiration = _date_iso_ou_vide(args.get("expiration"))
+    if expiration is None:
+        return "Date d'expiration illisible : donne-la au format AAAA-MM-JJ.", False
+    nom_fichier = f"{libelle}{p['ext']}"
+    if dest.startswith("cand"):
+        cid, c, err = _candidat(args.get("candidat"))
+        if err:
+            return err, False
+        typ = _correspondance(args.get("type"), TYPES_CANDIDAT) or "Autre / divers"
+        cible = f"{c.get('prenom', '')} {c.get('nom', '')}".strip()
+        resume = f"Ranger « {libelle} » ({typ}) dans le dossier du candidat {cible}"
+        if not executer:
+            return resume, True
+        os.makedirs(REC.CANDIDATS_DOCS_DIR, exist_ok=True)
+        doc_id = uuid.uuid4().hex[:12]
+        stored = f"{doc_id}_{secure_filename(nom_fichier)}"
+        shutil.copyfile(src, os.path.join(REC.CANDIDATS_DOCS_DIR, stored))
+        idx = REC.charger_candidats_docs_index()
+        idx.setdefault(cid, []).append({
+            "id": doc_id, "fichier": stored, "nom_original": p["nom_original"], "type": typ,
+            "libelle": libelle, "taille": p["taille"],
+            "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"), "source": "agent"})
+        REC.sauvegarder_candidats_docs_index(idx)
+        if typ == "CV":
+            try:
+                with open(src, "rb") as fp:
+                    texte = extraction_pj.extraire_texte(p["nom_original"], fp.read())
+                if texte.strip():
+                    cands = REC.charger_candidats()
+                    cands[cid]["cv_texte"] = crypto_rh.chiffrer(texte)
+                    REC.sauvegarder_candidats(cands)
+            except Exception:
+                current_app.logger.exception("CV déposé via l'agent : texte non mémorisé")
+        url = url_for("recrutement.candidat", id=cid)
+    else:
+        e = _employe(args.get("employe"), annuaire)
+        if not e:
+            return "Salarié introuvable : précise dans le dossier de quel salarié ranger la pièce.", False
+        typ = _correspondance(args.get("type"), TOUS_TYPES_DOCS)
+        if not typ:
+            return "Type inconnu. Types possibles : " + ", ".join(TOUS_TYPES_DOCS) + ".", False
+        resume = f"Ranger « {libelle} » ({typ}) dans le dossier de {_label_de(e, annuaire)}"
+        if expiration:
+            resume += f", expire le {_fr(_date(expiration))}"
+        if not executer:
+            return resume, True
+        os.makedirs(DOCS_DIR, exist_ok=True)
+        doc_id = uuid.uuid4().hex[:12]
+        stored = f"{doc_id}_{secure_filename(nom_fichier)}"
+        shutil.copyfile(src, os.path.join(DOCS_DIR, stored))
+        idx = charger_docs_index()
+        entree = {"id": doc_id, "fichier": stored, "nom_original": p["nom_original"], "type": typ,
+                  "libelle": libelle, "expiration": expiration, "taille": p["taille"],
+                  "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                  "source": "agent", "a_valider": False, "sha": p.get("sha", "")}
+        idx.setdefault(e["email"], []).append(entree)
+        sauvegarder_docs_index(idx)
+        if _doc_analysable(typ):
+            try:
+                nb = _analyser_document(e["email"], entree)
+                if nb:
+                    resume += f" — {nb} suggestion(s) de pré-remplissage à valider sur la fiche"
+            except Exception:
+                current_app.logger.exception("Analyse d'une pièce rangée par l'agent")
+        url = url_for("admin_document", doc_id=doc_id) + "?voir=1"
+    lst = charger_pieces()
+    for x in lst:
+        if x.get("id") == p["id"]:
+            x["range"] = {"quand": datetime.now().strftime("%Y-%m-%d %H:%M"), "resume": resume, "url": url}
+    sauvegarder_pieces(lst)
+    return resume, True
+
+
+OUTILS_LECTURE_PJ = {"pieces_en_attente": _o_pieces_en_attente}
+
+
 # --- Suggestions proactives (calcul local, aucun appel IA) ---------------------------
 
 def suggestions_proactives():
@@ -1801,6 +2031,10 @@ def suggestions_proactives():
         if not derniere or derniere < auj.isoformat():
             out.append({"ico": "📬", "texte": "Synthèse des mails pas à jour" if derniere else "Aucune synthèse de mails",
                         "prompt": "Qu'y a-t-il dans les mails RH ? Actualise si besoin."})
+        nb_pj = len(pieces_en_attente())
+        if nb_pj:
+            out.append({"ico": "📎", "texte": f"{nb_pj} pièce(s) jointe(s) à ranger",
+                        "prompt": "Quelles pièces jointes restent à ranger ? Propose un nom et un emplacement pour chacune."})
         conv = charger_conversation()
         nb_cartes = sum(1 for m in conv for a in m.get("actions") or []
                         if a.get("type") == "confirmer" and not a.get("fait"))
@@ -1843,10 +2077,12 @@ OUTILS_ECRITURE_IMPL = {
     "envoyer_mail_candidat": _w_envoyer_mail_candidat,
     "memoriser": _w_memoriser,
     "oublier": _w_oublier,
+    "ranger_piece_jointe": _w_ranger_piece_jointe,
 }
 assert set(OUTILS_ECRITURE_IMPL) == OUTILS_ECRITURE, "catalogue agent_rh ≠ implémentations"
 
 LIBELLES_OUTILS = {
+    "ranger_piece_jointe": "📎 Pièce jointe",
     "ajouter_absence": "🏖️ Absence", "supprimer_absence": "🗑️ Absence",
     "modifier_horaires_jour": "🕒 Horaires", "retablir_horaires_jour": "↺ Horaires",
     "traiter_demande_conges": "✅ Congés", "envoyer_demande_collaborateur": "📨 Demande",
@@ -1910,6 +2146,8 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
         return OUTILS_LECTURE_MAILS[nom](args, annuaire)
     if nom in OUTILS_LECTURE_MEMOIRE:
         return OUTILS_LECTURE_MEMOIRE[nom](args, annuaire)
+    if nom in OUTILS_LECTURE_PJ:
+        return OUTILS_LECTURE_PJ[nom](args, annuaire)
     if nom in OUTILS_LECTURE_RECRUTEMENT:
         return REC.executer_outil_recrutement(nom, args)   # str ou {resultat, action mailto}
     if nom in OUTILS_ECRITURE_IMPL:
@@ -1969,13 +2207,15 @@ def _moteur():
     return moteur, (os.getenv("ASSISTANT_MODELE") or MODELE_AGENT_DEFAUT.get(moteur))
 
 
-def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_CONTEXTE):
+def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_CONTEXTE,
+             piece=None):
     """Ajoute le message utilisateur, fait tourner l'agent sur les derniers
     échanges, persiste et renvoie la réponse {reply, actions, outils_utilises}.
     nb_contexte : messages d'historique envoyés au modèle (la ronde en envoie
     peu : chaque appel coûte des tokens et le palier Mistral est limité/minute)."""
     mode = mode_agent()
-    ajouter_message("user", texte_utilisateur, origine=origine if origine != "chat" else None)
+    ajouter_message("user", texte_utilisateur, origine=origine if origine != "chat" else None,
+                    piece=piece)
     conv = charger_conversation()
     messages = [{"role": m["role"], "content": m["content"]}
                 for m in conv if m.get("role") in ("user", "assistant")
@@ -1990,6 +2230,9 @@ def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_C
     mem = memoire_contexte(table)
     if mem:
         contexte = (contexte + "\n\n" if contexte else "") + mem
+    pj = contexte_pieces()
+    if pj:
+        contexte = (contexte + "\n\n" if contexte else "") + pj
 
     def _exec(nom, args, ann):
         return executer_outil(nom, args, ann, mode, origine)
@@ -2001,7 +2244,7 @@ def repondre(texte_utilisateur, origine="chat", contexte="", nb_contexte=TOURS_C
                         actions=actions, outils=res.get("outils_utilises") or [],
                         origine=origine if origine != "chat" else None)
     return {"reply": m["content"], "actions": actions, "outils_utilises": m.get("outils", []),
-            "id": m["id"], "ts": m["ts"], "mode": mode}
+            "id": m["id"], "ts": m["ts"], "mode": mode, "piece": piece}
 
 
 BRIEF_RONDE = (
@@ -2098,6 +2341,52 @@ def chat():
         detail = _detail_erreur_ia(e)
         ajouter_message("assistant", f"⚠️ Je n'ai pas pu répondre : {detail}", erreur=True)
         return _json({"error": f"Service IA indisponible : {detail}"}, 502)
+
+
+@bp.route("/admin/agent/piece", methods=["POST"])
+def deposer_piece():
+    """Dépôt d'un fichier ou d'une photo dans le chat : la pièce est mise en
+    attente, puis l'agent demande comment la nommer et où la ranger."""
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    f = request.files.get("fichier")
+    if not f or not f.filename:
+        return _json({"error": "aucun fichier"}, 400)
+    try:
+        p = enregistrer_piece(f.filename, f.read())
+    except ValueError as e:
+        return _json({"error": "Format non accepté (PDF, JPG, PNG, Word)." if str(e) == "type"
+                      else "Fichier vide."}, 400)
+    legende = (request.form.get("message") or "").strip()[:2000]
+    piece_ui = {"id": p["id"], "nom": p["nom_original"], "taille": p["taille"],
+                "url": url_for("agent.voir_piece", pid=p["id"]), "legende": legende}
+    try:
+        return _json(repondre(message_depot_piece(p, legende), piece=piece_ui))
+    except Exception as e:
+        current_app.logger.exception("Agent RH : échec après dépôt de pièce")
+        detail = _detail_erreur_ia(e)
+        ajouter_message("assistant", f"⚠️ Pièce reçue ({p['id']}) mais je n'ai pas pu répondre : {detail}",
+                        erreur=True)
+        return _json({"error": f"Pièce reçue ({p['id']}) mais service IA indisponible : {detail}",
+                      "piece": piece_ui}, 502)
+
+
+@bp.route("/admin/agent/piece/<pid>")
+def voir_piece(pid):
+    """Ouvre une pièce déposée : le document rangé si elle l'a été, sinon le
+    fichier en attente (admin uniquement)."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    p = _piece(pid)
+    if not p:
+        abort(404)
+    if p.get("range") and p["range"].get("url"):
+        return redirect(p["range"]["url"])
+    chemin = os.path.join(PJ_DIR, p.get("fichier", ""))
+    if not os.path.exists(chemin):
+        abort(404)
+    from flask import send_file
+    return send_file(chemin, download_name=p.get("nom_original"), as_attachment=False)
 
 
 @bp.route("/admin/agent/confirmer", methods=["POST"])

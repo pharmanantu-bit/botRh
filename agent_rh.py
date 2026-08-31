@@ -86,6 +86,18 @@ SYSTEM_AGENT = (
     "sans les répéter. Quand l'utilisateur t'apprend une règle, une habitude ou une "
     "préférence valable dans le temps (« retiens que… », « désormais… », « le comptable "
     "préfère… »), appelle memoriser. Jamais de donnée de santé en mémoire.\n"
+    "- PIÈCES JOINTES : quand l'utilisateur dépose un fichier ou une photo, un message "
+    "« 📎 Pièce jointe déposée » arrive avec son identifiant (pj_…), son type probable "
+    "et parfois un extrait ; les pièces non rangées sont listées sous « PIÈCES JOINTES "
+    "EN ATTENTE ». Ta mission : la NOMMER et la RANGER. 1) Propose un libellé clair et "
+    "daté (ex. « Arrêt de travail du 12/08/2026 », « RIB », « Diplôme BP préparateur ») "
+    "et un type parmi la liste de ranger_piece_jointe, puis DEMANDE à l'utilisateur "
+    "comment il veut la nommer et où la ranger (dossier de quel salarié, ou quel "
+    "candidat) s'il ne l'a pas déjà dit — ne devine jamais la personne. 2) Dès que tu "
+    "as la destination, le type et le libellé, appelle ranger_piece_jointe (une fois "
+    "par pièce). Si l'utilisateur donne tout dans le même message que le dépôt, range "
+    "directement sans reposer la question. Ne décris jamais le contenu médical d'un "
+    "arrêt de travail : nomme-le et range-le, c'est tout.\n"
     "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
     "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
     "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
@@ -580,6 +592,41 @@ OUTILS_SPECS += [
     },
 ]
 
+# --- Outils PIÈCES JOINTES (dépôt de fichiers / photos dans le chat) ---
+OUTILS_SPECS += [
+    {
+        "nom": "pieces_en_attente",
+        "description": "Liste les pièces jointes déposées dans la conversation qui ne "
+                       "sont pas encore rangées (id pj_…, nom, type probable, date).",
+        "params": {},
+        "requis": [],
+    },
+    {
+        "nom": "ranger_piece_jointe",
+        "description": "Range une pièce jointe déposée dans le chat (id pj_…) dans le "
+                       "dossier d'un SALARIÉ (destination « salarie ») ou d'un CANDIDAT "
+                       "(destination « candidat »), avec un type et un libellé choisis avec "
+                       "l'utilisateur. Types salarié : Promesse d'embauche, Contrat de "
+                       "travail, Avenant, Bulletin de paie, Solde de tout compte, RIB / "
+                       "coordonnées bancaires, Fiche signalétique, Pièce d'identité, Titre de "
+                       "séjour, Carte vitale, Justificatif de domicile, N° de Sécurité "
+                       "sociale, Visite médicale, Arrêt de travail, Diplôme, Certification / "
+                       "habilitation, Attestation de formation, Entretien annuel / "
+                       "professionnel, Attestation employeur, Courrier, Avertissement, Autre "
+                       "/ divers. Types candidat : CV, Lettre de motivation, Diplôme, Pièce "
+                       "d'identité, Autre / divers.",
+        "params": {"piece": ("string", "Identifiant de la pièce (pj_…)"),
+                   "destination": ("string", "« salarie » ou « candidat »"),
+                   "employe": ("string", "Étiquette du salarié (Employé X) si destination salarie"),
+                   "candidat": ("string", "Nom ou prénom du candidat si destination candidat"),
+                   "type": ("string", "Type de document (voir liste)"),
+                   "libelle": ("string", "Libellé lisible choisi avec l'utilisateur"),
+                   "expiration": ("string", "Date d'expiration/fin AAAA-MM-JJ (optionnel : "
+                                            "titre de séjour, arrêt de travail, visite médicale…)")},
+        "requis": ["piece", "destination", "type", "libelle"],
+    },
+]
+
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
@@ -588,7 +635,7 @@ OUTILS_ECRITURE = {
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
     "envoyer_attestation", "actualiser_mails", "changer_statut_candidat", "envoyer_mail_candidat",
-    "memoriser", "oublier",
+    "memoriser", "oublier", "ranger_piece_jointe",
 }
 # Décisions RH sur une personne (AI Act) : validation humaine obligatoire, même en autonome.
 OUTILS_DECISION = {"changer_statut_candidat"}
@@ -713,7 +760,14 @@ def _boucle_fake(msgs, annuaire, table, executer):
     # Outils ÉCRITURE (mots-clés explicites) — servent aux tests hors-ligne
     mdate = re.search(r"\d{4}-\d{2}-\d{2}", dernier)
     diso = mdate.group(0) if mdate else None
-    if "absence" in d and label and diso and "supprim" not in d:
+    mpj = re.search(r"pj_[0-9a-f]+", dernier)
+    if mpj and label and any(k in d for k in ("range", "classe")):
+        nom, args = "ranger_piece_jointe", {"piece": mpj.group(0), "destination": "salarie",
+                                           "employe": label, "type": "Autre / divers",
+                                           "libelle": "Document déposé (test)"}
+    elif mpj:
+        nom, args = "pieces_en_attente", {}
+    elif "absence" in d and label and diso and "supprim" not in d:
         nom, args = "ajouter_absence", {"employe": label, "debut": diso, "fin": diso,
                                         "motif": "Arrêt maladie"}
     elif "horaire" in d and label and diso:
