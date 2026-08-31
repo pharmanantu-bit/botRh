@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Agent RH — botRh</title>
+  <link rel="manifest" href="/admin/manifest.webmanifest">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Agent RH">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -126,6 +131,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="tbtn" id="btnRonde" title="Lancer la ronde maintenant">🔁 <span class="txt">Ronde</span></button>
       </form>
+      <button type="button" class="tbtn" id="btnPush" hidden>🔕 <span class="txt">Notifs</span></button>
       <button type="button" class="tbtn" onclick="document.getElementById('panneau').classList.toggle('on')" title="Journal des actions de l'agent">📋 <span class="txt">Journal</span></button>
     </div>
   </div>
@@ -440,6 +446,58 @@
     });
     // Arrêt automatique quand on envoie le message.
     document.getElementById('form').addEventListener('submit', stop);
+  })();
+  // --- Notifications push (Web Push : Chrome/Edge/Firefox/Android ; iOS si installé sur l'écran d'accueil) ---
+  (function () {
+    const b = document.getElementById('btnPush');
+    if (!b || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+    let etat = null, abonne = false, reg = null;
+    function b64ToU8(s) { const p = '='.repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); }
+    function rendre() {
+      b.hidden = false; b.classList.toggle('valid', abonne);
+      b.innerHTML = abonne ? '🔔 <span class="txt">Notifs ON</span>' : '🔕 <span class="txt">Notifs</span>';
+      b.title = abonne ? 'Notifications activées sur cet appareil — clic : test ou désactivation' : 'Recevoir les notifications de l\'agent sur cet appareil (propositions à confirmer, ronde du matin)';
+    }
+    async function init() {
+      try {
+        const r = await fetch('/admin/push/etat'); etat = await r.json();
+        if (!etat.actif || !etat.cle_publique) return;   // non configuré côté serveur : bouton masqué
+        reg = await navigator.serviceWorker.register('/admin/push-sw.js', { scope: '/admin/' });
+        const sub = await reg.pushManager.getSubscription();
+        abonne = !!sub && Notification.permission === 'granted';
+        rendre();
+      } catch (e) { /* pas de push ici (http non sécurisé, navigateur ancien) */ }
+    }
+    function post(url, corps) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(corps || {}) }).then(r => r.json()); }
+    async function activer() {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { bulle('bot err', '⚠️ Notifications refusées par le navigateur. Autorise-les dans les réglages du site puis réessaie.'); return; }
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(etat.cle_publique) });
+      const d = await post('/admin/push/abonner', { subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 120) });
+      if (!d.ok) throw new Error(d.error || 'échec de l\'abonnement');
+      abonne = true; rendre();
+      bulle('sys', '🔔 Notifications activées sur cet appareil (' + d.abonnements + ' appareil(s) au total).');
+      await tester();
+    }
+    async function desactiver() {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await post('/admin/push/desabonner', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      abonne = false; rendre(); bulle('sys', '🔕 Notifications désactivées sur cet appareil.');
+    }
+    async function tester() {
+      const d = await post('/admin/push/test');
+      bulle('sys', d.ok ? '📨 Notification de test ' + d.info + '.' : '⚠️ ' + (d.error || 'Test impossible.'));
+    }
+    b.addEventListener('click', async function () {
+      b.disabled = true;
+      try {
+        if (!abonne) await activer();
+        else if (confirm('Notifications activées sur cet appareil.\n\nOK = envoyer une notification de test\nAnnuler = les désactiver ici')) await tester();
+        else await desactiver();
+      } catch (err) { bulle('bot err', '⚠️ Notifications : ' + (err.message || 'échec')); }
+      b.disabled = false;
+    });
+    init();
   })();
   bas();
 </script>

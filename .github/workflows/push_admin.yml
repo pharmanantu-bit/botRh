@@ -1,0 +1,28 @@
+name: Notification push admin
+
+# Déclenché par le serveur (repository_dispatch 'push_admin') quand une
+# notification push est mise en file et que le serveur ne peut pas l'envoyer
+# lui-même (PythonAnywhere gratuit : services push inaccessibles). Le runner
+# récupère la file via /export_push, envoie (pywebpush) et rend compte.
+# Les notifications de la ronde quotidienne sont envoyées par agent_ronde.yml.
+
+on:
+  repository_dispatch:
+    types: [push_admin]
+  workflow_dispatch:   # test manuel : envoie ce qui est en file
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q pywebpush
+      - name: Envoyer les notifications en attente
+        env:
+          API_CLE: ${{ secrets.API_CLE }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_EMAIL: ${{ secrets.GMAIL_USER }}
+        run: python run_push.py

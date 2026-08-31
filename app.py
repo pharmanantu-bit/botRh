@@ -51,6 +51,7 @@ app.permanent_session_lifetime = timedelta(hours=48)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
 CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push", "/agent_ronde",
                "/marquer_envoi",  # runner GitHub (clé API), pose le marqueur d'envoi mensuel
+               "/push_envoyees",  # runner GitHub (clé API), confirme l'envoi des push
                # Formulaires employés authentifiés par jeton signé (pas de session).
                "/mon-espace/conges/demander", "/mon-espace/conges/annuler",
                "/mon-espace/demandes/repondre"}

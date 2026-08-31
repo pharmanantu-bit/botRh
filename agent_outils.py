@@ -45,6 +45,7 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_p
 from werkzeug.utils import secure_filename
 import extraction_pj
 import crypto_rh
+import push_rh
 import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION, run_agent
 from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
@@ -2745,12 +2746,53 @@ BRIEF_RONDE = (
 )
 
 
-def ronde():
+# --- Notifications push vers l'admin -------------------------------------------------
+
+def _notifier_admin(titre, corps, url="/admin/agent", tag="botrh-agent", dispatch=True):
+    """Notification push (téléphone/ordinateur de l'admin) : mise en file + envoi
+    direct si le serveur le peut ; sinon délégation au runner GitHub
+    (repository_dispatch « push_admin »), sauf dispatch=False (la ronde : son
+    workflow envoie lui-même juste après). Ne lève jamais."""
+    try:
+        if not push_rh.actif() or not push_rh.charger_abonnements():
+            return None
+        res = push_rh.notifier_admin(titre, corps, url=url, tag=tag)
+    except Exception:
+        current_app.logger.exception("Notification push : mise en file impossible")
+        return None
+    envoi = res.get("envoi") or {}
+    if dispatch and not envoi.get("envoyees"):
+        try:
+            declencher_workflow("push_admin", {"origine": tag})
+        except Exception:
+            current_app.logger.warning("Notification push : dispatch GitHub impossible "
+                                       "(sera envoyée après la prochaine ronde)")
+    return res
+
+
+def _resume_ronde_push(res):
+    """Corps de la notification après une ronde : ce qui attend l'admin."""
+    actions = res.get("actions") or []
+    props = sum(1 for a in actions if a.get("type") == "confirmer")
+    faits = sum(1 for a in actions if a.get("type") == "fait")
+    if props:
+        return f"{props} proposition(s) attendent ta validation."
+    if faits:
+        return f"{faits} action(s) effectuée(s) — compte-rendu dans le chat."
+    txt = " ".join((res.get("reply") or "").split())
+    return (txt[:157] + "…") if len(txt) > 160 else (txt or "Ronde terminée.")
+
+
+def ronde(notifier=True):
     """Ronde autonome (cron ou bouton). Mode autonome : exécute ; mode validation :
-    propose des cartes. Le compte-rendu est posté dans la conversation."""
+    propose des cartes. Le compte-rendu est posté dans la conversation et, si
+    notifier, une notification push résume ce qui attend l'admin."""
     contexte = ("RONDE AUTOMATIQUE : tu parles à l'utilisateur sans qu'il t'ait posé de "
                 "question ; sois concis et concret.")
-    return repondre(BRIEF_RONDE, origine="ronde", contexte=contexte, nb_contexte=1)
+    res = repondre(BRIEF_RONDE, origine="ronde", contexte=contexte, nb_contexte=1)
+    if notifier:
+        _notifier_admin("Agent RH — ronde du jour", _resume_ronde_push(res), dispatch=False)
+    return res
 
 
 # --- Routes ----------------------------------------------------------------------
@@ -2863,6 +2905,96 @@ def voir_piece(pid):
     return send_file(chemin, download_name=p.get("nom_original"), as_attachment=False)
 
 
+@bp.route("/admin/push/etat")
+def push_etat():
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    return _json({"actif": push_rh.actif(), "cle_publique": push_rh.cle_publique(),
+                  "abonnements": len(push_rh.charger_abonnements()),
+                  "en_attente": len(push_rh.notifications_en_attente())})
+
+
+@bp.route("/admin/push/abonner", methods=["POST"])
+def push_abonner():
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        nb = push_rh.ajouter_abonnement(data.get("subscription"), data.get("label") or "")
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+    journaliser("notifications", "Notifications push activées sur un appareil", mode_agent(), "chat")
+    return _json({"ok": True, "abonnements": nb})
+
+
+@bp.route("/admin/push/desabonner", methods=["POST"])
+def push_desabonner():
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    data = request.get_json(force=True, silent=True) or {}
+    nb = push_rh.retirer_abonnement((data.get("endpoint") or "").strip())
+    return _json({"ok": True, "abonnements": nb})
+
+
+@bp.route("/admin/push/test", methods=["POST"])
+def push_test():
+    if not session.get("admin"):
+        return _json({"error": "non autorisé"}, 403)
+    res = _notifier_admin("Agent RH — test", "Les notifications fonctionnent 👍", tag="botrh-test")
+    if not res:
+        return _json({"ok": False, "error": "notifications non configurées (VAPID_PRIVATE_KEY) "
+                                            "ou aucun appareil abonné"}, 400)
+    envoi = res.get("envoi") or {}
+    direct = bool(envoi.get("envoyees"))
+    info = "envoyée" if direct else "mise en file : envoi par GitHub Actions d'ici une minute"
+    if not direct and envoi.get("indisponible"):
+        info += f" ({envoi['indisponible']})"
+    return _json({"ok": True, "direct": direct, "info": info})
+
+
+@bp.route("/admin/push-sw.js")
+def push_sw():
+    """Service worker (portée /admin/) : affiche les notifications, ouvre la page au clic."""
+    from flask import send_from_directory
+    rep = send_from_directory(os.path.join(BASE_DIR, "static"), "push-sw.js",
+                              mimetype="application/javascript")
+    rep.headers["Cache-Control"] = "no-cache"
+    rep.headers["Service-Worker-Allowed"] = "/admin/"
+    return rep
+
+
+@bp.route("/admin/manifest.webmanifest")
+def manifest_admin():
+    """Manifeste PWA de l'espace admin : permet « Sur l'écran d'accueil » (requis
+    par iOS pour les notifications push)."""
+    data = {"name": "botRh — Agent RH", "short_name": "Agent RH", "start_url": "/admin/agent",
+            "scope": "/admin/", "display": "standalone", "background_color": "#e5ddd5",
+            "theme_color": "#1F4E79", "lang": "fr",
+            "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                      {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
+    return current_app.response_class(json.dumps(data, ensure_ascii=False),
+                                      mimetype="application/manifest+json")
+
+
+@bp.route("/export_push")
+def export_push():
+    """Runner GitHub : abonnements + notifications en attente (clé API)."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    return _json({"abonnements": push_rh.charger_abonnements(),
+                  "notifications": push_rh.notifications_en_attente()})
+
+
+@bp.route("/push_envoyees", methods=["POST"])
+def push_envoyees():
+    """Runner GitHub : compte rendu d'envoi (ids envoyés, abonnements périmés)."""
+    if request.args.get("cle", "") != API_CLE:
+        abort(403)
+    data = request.get_json(force=True, silent=True) or {}
+    nb, subs = push_rh.marquer_envoyees(data.get("ids") or [], data.get("perimes") or [])
+    return _json({"marquees": nb, "abonnements": subs})
+
+
 @bp.route("/admin/agent/confirmer", methods=["POST"])
 def confirmer():
     """Clic sur une carte (mode validation) : exécute l'écriture proposée."""
@@ -2915,7 +3047,7 @@ def ronde_manuelle():
     if not session.get("admin"):
         return redirect(url_for("admin"))
     try:
-        ronde()
+        ronde(notifier=False)
     except Exception as e:
         current_app.logger.exception("Ronde agent : échec")
         ajouter_message("assistant", f"⚠️ Ronde interrompue ({type(e).__name__}).", erreur=True)
@@ -2933,6 +3065,7 @@ def ronde_machine():
     except Exception as e:
         current_app.logger.exception("Ronde agent (machine) : échec")
         ajouter_message("assistant", f"⚠️ Ronde interrompue : {_detail_erreur_ia(e)}", erreur=True)
+        _notifier_admin("Agent RH — ronde interrompue", _detail_erreur_ia(e), dispatch=False)
         return _json({"ok": False, "error": type(e).__name__}, 502)
 
 

@@ -26,3 +26,20 @@ jobs:
           # Le compte-rendu peut contenir des prénoms : on n'affiche que le statut.
           python3 -c "import json;d=json.load(open('/tmp/ronde.json'));print('ok=',d.get('ok'),'mode=',d.get('mode'),'erreur=',d.get('error'))" || true
           test "$code" = "200"
+      # Notification push du compte-rendu : le serveur gratuit ne joint pas les
+      # services push, il met la notification en file ; le runner l'envoie.
+      - uses: actions/checkout@v4
+        if: always()
+      - uses: actions/setup-python@v5
+        if: always()
+        with:
+          python-version: '3.12'
+      - name: Envoyer les notifications push en attente
+        if: always()
+        env:
+          API_CLE: ${{ secrets.API_CLE }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_EMAIL: ${{ secrets.GMAIL_USER }}
+        run: |
+          pip install -q pywebpush
+          python run_push.py

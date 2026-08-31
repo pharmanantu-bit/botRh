@@ -1251,6 +1251,51 @@ finally:
     _shutil.rmtree(os.path.dirname(A.ENVOIS_FILE), ignore_errors=True)
     A.ENVOIS_FILE = _envois_file
 
+# --- Notifications push (Web Push) : routes, file, export/compte-rendu runner —
+# fichiers redirigés vers des temporaires, aucun envoi réseau ---
+import push_rh
+_subs_reel, _queue_reel = push_rh.SUBS_FILE, push_rh.QUEUE_FILE
+push_rh.SUBS_FILE = A.reponses_file(1, 2001) + ".push_subs_smoke.json"
+push_rh.QUEUE_FILE = A.reponses_file(1, 2001) + ".push_queue_smoke.json"
+try:
+    with client.session_transaction() as s:
+        s["admin"] = True
+    _re = client.get("/admin/push/etat")
+    _etat = _re.get_json() or {}
+    ok_etat = _re.status_code == 200 and "actif" in _etat and bool(not _etat["actif"] or _etat["cle_publique"])
+    ok_sw = (client.get("/admin/push-sw.js").status_code == 200
+             and "javascript" in client.get("/admin/push-sw.js").content_type
+             and client.get("/admin/manifest.webmanifest").status_code == 200
+             and client.get("/static/icon-192.png").status_code == 200)
+    _fake = {"endpoint": "https://push.example.invalid/abc", "keys": {"p256dh": "x", "auth": "y"}}
+    ok_abo = push_rh.ajouter_abonnement(_fake, "smoke") == 1
+    try:
+        push_rh.ajouter_abonnement({"endpoint": ""}); ok_abo = False
+    except ValueError:
+        pass
+    _n = push_rh.notifier_admin("Test", "Corps", envoyer=False)["notification"]
+    ok_file = len(push_rh.notifications_en_attente()) == 1
+    ok_403 = client.get("/export_push?cle=mauvaise").status_code == 403
+    _ex = client.get(f"/export_push?cle={cle}").get_json() or {}
+    ok_export = len(_ex.get("abonnements") or []) == 1 and [x["id"] for x in _ex.get("notifications") or []] == [_n["id"]]
+    _cr = client.post(f"/push_envoyees?cle={cle}", json={"ids": [_n["id"]], "perimes": [_fake["endpoint"]]}).get_json() or {}
+    ok_cr = _cr.get("marquees") == 1 and _cr.get("abonnements") == 0 and not push_rh.notifications_en_attente()
+    _env = push_rh.envoyer_en_attente(notifications=[_n])
+    ok_env = _env.get("indisponible") == "aucun abonnement" and not _env["envoyees"]
+    ok_push = ok_etat and ok_sw and ok_abo and ok_file and ok_403 and ok_export and ok_cr and ok_env
+    print(("OK " if ok_push else "KO ")
+          + f"[--] notifications push (état={ok_etat} sw/manifest={ok_sw} abonnement={ok_abo} file={ok_file} "
+            f"clé={ok_403} export={ok_export} compte-rendu={ok_cr} envoi-sans-abonné={ok_env})")
+    if not ok_push:
+        echecs.append("notifications push KO")
+finally:
+    for _f in (push_rh.SUBS_FILE, push_rh.QUEUE_FILE):
+        try:
+            os.remove(_f)
+        except OSError:
+            pass
+    push_rh.SUBS_FILE, push_rh.QUEUE_FILE = _subs_reel, _queue_reel
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 
