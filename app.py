@@ -842,8 +842,8 @@ PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 # Intitulés de poste (menu déroulant) — champ UNIQUE `poste`, utilisé partout :
 # dossier salarié, cartes équipe, attestation ET planning équipe. Fusion de
 # l'ancien `fonction_planning` (encore lu en secours pour les anciens profils).
-POSTES = ["Pharmacien", "Préparateur", "Apprentie", "Étudiant",
-          "Conseillère", "Rayonniste", "Resp ménage"]
+POSTES = ["Pharmacien", "Préparateur", "Préparatrice", "Apprentie", "Étudiant",
+          "Conseillère", "Rayonniste", "Resp Merch & logistique", "Resp ménage"]
 
 # Champs du profil RH (clé interne -> libellé affiché). NB : `couleur_planning`
 # (pastille sur la frise) se règle UNIQUEMENT dans Planning > Équipe — la lister
