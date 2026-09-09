@@ -699,7 +699,7 @@ DOMAINE_OUTILS = {
                 "analyser_documents", "cocher_checklist", "changer_statut",
                 "valider_document", "retyper_document", "generer_attestation",
                 "envoyer_attestation", "preparer_attestation", "mettre_a_jour_profil",
-                "ajouter_note_journal"},
+                "ajouter_note_journal", "documents_manquants_equipe"},
     "mails": {"mails_rh_du_jour", "actualiser_mails", "documents_manquants_equipe",
               "preparer_mail", "envoyer_mail"},
     "recrutement": {"lister_candidats", "fiche_candidat", "rechercher_candidat",
