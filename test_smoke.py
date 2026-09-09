@@ -344,6 +344,14 @@ if employes:
     _lab0 = next((l for l, e in _annd.items() if not AOd._docs_de(e["email"])),
                  next(iter(_annd)))
     _em0 = _annd[_lab0]["email"]
+    try:
+        from reportlab.pdfgen import canvas as _cv
+        import pdfplumber as _pp  # noqa: F401 — lecture du PDF par extraction_pj
+        _libs_pdf = True
+    except ImportError:
+        _libs_pdf = False
+        print("OK [--] lire_document (sauté : reportlab/pdfplumber absents)")
+if employes and _libs_pdf:
     from reportlab.pdfgen import canvas as _cv
     import io as _io
     _buf = _io.BytesIO()
