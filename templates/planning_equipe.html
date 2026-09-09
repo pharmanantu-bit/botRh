@@ -375,9 +375,9 @@
       </div>
       {% if mode != 'tableau' and v.compteurs %}
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px;"
-           title="Heures effectives de la semaine (trame + modifications + absences) / heures contractuelles de la fiche (moyenne si rotation A/B). Rouge = dépassement.">
+           title="Heures effectives de la semaine (trame + modifications + absences) / heures contractuelles de la fiche (moyenne si rotation A/B). Rouge = dépassement sur le cycle complet de rotation.">
         {% for cp in v.compteurs %}
-        <span style="display:inline-flex; align-items:center; gap:5px; border:1px solid {{ '#e3b3ad' if cp.sur else '#d5dce5' }}; background:{{ '#fdf3f2' if cp.sur else '#f7f9fb' }}; border-radius:12px; padding:2px 9px; font-size:0.8em;">
+        <span {% if cp.cycle %}title="{{ cp.cycle }}"{% endif %} style="display:inline-flex; align-items:center; gap:5px; border:1px solid {{ '#e3b3ad' if cp.sur else '#d5dce5' }}; background:{{ '#fdf3f2' if cp.sur else '#f7f9fb' }}; border-radius:12px; padding:2px 9px; font-size:0.8em;">
           <span style="width:9px; height:9px; border-radius:50%; background:{{ cp.couleur }};"></span>
           {{ cp.prenom }}
           <strong style="color:{{ '#C0392B' if cp.sur else '#1F4E79' }};">{{ cp.eff }}{% if cp.contrat %} / {{ cp.contrat }}{% endif %}</strong>

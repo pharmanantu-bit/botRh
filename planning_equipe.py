@@ -1091,23 +1091,40 @@ def vue():
                 # Compteur hebdo par collaborateur : heures EFFECTIVES de la
                 # semaine (trame + ponctuels + absences + fériés) vs heures
                 # contractuelles de la fiche (moyenne en cas de rotation A/B).
+                # Le drapeau « dépassement » se juge sur le CYCLE de rotation
+                # complet (30h en A + 40h en B pour un contrat 35h = conforme),
+                # sinon un contrat réparti serait « en dépassement » une semaine
+                # sur deux. Sans rotation (1 semaine), comportement inchangé.
+                nb_rot = max(1, min(len(SEMAINES),
+                                    int(act_l.get("nb_semaines") or len(SEMAINES))))
                 compteurs = []
                 for e in emp_sm:
-                    eff = 0
-                    for k in range(7):
-                        for c in creneaux_effectifs_jour(act_l, e["email"],
-                                                         lundi + timedelta(days=k),
-                                                         changements, absences):
-                            a, b = _minutes(c.get("debut")), _minutes(c.get("fin"))
-                            if a is not None and b is not None and b > a:
-                                eff += b - a
+                    eff, eff_cycle = 0, 0
+                    for s in range(nb_rot):
+                        l_s = lundi + timedelta(days=7 * s)
+                        act_s = act_l if s == 0 else trame_active_pour(data, l_s)
+                        if not act_s:
+                            continue
+                        for k in range(7):
+                            for c in creneaux_effectifs_jour(act_s, e["email"],
+                                                             l_s + timedelta(days=k),
+                                                             changements, absences):
+                                a, b = _minutes(c.get("debut")), _minutes(c.get("fin"))
+                                if a is not None and b is not None and b > a:
+                                    eff_cycle += b - a
+                                    if s == 0:
+                                        eff += b - a
                     contrat = round(_heures_hebdo(profils.get(e["email"], {})
                                                   .get("heures_contractuelles_hebdo", "")) * 60)
-                    compteurs.append({"prenom": e["prenom"],
-                                      "couleur": couleurs.get(e["email"], "#888"),
-                                      "eff": _fmt_h(eff),
-                                      "contrat": _fmt_h(contrat) if contrat else "",
-                                      "sur": bool(contrat) and eff > contrat})
+                    cp = {"prenom": e["prenom"],
+                          "couleur": couleurs.get(e["email"], "#888"),
+                          "eff": _fmt_h(eff),
+                          "contrat": _fmt_h(contrat) if contrat else "",
+                          "sur": bool(contrat) and eff_cycle > contrat * nb_rot}
+                    if contrat and nb_rot > 1:
+                        cp["cycle"] = (f"cycle {'+'.join(SEMAINES[:nb_rot])} : "
+                                       f"{_fmt_h(eff_cycle)} / {_fmt_h(contrat * nb_rot)}")
+                    compteurs.append(cp)
                 v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat(),
                      "compteurs": compteurs,
                      "conformite": alertes_conformite(data, emp_sm, lundi,
