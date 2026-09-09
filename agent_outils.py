@@ -506,6 +506,121 @@ def _o_proposer_remplacant(args, annuaire):
             + "\n".join(txt for _, _, txt in candidats[:6]))
 
 
+def _o_vigie_effectif(args, annuaire):
+    """Vigie sous-effectif : passe en revue les prochains jours ouvrés et signale
+    ceux où l'équipe présente passe sous le seuil (matin ou après-midi) ou bien
+    où plusieurs absents se cumulent. Purement indicatif ; propose d'enchaîner
+    sur proposer_remplacant."""
+    try:
+        jours = min(max(int(args.get("jours") or 14), 1), 31)
+    except (TypeError, ValueError):
+        jours = 14
+    try:
+        seuil = max(int(args.get("seuil") or 2), 1)
+    except (TypeError, ValueError):
+        seuil = 2
+    trames = PE.charger_trames()
+    chgs, absences = PE.charger_changements(), PE.charger_absences()
+    auj = PE.jour_courant()
+    MIDI = 13 * 60
+    lignes = []
+    for k in range(1, jours + 1):
+        d = auj + timedelta(days=k)
+        act = PE.trame_active_pour(trames, d)
+        if not act or PE.ferie_de(d):
+            continue
+        matin, aprem, absents, prevu_total = 0, 0, [], 0
+        for lab, e in _actifs(annuaire):
+            em = e["email"]
+            prevu = PE.creneaux_effectifs_jour(act, em, d, chgs, [])
+            prevu_total += len(prevu)
+            cr = PE.creneaux_effectifs_jour(act, em, d, chgs, absences)
+            if cr:
+                debs = [PE._minutes(c.get("debut")) for c in cr]
+                fins = [PE._minutes(c.get("fin")) for c in cr]
+                if any(m is not None and m < MIDI for m in debs):
+                    matin += 1
+                if any(m is not None and m > MIDI for m in fins):
+                    aprem += 1
+            elif prevu:
+                ab = PE.absence_active(absences, em, d)
+                absents.append(f"{lab} ({(ab or {}).get('motif', 'absent')})")
+        if not prevu_total:
+            continue   # jour fermé : personne de prévu à la trame
+        manque = matin < seuil or aprem < seuil
+        if not manque and len(absents) < 2:
+            continue
+        ico = "🔴" if manque else "🟠"
+        txt = (f"{ico} {_fr(d)} : {matin} présent(s) le matin, {aprem} l'après-midi "
+               f"(seuil {seuil})")
+        if absents:
+            txt += " — absents : " + ", ".join(absents)
+        lignes.append(txt)
+    if not lignes:
+        return (f"Vigie effectif : rien à signaler sur les {jours} prochains jours "
+                f"(seuil {seuil} présent(s) matin et après-midi).")
+    return (f"Vigie effectif ({jours} prochains jours, seuil {seuil}) :\n"
+            + "\n".join(lignes)
+            + "\nPour couvrir un jour : proposer_remplacant (date + employé absent ou créneau).")
+
+
+def _o_arbitrer_conges(args, annuaire):
+    """Aide à l'ARBITRAGE des demandes de congés en attente : pour chaque demande,
+    solde, chevauchements avec les autres demandes et les absences déjà acceptées,
+    et qui a eu la même période l'an dernier. Ne décide rien : la décision reste
+    à l'utilisateur (traiter_demande_conges)."""
+    dems = [d for d in PE.charger_demandes_cp() if d.get("statut") == "en_attente"]
+    if not dems:
+        return "Aucune demande de congés en attente : rien à arbitrer."
+    absences = PE.charger_absences()
+    p1, p2 = PE.periode_conges()
+    conges = PE.charger_conges()
+    chgs = PE.charger_changements()
+    par_email = {e.get("email", "").lower(): (lab, e) for lab, e in annuaire.items()}
+
+    def _lab_dm(dm):
+        lab_e = par_email.get((dm.get("email") or "").lower())
+        return lab_e[0] if lab_e else "salarié inconnu"
+
+    lignes = []
+    for dm in sorted(dems, key=lambda x: x.get("demande_le") or ""):
+        lab = _lab_dm(dm)
+        d1, d2 = _date(dm.get("debut")), _date(dm.get("fin"))
+        if not d1 or not d2:
+            continue
+        bloc = [f"- {lab} : du {_fr(d1)} au {_fr(d2)} (demandé le "
+                f"{(dm.get('demande_le') or '?')[:10]})"]
+        em = (dm.get("email") or "").lower()
+        if em in par_email:
+            b = PE.bilan_cp(par_email[em][1]["email"], absences, chgs, conges, p1, p2)
+            bloc.append(f"  solde : {b['restant']} j restant(s) sur {b['droit']} j")
+        rivaux = [_lab_dm(x) for x in dems
+                  if x is not dm and _date(x.get("debut")) and _date(x.get("fin"))
+                  and _date(x.get("debut")) <= d2 and d1 <= _date(x.get("fin"))]
+        if rivaux:
+            bloc.append("  ⚠️ même période demandée par : " + ", ".join(sorted(set(rivaux))))
+        deja = sorted({par_email[x.get("email", "").lower()][0] for x in annuaire.values()
+                       if x.get("email", "").lower() != em
+                       and x.get("email", "").lower() in par_email
+                       and PE.absence_chevauchante(absences, x["email"], d1, d2)})
+        if deja:
+            bloc.append("  déjà absent(s) sur la période : " + ", ".join(deja))
+        an_passe = sorted({lab2 for e2mail, (lab2, _e2) in par_email.items()
+                           for a in absences
+                           if (a.get("email") or "").lower() == e2mail
+                           and a.get("motif") == "Congés payés"
+                           and (_date(a.get("debut")) or d1).year == d1.year - 1
+                           and (_date(a.get("debut")) or d1).month == d1.month})
+        if an_passe:
+            bloc.append("  la même période l'an dernier : " + ", ".join(an_passe))
+        lignes.append("\n".join(bloc))
+    return ("Demandes de congés en attente — éléments d'arbitrage (la décision "
+            "revient à l'utilisateur, via traiter_demande_conges) :\n"
+            + "\n".join(lignes)
+            + "\nRepères : priorité à qui n'a pas eu la période l'an dernier, puis "
+              "premier demandeur ; ne pas laisser la vigie effectif dans le rouge.")
+
+
 def _o_planning_jour(args, annuaire):
     d = _date(args.get("date")) or PE.jour_courant()
     trames = PE.charger_trames()
@@ -629,6 +744,8 @@ def _o_absences_en_cours(args, annuaire):
 OUTILS_LECTURE_PLANNING = {
     "chercher_salarie": _o_chercher_salarie,
     "proposer_remplacant": _o_proposer_remplacant,
+    "vigie_effectif": _o_vigie_effectif,
+    "arbitrer_conges": _o_arbitrer_conges,
     "planning_jour": _o_planning_jour,
     "planning_collaborateur": _o_planning_collaborateur,
     "solde_conges": _o_solde_conges,
@@ -2523,9 +2640,11 @@ BRIEF_RONDE = (
     "solde restant couvre les jours demandés, qu'aucune absence ne chevauche et "
     "qu'aucun autre salarié n'est déjà absent sur la période ; sinon laisse en attente "
     "et explique pourquoi ; "
-    "4) echeances_a_venir et absences_en_cours — signale ce qui mérite attention "
+    "4) vigie_effectif — s'il y a des jours 🔴 en sous-effectif à venir, signale-les "
+    "et propose un remplaçant (proposer_remplacant) pour le plus proche ; "
+    "5) echeances_a_venir et absences_en_cours — signale ce qui mérite attention "
     "(fin de CDD, période d'essai, visite médicale, retour d'absence) sans rien écrire ; "
-    "5) documents_manquants_equipe — signale les dossiers incomplets, et propose "
+    "6) documents_manquants_equipe — signale les dossiers incomplets, et propose "
     "d'envoyer un e-mail (envoyer_mail) au salarié pour réclamer ce qui manque quand "
     "un document obligatoire est absent. "
     "Termine par un compte-rendu court et structuré : ce que tu as fait, ce qui attend "

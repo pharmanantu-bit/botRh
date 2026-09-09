@@ -394,6 +394,45 @@ if employes and _libs_pdf:
     if not ok_ld:
         echecs.append("lire_document KO")
 
+# --- vigie_effectif + arbitrer_conges (données CP fabriquées puis restaurées) ---
+if employes:
+    import agent_outils as AOv
+    import planning_equipe as PEv
+    from assistant_rh import annuaire_pseudo as _ann_vg
+    _annv = _ann_vg(employes)
+    with A.app.app_context():
+        _v = AOv._o_vigie_effectif({"jours": 7, "seuil": 99}, _annv)
+    ok_vigie = ("Vigie effectif" in _v
+                and not any((e.get("prenom") or "zzz") in _v for e in employes))
+    _dcp_avant = (open(PEv.DEMANDES_CP_FILE, encoding="utf-8").read()
+                  if os.path.exists(PEv.DEMANDES_CP_FILE) else None)
+    try:
+        _e1, _e2 = employes[0], employes[1]
+        PEv.sauvegarder_demandes_cp([
+            {"id": "smk1", "email": _e1["email"], "debut": "2026-12-21", "fin": "2026-12-26",
+             "statut": "en_attente", "demande_le": "2026-09-01"},
+            {"id": "smk2", "email": _e2["email"], "debut": "2026-12-23", "fin": "2026-12-28",
+             "statut": "en_attente", "demande_le": "2026-09-05"},
+        ])
+        with A.app.app_context():
+            _a = AOv._o_arbitrer_conges({}, _annv)
+        ok_arb = ("même période demandée par" in _a and "solde" in _a
+                  and "traiter_demande_conges" in _a
+                  and not any((e.get("prenom") or "zzz") in _a for e in employes))
+    finally:
+        if _dcp_avant is None:
+            try:
+                os.remove(PEv.DEMANDES_CP_FILE)
+            except OSError:
+                pass
+        else:
+            open(PEv.DEMANDES_CP_FILE, "w", encoding="utf-8").write(_dcp_avant)
+    ok_vg = ok_vigie and ok_arb
+    print(("OK " if ok_vg else "KO ")
+          + f"[--] vigie + arbitrage congés (vigie={ok_vigie} arbitrage={ok_arb})")
+    if not ok_vg:
+        echecs.append("vigie/arbitrage KO")
+
 # --- Routage par domaine : sous-catalogue d'outils + blocs de prompt ---
 if employes:
     import agent_outils as AOx

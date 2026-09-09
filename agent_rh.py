@@ -92,7 +92,10 @@ SYSTEM_DOMAINES = {
     "que tu as les informations, puis réponds à sa question. Ne te contente JAMAIS de "
     "reformuler le fait comme s'il était déjà enregistré.\n"
     "- Après avoir enregistré une absence (ou si on te demande qui peut couvrir un "
-    "créneau), appelle proposer_remplacant et propose le meilleur choix.\n"),
+    "créneau), appelle proposer_remplacant et propose le meilleur choix.\n"
+    "- Sous-effectif à venir : vigie_effectif. Plusieurs demandes de congés en "
+    "concurrence : arbitrer_conges donne les éléments (solde, chevauchements, qui a eu "
+    "la période l'an dernier) mais la DÉCISION reste à l'utilisateur.\n"),
     "paie": (
     "- RELEVÉS D'HEURES & PAIE : releve_du_mois / stats_heures répondent aux questions "
     "chiffrées (heures sup, soldes) ; corriger_releve, valider_releve et "
@@ -264,6 +267,25 @@ OUTILS_SPECS = [
                    "employe": ("string", "Étiquette de l'ABSENT à remplacer (optionnel)"),
                    "h_debut": ("string", "Début du créneau HH:MM (optionnel)"),
                    "h_fin": ("string", "Fin du créneau HH:MM (optionnel)")},
+        "requis": [],
+    },
+    {
+        "nom": "vigie_effectif",
+        "description": "VIGIE sous-effectif : signale les prochains jours où l'équipe "
+                       "présente passe sous le seuil (matin ou après-midi) ou cumule "
+                       "plusieurs absents. À utiliser pour « des jours en sous-effectif "
+                       "à venir ? » et pendant la ronde.",
+        "params": {"jours": ("integer", "Horizon en jours, défaut 14 (max 31)"),
+                   "seuil": ("integer", "Présents minimum matin/après-midi, défaut 2")},
+        "requis": [],
+    },
+    {
+        "nom": "arbitrer_conges",
+        "description": "Éléments d'ARBITRAGE des demandes de congés en attente : solde "
+                       "de chaque demandeur, demandes qui se chevauchent, absents déjà "
+                       "acceptés sur la période, qui a eu la même période l'an dernier. "
+                       "Ne décide rien (décision via traiter_demande_conges).",
+        "params": {},
         "requis": [],
     },
     # --- Outils ÉCRITURE : exécutés (mode autonome) ou proposés (mode validation) ---
@@ -737,7 +759,7 @@ OUTILS_BASE = {"profil_salarie", "lister_employes", "chercher_salarie",
 
 DOMAINE_OUTILS = {
     "planning": {"planning_jour", "planning_collaborateur", "solde_conges",
-                 "proposer_remplacant",
+                 "proposer_remplacant", "vigie_effectif", "arbitrer_conges",
                  "demandes_conges_en_attente", "absences_en_cours", "ajouter_absence",
                  "supprimer_absence", "modifier_horaires_jour", "retablir_horaires_jour",
                  "traiter_demande_conges", "envoyer_demande_collaborateur"},
@@ -762,7 +784,8 @@ DOMAINE_OUTILS = {
 MOTS_DOMAINES = {
     "planning": r"\b(?:planning|horaire|absen|conge|malad|arret\b|arrets\b|formation|"
                 r"travail|repos|vacance|recup|garde|ferie|lundi|mardi|mercredi|jeudi|"
-                r"vendredi|samedi|dimanche|demain|semaine|demande|remplac|couvrir|renfort)",
+                r"vendredi|samedi|dimanche|demain|semaine|demande|remplac|couvrir|renfort|"
+                r"effectif|vigie|arbitr)",
     "paie": r"\b(?:relev|heure|paie|comptable|recap|valid|relance|solde|sup\b)",
     "dossier": r"\b(?:dossier|document|attestation|contrat|checklist|statut|suggestion|"
                r"fiche|profil|journal|note|rib\b|diplome|identite|visite|essai|cdd\b|"

@@ -61,6 +61,10 @@ CAS = [
     {"phrase": "qui est absent en ce moment ?", "attendus": {"absences_en_cours"}},
     {"phrase": "qui peut remplacer Maëlys demain matin ?",
      "attendus": {"proposer_remplacant"}},
+    {"phrase": "est-ce qu'on a des jours en sous-effectif dans les 2 semaines qui viennent ?",
+     "attendus": {"vigie_effectif"}},
+    {"phrase": "plusieurs demandes de congés se chevauchent, aide-moi à trancher",
+     "attendus": {"arbitrer_conges", "demandes_conges_en_attente"}},
     # Relevés d'heures / paie
     {"phrase": "qui n'a pas rendu son relevé d'heures ?",
      "attendus": {"releves_manquants"}},
