@@ -272,6 +272,27 @@ if employes:
     if not ok_noms:
         echecs.append("noms tolérants KO")
 
+# --- Routage par domaine : sous-catalogue d'outils + blocs de prompt ---
+if employes:
+    import agent_outils as AOx
+    _n = lambda doms: {s["nom"] for s in agent_rh.specs_pour(doms)}
+    _d1 = agent_rh.selectionner_domaines([{"role": "user", "content": "Employé A est malade demain"}])
+    ok_r1 = (_d1 == {"planning"} and "ajouter_absence" in _n(_d1)
+             and "lister_candidats" not in _n(_d1) and "chercher_salarie" in _n(_d1))
+    _d2 = agent_rh.selectionner_domaines([{"role": "user", "content": AOx.BRIEF_RONDE}])
+    ok_r2 = ({"mails_rh_du_jour", "releves_manquants", "traiter_demande_conges",
+              "envoyer_relance", "documents_manquants_equipe"} <= _n(_d2)
+             and "lister_candidats" not in _n(_d2))
+    _d3 = agent_rh.selectionner_domaines([{"role": "user", "content": "bonjour, merci !"}])
+    ok_r3 = _d3 is None and len(agent_rh.specs_pour(None)) == len(agent_rh.OUTILS_SPECS)
+    # tout outil du catalogue est classé (un nouvel outil non classé reste servi)
+    ok_r4 = {s["nom"] for s in agent_rh.OUTILS_SPECS} <= agent_rh._OUTILS_CLASSES
+    ok_route = ok_r1 and ok_r2 and ok_r3 and ok_r4
+    print(("OK " if ok_route else "KO ")
+          + f"[--] routage outils (planning={ok_r1} ronde={ok_r2} fallback={ok_r3} couverture={ok_r4})")
+    if not ok_route:
+        echecs.append("routage outils KO")
+
 # --- Agent Phase 2 : action « préparer une relance » (fake, hors-ligne) ---
 # Vérifie qu'une ACTION est proposée et RÉ-IDENTIFIÉE (vrai prénom, plus d'étiquette),
 # sans aucun envoi réel (le fake ne fait qu'assembler l'objet action).

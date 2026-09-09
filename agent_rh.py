@@ -18,6 +18,7 @@ n'importe que assistant_rh.
 import os
 import re
 import json
+import unicodedata
 
 from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
@@ -29,7 +30,12 @@ from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 
 MAX_TOURS = 8  # borne le nombre d'allers-retours d'outils (coût/latence)
 
-SYSTEM_AGENT = (
+# --- System prompt : socle commun + blocs par domaine ---------------------------
+# run_agent n'envoie que les blocs des domaines retenus (selectionner_domaines) :
+# moins de tokens par appel (palier Mistral gratuit : 25 000 tokens/minute) et
+# moins d'outils parmi lesquels le modèle doit choisir.
+
+SYSTEM_BASE = (
     "Tu es l'assistant RH d'une pharmacie d'officine en France : à la fois expert "
     "RH / droit du travail (Code du travail, CCN pharmacie d'officine IDCC 1996) ET "
     "agent capable d'AGIR sur les données de l'officine grâce à des outils.\n"
@@ -50,10 +56,32 @@ SYSTEM_AGENT = (
     "directement, en français, de façon concrète et actionnable, et signale quand "
     "un point délicat relève de l'avocat ou de l'expert-comptable. Information "
     "générale, pas un conseil juridique engageant. Aucun conseil médical.\n"
-    "- Tu peux AGIR sur le planning et les dossiers avec les outils d'ÉCRITURE "
-    "(ajouter_absence, modifier_horaires_jour, retablir_horaires_jour, supprimer_absence, "
-    "traiter_demande_conges, envoyer_demande_collaborateur, ajouter_note_journal, "
-    "mettre_a_jour_profil, envoyer_mail, envoyer_relance). Avant d'écrire, vérifie ce "
+    "- Chaque outil d'écriture renvoie son résultat réel : « FAIT » (exécuté) ou "
+    "« PROPOSITION » (l'utilisateur confirmera d'un clic). Rapporte EXACTEMENT ce "
+    "statut : ne dis jamais qu'une chose est faite si l'outil a répondu PROPOSITION, "
+    "et ne redemande pas confirmation si l'outil a répondu FAIT.\n"
+    "- MÉMOIRE : tes souvenirs durables sont listés sous « MÉMOIRE » ; tiens-en compte "
+    "sans les répéter. Quand l'utilisateur t'apprend une règle, une habitude ou une "
+    "préférence valable dans le temps (« retiens que… », « désormais… », « le comptable "
+    "préfère… »), appelle memoriser. Jamais de donnée de santé en mémoire.\n"
+    "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
+    "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
+    "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
+    "PRÉPARER un brouillon ou un lien à ouvrir : ne prétends jamais que c'est envoyé.\n"
+)
+
+SYSTEM_FIN = (
+    "- Réponds toujours en français, clairement, et synthétise le résultat des "
+    "outils au lieu de le recracher brut. TEXTE BRUT façon messagerie : pas de "
+    "Markdown (aucun astérisque, aucun #), listes avec des tirets, phrases courtes."
+)
+
+# Blocs de consignes envoyés uniquement quand leur domaine est retenu.
+SYSTEM_DOMAINES = {
+    "planning": (
+    "- Tu peux AGIR sur le planning avec les outils d'ÉCRITURE (ajouter_absence, "
+    "modifier_horaires_jour, retablir_horaires_jour, supprimer_absence, "
+    "traiter_demande_conges, envoyer_demande_collaborateur). Avant d'écrire, vérifie ce "
     "qu'il faut (planning du jour, solde de congés, demandes en attente) avec les outils "
     "de LECTURE. Si une information indispensable manque (date, motif, horaires…), "
     "demande-la au lieu de deviner.\n"
@@ -62,35 +90,32 @@ SYSTEM_AGENT = (
     "W »), c'est une demande d'ENREGISTREMENT : appelle l'outil d'écriture adapté "
     "(ajouter_absence pour plusieurs jours, modifier_horaires_jour pour un jour) dès "
     "que tu as les informations, puis réponds à sa question. Ne te contente JAMAIS de "
-    "reformuler le fait comme s'il était déjà enregistré.\n"
-    "- Chaque outil d'écriture renvoie son résultat réel : « FAIT » (exécuté) ou "
-    "« PROPOSITION » (l'utilisateur confirmera d'un clic). Rapporte EXACTEMENT ce "
-    "statut : ne dis jamais qu'une chose est faite si l'outil a répondu PROPOSITION, "
-    "et ne redemande pas confirmation si l'outil a répondu FAIT.\n"
+    "reformuler le fait comme s'il était déjà enregistré.\n"),
+    "paie": (
     "- RELEVÉS D'HEURES & PAIE : releve_du_mois / stats_heures répondent aux questions "
     "chiffrées (heures sup, soldes) ; corriger_releve, valider_releve et "
     "envoyer_recap_comptable touchent à la PAIE : ils renvoient TOUJOURS une "
     "PROPOSITION à confirmer, même en mode autonome. Avant d'envoyer au comptable, "
-    "appelle apercu_recap_comptable et résume-le à l'utilisateur.\n"
+    "appelle apercu_recap_comptable et résume-le à l'utilisateur.\n"),
+    "dossier": (
     "- DOSSIER SALARIÉ : dossier_salarie donne documents, suggestions, checklists et "
     "statut ; appliquer_suggestion / ignorer_suggestion, cocher_checklist, "
     "changer_statut, valider_document, retyper_document, generer_attestation et "
-    "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"
+    "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"),
+    "mails": (
     "- MAILS RH : mails_rh_du_jour donne la synthèse des e-mails reçus (comptable, "
     "salariés, administratif). Quand une tâche en découle (préparer un document, "
     "relancer quelqu'un, noter une échéance), PROPOSE l'action avec l'outil adapté au "
-    "lieu de seulement la citer. Si la synthèse est ancienne, propose actualiser_mails.\n"
+    "lieu de seulement la citer. Si la synthèse est ancienne, propose actualiser_mails.\n"),
+    "recrutement": (
     "- RECRUTEMENT : les CANDIDATS sont désignés par leur vrai nom (jamais par une "
     "étiquette Employé X) et gérés uniquement avec les outils candidats "
     "(lister_candidats, fiche_candidat, rechercher_candidat, classer_candidats, "
     "preparer_mail_convocation, preparer_mail_refus, changer_statut_candidat, "
     "envoyer_mail_candidat). Ne confonds jamais un candidat et un salarié : n'utilise "
     "jamais un outil salarié pour un candidat, ni l'inverse. L'analyse IA d'un CV est "
-    "consultative : la décision (entretien, refus, embauche) est toujours humaine.\n"
-    "- MÉMOIRE : tes souvenirs durables sont listés sous « MÉMOIRE » ; tiens-en compte "
-    "sans les répéter. Quand l'utilisateur t'apprend une règle, une habitude ou une "
-    "préférence valable dans le temps (« retiens que… », « désormais… », « le comptable "
-    "préfère… »), appelle memoriser. Jamais de donnée de santé en mémoire.\n"
+    "consultative : la décision (entretien, refus, embauche) est toujours humaine.\n"),
+    "pj": (
     "- PIÈCES JOINTES : quand l'utilisateur dépose un fichier ou une photo, un message "
     "« 📎 Pièce jointe déposée » arrive avec son identifiant (pj_…), son type probable "
     "et parfois un extrait ; les pièces non rangées sont listées sous « PIÈCES JOINTES "
@@ -102,15 +127,11 @@ SYSTEM_AGENT = (
     "as la destination, le type et le libellé, appelle ranger_piece_jointe (une fois "
     "par pièce). Si l'utilisateur donne tout dans le même message que le dépôt, range "
     "directement sans reposer la question. Ne décris jamais le contenu médical d'un "
-    "arrêt de travail : nomme-le et range-le, c'est tout.\n"
-    "- ANNULATION : si l'utilisateur veut revenir en arrière sur ce que tu viens de "
-    "faire, appelle annuler_derniere_action (ne refais pas l'inverse à la main).\n"
-    "- Les outils preparer_relance / preparer_attestation / preparer_mail ne font que "
-    "PRÉPARER un brouillon ou un lien à ouvrir : ne prétends jamais que c'est envoyé.\n"
-    "- Réponds toujours en français, clairement, et synthétise le résultat des "
-    "outils au lieu de le recracher brut. TEXTE BRUT façon messagerie : pas de "
-    "Markdown (aucun astérisque, aucun #), listes avec des tirets, phrases courtes."
-)
+    "arrêt de travail : nomme-le et range-le, c'est tout.\n"),
+}
+
+# Prompt complet (tous les blocs) : utilisé quand aucun domaine n'est détecté.
+SYSTEM_AGENT = SYSTEM_BASE + "".join(SYSTEM_DOMAINES.values()) + SYSTEM_FIN
 
 # --- Catalogue d'outils (format neutre, converti par moteur) ---
 # Lecture seule + ACTION (préparent un livrable à confirmer). `params` : nom ->
@@ -656,12 +677,91 @@ OUTILS_DECISION = {"changer_statut_candidat"}
 # Outils PAIE : validation par l'utilisateur OBLIGATOIRE, même en mode autonome.
 OUTILS_PAIE = {"corriger_releve", "valider_releve", "envoyer_recap_comptable"}
 
+# --- Routage par domaine ---------------------------------------------------------
+# Le catalogue complet (54 outils ≈ 9 000 tokens/appel) dépasse vite le palier
+# Mistral gratuit (25 000 tokens/min) et noie mistral-medium. On n'envoie que les
+# outils de base + ceux des domaines détectés dans la conversation ; aucun signal
+# -> catalogue complet (comportement d'avant, jamais pire).
+
+OUTILS_BASE = {"profil_salarie", "lister_employes", "chercher_salarie",
+               "echeances_a_venir", "annuler_derniere_action",
+               "memoriser", "oublier", "souvenirs"}
+
+DOMAINE_OUTILS = {
+    "planning": {"planning_jour", "planning_collaborateur", "solde_conges",
+                 "demandes_conges_en_attente", "absences_en_cours", "ajouter_absence",
+                 "supprimer_absence", "modifier_horaires_jour", "retablir_horaires_jour",
+                 "traiter_demande_conges", "envoyer_demande_collaborateur"},
+    "paie": {"releves_manquants", "releve_du_mois", "stats_heures",
+             "apercu_recap_comptable", "corriger_releve", "valider_releve",
+             "envoyer_recap_comptable", "preparer_relance", "envoyer_relance"},
+    "dossier": {"dossier_salarie", "appliquer_suggestion", "ignorer_suggestion",
+                "analyser_documents", "cocher_checklist", "changer_statut",
+                "valider_document", "retyper_document", "generer_attestation",
+                "envoyer_attestation", "preparer_attestation", "mettre_a_jour_profil",
+                "ajouter_note_journal"},
+    "mails": {"mails_rh_du_jour", "actualiser_mails", "documents_manquants_equipe",
+              "preparer_mail", "envoyer_mail"},
+    "recrutement": {"lister_candidats", "fiche_candidat", "rechercher_candidat",
+                    "classer_candidats", "preparer_mail_convocation", "preparer_mail_refus",
+                    "changer_statut_candidat", "envoyer_mail_candidat"},
+    "pj": {"pieces_en_attente", "ranger_piece_jointe"},
+}
+
+# Mots déclencheurs par domaine, comparés au texte replié (minuscules sans accents) ;
+# chaque alternative matche en préfixe (« conge » couvre congés/congé...).
+MOTS_DOMAINES = {
+    "planning": r"\b(?:planning|horaire|absen|conge|malad|arret\b|arrets\b|formation|"
+                r"travail|repos|vacance|recup|garde|ferie|lundi|mardi|mercredi|jeudi|"
+                r"vendredi|samedi|dimanche|demain|semaine|demande)",
+    "paie": r"\b(?:relev|heure|paie|comptable|recap|valid|relance|solde|sup\b)",
+    "dossier": r"\b(?:dossier|document|attestation|contrat|checklist|statut|suggestion|"
+               r"fiche|profil|journal|note|rib\b|diplome|identite|visite|essai|cdd\b|"
+               r"adresse|telephone|archiv|avenant|certificat|entretien|arret\b|arrets\b)",
+    "mails": r"\b(?:mail|courriel|synthese|comptable|boite|message)",
+    "recrutement": r"\b(?:candidat|cv\b|recrut|entretien|embauche|convoc|refus|postul|annonce)",
+    "pj": r"(?:\b(?:piece|fichier|photo|rang|depos|scan)|pj_)",
+}
+
+_OUTILS_CLASSES = OUTILS_BASE.union(*DOMAINE_OUTILS.values())
+
+
+def _fold(s):
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def selectionner_domaines(msgs, contexte=""):
+    """Domaines pertinents d'après la conversation (déjà pseudonymisée) et le
+    contexte (mémoire, pièces jointes, brief de ronde). Un nom d'outil cité (par
+    l'utilisateur ou par la ronde) sélectionne aussi son domaine.
+    Renvoie None quand rien n'est détecté (-> catalogue complet)."""
+    texte = _fold(" ".join(m.get("content", "") for m in msgs) + " " + (contexte or ""))
+    doms = {d for d, rgx in MOTS_DOMAINES.items() if re.search(rgx, texte)}
+    for d, noms in DOMAINE_OUTILS.items():
+        if d not in doms and any(n in texte for n in noms):
+            doms.add(d)
+    return doms or None
+
+
+def specs_pour(domaines):
+    """Sous-catalogue d'outils : base + domaines retenus, dans l'ordre du catalogue.
+    domaines=None -> catalogue complet. Un outil jamais classé (ajout futur) reste
+    toujours disponible."""
+    if domaines is None:
+        return OUTILS_SPECS
+    retenus = set(OUTILS_BASE)
+    for d in domaines:
+        retenus |= DOMAINE_OUTILS.get(d, set())
+    return [s for s in OUTILS_SPECS
+            if s["nom"] in retenus or s["nom"] not in _OUTILS_CLASSES]
+
 
 def _schema_props(spec):
     return {nom: {"type": t, "description": desc} for nom, (t, desc) in spec["params"].items()}
 
 
-def _tools_mistral():
+def _tools_mistral(specs=None):
     return [{
         "type": "function",
         "function": {
@@ -669,15 +769,15 @@ def _tools_mistral():
             "parameters": {"type": "object", "properties": _schema_props(s),
                            "required": s["requis"]},
         },
-    } for s in OUTILS_SPECS]
+    } for s in (specs if specs is not None else OUTILS_SPECS)]
 
 
-def _tools_claude():
+def _tools_claude(specs=None):
     return [{
         "name": s["nom"], "description": s["description"],
         "input_schema": {"type": "object", "properties": _schema_props(s),
                          "required": s["requis"]},
-    } for s in OUTILS_SPECS]
+    } for s in (specs if specs is not None else OUTILS_SPECS)]
 
 
 def _exec_outil(nom, args, annuaire, table, executer, outils, actions):
@@ -700,7 +800,7 @@ def _exec_outil(nom, args, annuaire, table, executer, outils, actions):
 
 # --- Transports par moteur ---
 
-def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele):
+def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None):
     cle = os.getenv("MISTRAL_API_KEY")
     if not cle:
         raise RuntimeError("MISTRAL_API_KEY manquante.")
@@ -711,7 +811,7 @@ def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele):
     for _ in range(MAX_TOURS):
         rep = _post_json(url, headers, {
             "model": modele or "mistral-small-latest", "messages": convo,
-            "tools": _tools_mistral(), "tool_choice": "auto",
+            "tools": _tools_mistral(specs), "tool_choice": "auto",
             "temperature": 0.2, "max_tokens": 1500})
         message = rep["choices"][0]["message"]
         tcs = message.get("tool_calls")
@@ -733,7 +833,7 @@ def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele):
     return rep["choices"][0]["message"].get("content") or "(pas de réponse)", outils, actions
 
 
-def _boucle_claude(systeme, msgs, annuaire, table, executer, modele):
+def _boucle_claude(systeme, msgs, annuaire, table, executer, modele, specs=None):
     cle = os.getenv("ANTHROPIC_API_KEY")
     if not cle:
         raise RuntimeError("ANTHROPIC_API_KEY manquante.")
@@ -745,7 +845,7 @@ def _boucle_claude(systeme, msgs, annuaire, table, executer, modele):
     for _ in range(MAX_TOURS):
         rep = _post_json(url, headers, {
             "model": modele or "claude-haiku-4-5", "max_tokens": 1500,
-            "system": systeme, "messages": convo, "tools": _tools_claude()})
+            "system": systeme, "messages": convo, "tools": _tools_claude(specs)})
         blocks = rep.get("content", [])
         if rep.get("stop_reason") == "tool_use":
             convo.append({"role": "assistant", "content": blocks})
@@ -866,7 +966,13 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
             msgs.append({"role": m["role"], "content": c})
     if msgs and msgs[0]["role"] == "assistant":
         msgs = msgs[1:]
-    systeme = SYSTEM_AGENT + "\n\n" + contexte_date()
+    # Routage : blocs de consignes + sous-catalogue d'outils du/des domaines
+    # détectés ; rien de détecté -> prompt et catalogue complets.
+    domaines = selectionner_domaines(msgs, contexte)
+    specs = specs_pour(domaines)
+    blocs = "".join(txt for d, txt in SYSTEM_DOMAINES.items()
+                    if domaines is None or d in domaines)
+    systeme = SYSTEM_BASE + blocs + SYSTEM_FIN + "\n\n" + contexte_date()
     if mode == "autonome":
         systeme += ("\nMODE AUTONOME : tes outils d'écriture EXÉCUTENT immédiatement. "
                     "Agis avec prudence (vérifie avant d'écrire) puis rends compte de ce "
@@ -881,11 +987,13 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
         systeme += f"\n\nSalariés (anonymisés) :\n{roster_txt}"
 
     if moteur == "claude":
-        texte, outils, actions = _boucle_claude(systeme, msgs, annuaire, table, executer, modele)
+        texte, outils, actions = _boucle_claude(systeme, msgs, annuaire, table, executer,
+                                                modele, specs)
     elif moteur == "fake":
         texte, outils, actions = _boucle_fake(msgs, annuaire, table, executer)
     else:
-        texte, outils, actions = _boucle_mistral(systeme, msgs, annuaire, table, executer, modele)
+        texte, outils, actions = _boucle_mistral(systeme, msgs, annuaire, table, executer,
+                                                 modele, specs)
 
     # Ré-identifie en local pour l'affichage (étiquettes -> prénoms réels).
     return {"reply": reidentifier(texte, inverse), "outils_utilises": outils,
