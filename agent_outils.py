@@ -1744,7 +1744,58 @@ def _w_envoyer_attestation(args, annuaire, executer):
     return resume + f"\n→ {etat} ; copie rangée dans ses documents (/admin/document/{doc_id})", True
 
 
-OUTILS_LECTURE_DOSSIER = {"dossier_salarie": _o_dossier_salarie}
+def _o_lire_document(args, annuaire):
+    """Q&A documents : renvoie le texte extrait d'un document du dossier pour
+    répondre à une question précise (fin de période d'essai sur le contrat,
+    salaire de la promesse…). La boucle agent re-pseudonymise la sortie ; IBAN
+    et n° de sécurité sociale sont masqués ici. Jamais d'arrêt de travail
+    (donnée de santé)."""
+    e = _employe(args.get("employe"), annuaire)
+    if not e:
+        return "Salarié introuvable (étiquette « Employé X » attendue)."
+    docs = _docs_de(e["email"])
+    if not docs:
+        return "Aucun document déposé dans ce dossier."
+    cible = (args.get("document") or "").strip()
+    doc = _doc_par_id(e["email"], cible)
+    if not doc and cible:
+        vf = _fold(cible)
+        cands = [d for d in docs
+                 if vf and (vf in _fold(d.get("type", ""))
+                            or vf in _fold(d.get("libelle", "") or d.get("nom_original", "")))]
+        if len(cands) == 1:
+            doc = cands[0]
+        elif cands:
+            return ("Plusieurs documents correspondent, précise l'id :\n"
+                    + "\n".join(f"- {d['id']} : {d.get('type', '?')} ({d.get('nom_original', '')})"
+                                for d in cands[:10]))
+    if not doc:
+        return ("Document introuvable. Disponibles :\n"
+                + "\n".join(f"- {d['id']} : {d.get('type', '?')} ({d.get('nom_original', '')})"
+                            for d in docs[:15]))
+    if "arrêt" in (doc.get("type") or "").lower() or "arret" in _fold(doc.get("type") or ""):
+        return ("Document médical (arrêt de travail) : je n'en lis pas le contenu. "
+                "Sa date de fin est visible dans dossier_salarie.")
+    try:
+        with open(os.path.join(DOCS_DIR, doc["fichier"]), "rb") as fp:
+            texte = extraction_pj.extraire_texte(doc.get("nom_original") or doc["fichier"],
+                                                 fp.read()) or ""
+    except Exception as ex:
+        return f"Lecture impossible ({type(ex).__name__})."
+    if not texte.strip():
+        return ("Texte illisible (PDF scanné sans OCR ?) : le document existe mais ne "
+                "peut pas être lu ici.")
+    texte = re.sub(r"\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,8}\b", "[IBAN masqué]", texte)
+    texte = re.sub(r"\b[12]\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}(?:\s?\d{2})?\b",
+                   "[n° sécu masqué]", texte)
+    if len(texte) > 2500:
+        texte = texte[:2500] + "\n[… tronqué : pose une question précise sur ce début de document]"
+    return (f"Texte extrait du document « {doc.get('type', '?')} — "
+            f"{doc.get('nom_original', '')} » :\n{texte}")
+
+
+OUTILS_LECTURE_DOSSIER = {"dossier_salarie": _o_dossier_salarie,
+                          "lire_document": _o_lire_document}
 
 # --- Outils MAILS RH & ÉQUIPE ---------------------------------------------------------
 

@@ -87,6 +87,8 @@ CAS = [
     {"phrase": "on embauche Paul Martin comme préparateur à partir du 1er novembre, "
                "son mail est paul.martin@exemple.fr",
      "attendus": {"creer_salarie"}},
+    {"phrase": "quelle est la date de fin de période d'essai sur le contrat de Sammy ?",
+     "attendus": {"lire_document", "dossier_salarie", "profil_salarie"}},
     # Mails RH
     {"phrase": "qu'a demandé le comptable dans ses mails ?",
      "attendus": {"mails_rh_du_jour"}},

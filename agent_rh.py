@@ -104,6 +104,9 @@ SYSTEM_DOMAINES = {
     "statut ; appliquer_suggestion / ignorer_suggestion, cocher_checklist, "
     "changer_statut, valider_document, retyper_document, generer_attestation et "
     "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"
+    "- Question précise sur le CONTENU d'un document (« quelle est la fin d'essai sur "
+    "le contrat ? », « quel salaire sur la promesse ? ») : lire_document, puis réponds "
+    "avec la citation exacte. Ne devine jamais ce qu'un document contient.\n"
     "- ONBOARDING : pour une nouvelle embauche (hors module candidats), creer_salarie "
     "fait la séquence complète (fiche, poste, date d'entrée, heures, journal) en UNE "
     "validation. Enchaîne ensuite en proposant le mail de bienvenue (envoyer_mail) et "
@@ -498,6 +501,17 @@ OUTILS_SPECS += [
         "requis": ["employe"],
     },
     {
+        "nom": "lire_document",
+        "description": "Lit le TEXTE d'un document du dossier (contrat, promesse, "
+                       "avenant…) pour répondre à une question précise : date de fin "
+                       "d'essai, salaire, durée, clauses. document = id donné par "
+                       "dossier_salarie, ou type/libellé approximatif (« contrat »). "
+                       "Jamais d'arrêt de travail (donnée de santé).",
+        "params": {"employe": ("string", "Étiquette « Employé X »"),
+                   "document": ("string", "Id du document, ou type approximatif")},
+        "requis": ["employe"],
+    },
+    {
         "nom": "appliquer_suggestion",
         "description": "Applique une suggestion extraite d'un document (écrit le champ "
                        "dans la fiche). suggestion = id donné par dossier_salarie, ou "
@@ -730,7 +744,7 @@ DOMAINE_OUTILS = {
     "paie": {"releves_manquants", "releve_du_mois", "stats_heures",
              "apercu_recap_comptable", "corriger_releve", "valider_releve",
              "envoyer_recap_comptable", "preparer_relance", "envoyer_relance"},
-    "dossier": {"dossier_salarie", "appliquer_suggestion", "ignorer_suggestion",
+    "dossier": {"dossier_salarie", "lire_document", "appliquer_suggestion", "ignorer_suggestion",
                 "analyser_documents", "cocher_checklist", "changer_statut",
                 "valider_document", "retyper_document", "generer_attestation",
                 "envoyer_attestation", "preparer_attestation", "mettre_a_jour_profil",

@@ -336,6 +336,56 @@ if employes:
     if not ok_cs:
         echecs.append("creer_salarie KO")
 
+# --- lire_document : lecture réelle d'un PDF de test + masquage + refus médical ---
+if employes:
+    import agent_outils as AOd
+    from assistant_rh import annuaire_pseudo as _ann_ld
+    _annd = _ann_ld(employes)
+    _lab0 = next((l for l, e in _annd.items() if not AOd._docs_de(e["email"])),
+                 next(iter(_annd)))
+    _em0 = _annd[_lab0]["email"]
+    from reportlab.pdfgen import canvas as _cv
+    import io as _io
+    _buf = _io.BytesIO()
+    _c = _cv.Canvas(_buf)
+    _c.drawString(50, 800, "CONTRAT DE TRAVAIL - Periode d'essai jusqu'au 30/11/2026.")
+    _c.drawString(50, 780, "IBAN FR76 3000 4000 0312 3456 7890 143")
+    _c.save()
+    _pdf_nom = "_smoke_lire_doc.pdf"
+    _pdf_chemin = os.path.join(A.DOCS_DIR, _pdf_nom)
+    _idx_avant = open(A.DOCS_INDEX, encoding="utf-8").read() if os.path.exists(A.DOCS_INDEX) else None
+    try:
+        os.makedirs(A.DOCS_DIR, exist_ok=True)
+        with open(_pdf_chemin, "wb") as _fp:
+            _fp.write(_buf.getvalue())
+        _idx = A.charger_docs_index()
+        _idx.setdefault(_em0, []).append({"id": "smokedoc001", "fichier": _pdf_nom,
+                                          "nom_original": "contrat_test.pdf",
+                                          "type": "Contrat de travail"})
+        A.sauvegarder_docs_index(_idx)
+        with A.app.app_context():
+            _r = AOd._o_lire_document({"employe": _lab0, "document": "smokedoc001"}, _annd)
+            _r2 = AOd._o_lire_document({"employe": _lab0, "document": "contrat"}, _annd)
+    finally:
+        try:
+            os.remove(_pdf_chemin)
+        except OSError:
+            pass
+        if _idx_avant is None:
+            try:
+                os.remove(A.DOCS_INDEX)
+            except OSError:
+                pass
+        else:
+            open(A.DOCS_INDEX, "w", encoding="utf-8").write(_idx_avant)
+    ok_lect = "essai jusqu'au 30/11/2026" in _r and "[IBAN masqué]" in _r and "FR76" not in _r
+    ok_type = "essai jusqu'au 30/11/2026" in _r2   # résolution par type approximatif
+    ok_ld = ok_lect and ok_type
+    print(("OK " if ok_ld else "KO ")
+          + f"[--] lire_document (texte PDF={ok_lect} par type={ok_type})")
+    if not ok_ld:
+        echecs.append("lire_document KO")
+
 # --- Routage par domaine : sous-catalogue d'outils + blocs de prompt ---
 if employes:
     import agent_outils as AOx
