@@ -119,6 +119,23 @@
     .chk-titre { font-weight:bold; color:#1F4E79; font-size:0.9em; margin-bottom:8px; }
     .chk-row { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:0.9em; color:#333; cursor:pointer; }
     @media (max-width:600px){ .chk-cols { grid-template-columns:1fr; } }
+
+    /* Navigation entre fiches (entête) */
+    .fiche-nav { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .fn-btn { display:flex; align-items:center; justify-content:center; width:34px; height:34px;
+      background:#eaf1fb; color:#1F4E79; border-radius:8px; text-decoration:none;
+      font-size:1.25em; font-weight:bold; line-height:1; }
+    .fn-btn:hover { background:#1F4E79; color:white; }
+    .fn-select { padding:7px 10px; border:1px solid #ccd6e4; border-radius:8px;
+      font-size:0.9em; color:#1F4E79; font-weight:bold; background:white; max-width:220px; cursor:pointer; }
+    .fiche-nav .retour { margin-left:6px; }
+
+    /* Sommaire de la fiche */
+    .sommaire { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+    .som-chip { border:1px solid #dde3ed; background:#f5f8fc; color:#1F4E79;
+      padding:6px 12px; border-radius:16px; font-size:0.82em; font-weight:bold; cursor:pointer; }
+    .som-chip:hover { background:#1F4E79; color:white; border-color:#1F4E79; }
+    @media (max-width:600px){ .fn-select { max-width:150px; } }
   </style>
 </head>
 <body>
@@ -144,7 +161,36 @@
         </div>
       </div>
     </div>
-    <a href="/admin/employes" class="retour" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
+    <div class="fiche-nav">
+      {% if nav_prec %}<a class="fn-btn" data-nav="prec" href="/admin/employe?email={{ nav_prec.email|urlencode }}"
+         title="Fiche précédente ({{ nav_prec.prenom }} {{ nav_prec.nom|upper }}) — flèche ←">‹</a>{% endif %}
+      <select class="fn-select" onchange="if(this.value)window.location='/admin/employe?email='+encodeURIComponent(this.value)"
+              title="Aller à une autre fiche">
+        {% for f in fiches_nav if not f.archive %}
+        <option value="{{ f.email }}" {% if f.email == emp.email %}selected{% endif %}>{{ f.prenom }} {{ f.nom|upper }}</option>
+        {% endfor %}
+        {% set archives_nav = fiches_nav|selectattr('archive')|list %}
+        {% if archives_nav %}
+        <optgroup label="Archivés">
+          {% for f in archives_nav %}
+          <option value="{{ f.email }}" {% if f.email == emp.email %}selected{% endif %}>{{ f.prenom }} {{ f.nom|upper }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endif %}
+      </select>
+      {% if nav_suiv %}<a class="fn-btn" data-nav="suiv" href="/admin/employe?email={{ nav_suiv.email|urlencode }}"
+         title="Fiche suivante ({{ nav_suiv.prenom }} {{ nav_suiv.nom|upper }}) — flèche →">›</a>{% endif %}
+      <a href="/admin/employes" class="retour">← Équipe</a>
+    </div>
+  </div>
+
+  <!-- Sommaire : ouvre la section et scrolle dessus -->
+  <div class="sommaire">
+    <button type="button" class="som-chip" onclick="allerSection('dossier')">📁 Dossier</button>
+    <button type="button" class="som-chip" onclick="allerSection('documents')">📎 Documents ({{ documents|length }})</button>
+    <button type="button" class="som-chip" onclick="allerSection('journal')">📒 Journal ({{ journal|length }})</button>
+    <button type="button" class="som-chip" onclick="allerSection('checklists')">✅ Arrivée / Départ</button>
+    <button type="button" class="som-chip" onclick="allerSection('heures')">📈 Heures {{ annee }}</button>
   </div>
 
   <div class="fiche-actions">
@@ -244,7 +290,7 @@
   {% endif %}
 
   <!-- Dossier salarié -->
-  <details class="dossier" {% if not profil.poste %}open{% endif %}>
+  <details class="dossier" id="dossier" {% if not profil.poste %}open{% endif %}>
     <summary>📁 Dossier salarié</summary>
     <form method="POST" action="/admin/employe/photo" enctype="multipart/form-data" class="photo-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -438,7 +484,7 @@
   </details>
 
   <!-- Journal RH -->
-  <details class="dossier" open>
+  <details class="dossier" id="journal" open>
     <summary>📒 Journal RH ({{ journal|length }})</summary>
     <div class="profil-form">
       <form method="POST" action="/admin/employe/journal" class="journal-form">
@@ -477,7 +523,7 @@
   </details>
 
   <!-- Checklists arrivée / départ -->
-  <details class="dossier">
+  <details class="dossier" id="checklists">
     <summary>✅ Arrivée / Départ</summary>
     <div class="profil-form chk-cols">
       <form method="POST" action="/admin/employe/checklist">
@@ -503,7 +549,7 @@
     </div>
   </details>
 
-  <div class="cumuls">
+  <div class="cumuls" id="heures">
     <div class="cumul"><div class="val">{{ cumul_plus }} h</div><div class="lab">Total H+ (année)</div></div>
     <div class="cumul"><div class="val">{{ cumul_moins }} h</div><div class="lab">Total H− (année)</div></div>
     <div class="cumul"><div class="val">{% if cumul_solde >= 0 %}+{% endif %}{{ cumul_solde }} h</div><div class="lab">Solde annuel</div></div>
@@ -546,6 +592,25 @@
     },
     options: { responsive: true, plugins: { legend: { position: 'top' } } }
   });
+</script>
+<script>
+// Sommaire : ouvre la section (si repliée) puis scrolle dessus.
+function allerSection(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName === 'DETAILS') el.open = true;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// Flèches ← / → : fiche précédente / suivante (inactif dans les champs de saisie).
+document.addEventListener('keydown', function (e) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  var t = (e.target.tagName || '').toLowerCase();
+  if (t === 'input' || t === 'textarea' || t === 'select' || e.target.isContentEditable) return;
+  var nav = e.key === 'ArrowLeft' ? 'prec' : e.key === 'ArrowRight' ? 'suiv' : null;
+  if (!nav) return;
+  var a = document.querySelector('.fn-btn[data-nav="' + nav + '"]');
+  if (a) window.location = a.href;
+});
 </script>
 </body>
 </html>

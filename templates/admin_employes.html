@@ -46,6 +46,7 @@
     .filtres { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
     .filtres select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85em; }
     .f-check { font-size: 0.85em; color: #555; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .f-compteur { margin-left: auto; font-size: 0.82em; color: #888; }
 
     /* Grille de cartes */
     .grille-emp { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
@@ -166,7 +167,7 @@
     </form>
   </details>
 
-  <input type="text" id="recherche" placeholder="Rechercher (nom, email, poste)..." oninput="filtrer()">
+  <input type="text" id="recherche" placeholder="Rechercher (nom, email, poste)... — raccourci : touche /" oninput="filtrer()">
   <div class="filtres">
     <select id="f-poste" onchange="filtrer()">
       <option value="">Tous les postes</option>
@@ -176,8 +177,15 @@
       <option value="">Tous les contrats</option>
       {% for c in contrats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
     </select>
+    <select id="f-tri" onchange="trier()" title="Ordre d'affichage">
+      <option value="nom">Tri : nom A→Z</option>
+      <option value="poste">Tri : poste</option>
+      <option value="alertes">Tri : alertes d'abord</option>
+      <option value="manquants">Tri : docs manquants d'abord</option>
+    </select>
     <label class="f-check"><input type="checkbox" id="f-alerte" onchange="filtrer()"> ⚠️ Avec alerte</label>
     <label class="f-check"><input type="checkbox" id="f-manque" onchange="filtrer()"> 📋 Docs manquants</label>
+    <span id="compteur" class="f-compteur"></span>
   </div>
 
   <!-- Grille de cartes employés -->
@@ -331,7 +339,45 @@ function filtrer() {
     if (ok) visibles++;
   });
   document.getElementById('aucun').style.display = visibles ? 'none' : 'block';
+  document.getElementById('compteur').textContent =
+    visibles === cartes.length ? cartes.length + ' collaborateur(s)'
+                               : visibles + ' / ' + cartes.length + ' affiché(s)';
 }
+function trier() {
+  var mode = document.getElementById('f-tri').value;
+  var grille = document.getElementById('grille');
+  var cartes = Array.from(grille.querySelectorAll('.carte-emp'));
+  cartes.sort(function (a, b) {
+    if (mode === 'alertes') {
+      var d = parseInt(b.dataset.alertes) - parseInt(a.dataset.alertes);
+      if (d) return d;
+    } else if (mode === 'manquants') {
+      var d2 = parseInt(b.dataset.manquants) - parseInt(a.dataset.manquants);
+      if (d2) return d2;
+    } else if (mode === 'poste') {
+      var p = (a.dataset.poste || 'zzz').localeCompare(b.dataset.poste || 'zzz', 'fr');
+      if (p) return p;
+    }
+    return a.dataset.nom.localeCompare(b.dataset.nom, 'fr');
+  });
+  cartes.forEach(function (c) { grille.appendChild(c); });
+}
+// Raccourcis : « / » place le curseur dans la recherche ; Entrée ouvre la
+// première fiche affichée.
+document.addEventListener('keydown', function (e) {
+  var t = (e.target.tagName || '').toLowerCase();
+  if (e.key === '/' && t !== 'input' && t !== 'textarea' && t !== 'select') {
+    e.preventDefault();
+    document.getElementById('recherche').focus();
+  }
+});
+document.getElementById('recherche').addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  var premiere = Array.from(document.querySelectorAll('#grille .carte-emp'))
+    .find(function (c) { return c.style.display !== 'none'; });
+  if (premiere) premiere.click();
+});
+filtrer();
 </script>
 </body>
 </html>

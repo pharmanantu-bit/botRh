@@ -2027,7 +2027,18 @@ def admin_employe():
     mail_bienvenue_url = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                           + urllib.parse.quote(email) + "&su=" + urllib.parse.quote(su_b)
                           + "&body=" + urllib.parse.quote(corps_b))
+    # Navigation entre fiches : ordre alphabétique, archivés en fin de liste.
+    profils_tous = charger_profils()
+    fiches_nav = sorted(
+        ({"prenom": f["prenom"], "nom": f.get("nom", ""), "email": f["email"],
+          "archive": profils_tous.get(f["email"], {}).get("statut") == "archive"}
+         for f in charger_employes()),
+        key=lambda f: (f["archive"], f["prenom"].lower(), f["nom"].lower()))
+    idx_nav = next((i for i, f in enumerate(fiches_nav) if f["email"] == email), 0)
+    nav_prec = fiches_nav[idx_nav - 1] if len(fiches_nav) > 1 else None
+    nav_suiv = fiches_nav[(idx_nav + 1) % len(fiches_nav)] if len(fiches_nav) > 1 else None
     return render_template("admin_employe.html", emp=emp, annee=annee, mois_data=mois_data,
+                           fiches_nav=fiches_nav, nav_prec=nav_prec, nav_suiv=nav_suiv,
                            mail_bienvenue_url=mail_bienvenue_url,
                            cumul_plus=round(cp, 2), cumul_moins=round(cm, 2),
                            cumul_solde=round(cp - cm, 2),
