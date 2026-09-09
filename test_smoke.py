@@ -286,6 +286,56 @@ if employes:
     if not ok_rp:
         echecs.append("proposer_remplacant KO")
 
+# --- creer_salarie : garde-fous + exécution réelle (fichiers restaurés ensuite) ---
+if employes:
+    import agent_outils as AOc
+    from assistant_rh import annuaire_pseudo as _ann_cs
+    _annc = _ann_cs(employes)
+    _t1, _ok1 = AOc._w_creer_salarie({"prenom": "Testonb", "nom": "Smoke",
+                                      "email": "pas-un-mail"}, _annc, False)
+    _t2, _ok2 = AOc._w_creer_salarie({"prenom": employes[0]["prenom"],
+                                      "nom": employes[0].get("nom", ""),
+                                      "email": "autre@exemple.fr"}, _annc, False)
+    _t3, _ok3 = AOc._w_creer_salarie({"prenom": "Testonb", "nom": "Smoke",
+                                      "email": "testonb.smoke@exemple.fr",
+                                      "poste": "préparateur", "date_entree": "2026-10-01"},
+                                     _annc, False)
+    # exécution réelle sur les vrais fichiers, restaurés à l'identique juste après
+    _f_emp = A.employees_path(pour_ecriture=True)
+    _sauv = {}
+    for _f in (_f_emp, A.PROFILS_FILE):
+        try:
+            _sauv[_f] = open(_f, encoding="utf-8").read()
+        except FileNotFoundError:
+            _sauv[_f] = None
+    try:
+        _t4, _ok4 = AOc._w_creer_salarie({"prenom": "Testonb", "nom": "Smoke",
+                                          "email": "testonb.smoke@exemple.fr",
+                                          "poste": "préparateur", "actif": "false"}, _annc, True)
+        _apres = A.charger_employes()
+        _prof4 = A.charger_profils().get("testonb.smoke@exemple.fr", {})
+        ok_exec = (_ok4 and any(x["email"] == "testonb.smoke@exemple.fr" for x in _apres)
+                   and _prof4.get("poste") == "Préparateur"
+                   and _prof4.get("releves_actif") is False
+                   and any("agent RH" in (j.get("note") or "") for j in _prof4.get("journal", []))
+                   and "Employé" in _t4)
+    finally:
+        for _f, _c in _sauv.items():
+            if _c is None:
+                try:
+                    os.remove(_f)
+                except OSError:
+                    pass
+            else:
+                open(_f, "w", encoding="utf-8").write(_c)
+    ok_restaure = not any(x["email"] == "testonb.smoke@exemple.fr" for x in A.charger_employes())
+    ok_cs = (not _ok1) and (not _ok2) and _ok3 and ok_exec and ok_restaure
+    print(("OK " if ok_cs else "KO ")
+          + f"[--] creer_salarie (refus mail={not _ok1} refus doublon={not _ok2} "
+            f"description={_ok3} exécution={ok_exec} restauré={ok_restaure})")
+    if not ok_cs:
+        echecs.append("creer_salarie KO")
+
 # --- Routage par domaine : sous-catalogue d'outils + blocs de prompt ---
 if employes:
     import agent_outils as AOx

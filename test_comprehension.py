@@ -84,6 +84,9 @@ CAS = [
      "attendus": {"mettre_a_jour_profil"}},
     {"phrase": "la visite médicale de Lionel est prévue le 12/10",
      "attendus": {"mettre_a_jour_profil", "profil_salarie", "ajouter_note_journal"}},
+    {"phrase": "on embauche Paul Martin comme préparateur à partir du 1er novembre, "
+               "son mail est paul.martin@exemple.fr",
+     "attendus": {"creer_salarie"}},
     # Mails RH
     {"phrase": "qu'a demandé le comptable dans ses mails ?",
      "attendus": {"mails_rh_du_jour"}},

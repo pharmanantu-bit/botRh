@@ -32,7 +32,8 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, request, render_template, redirect, url_for, session, abort, current_app
 
 from app import (_lire_json, _ecrire_json, BASE_DIR, charger_employes, charger_profils,
-                 sauvegarder_profils, collaborateur_actif, CHAMPS_PROFIL, API_CLE, MOIS_FR,
+                 sauvegarder_profils, sauvegarder_employes, employees_path, POSTES,
+                 collaborateur_actif, CHAMPS_PROFIL, API_CLE, MOIS_FR,
                  executer_outil_agent, _roster_pseudo, _OUTILS_AGENT, declencher_workflow,
                  charger_reponses, ecrire_reponses, reponses_file, construire_resume_paie,
                  paie_envoi_file, PROFILS_FILE, DOCS_DIR, DOCS_INDEX, charger_docs_index,
@@ -163,7 +164,7 @@ def _fichiers_etat(args):
     mois, annee = _mois_annee(args or {})
     f = [PE.ABSENCES_FILE, PE.CHANGEMENTS_FILE, PE.DEMANDES_CP_FILE, PE.DEMANDES_ADMIN_FILE,
          PROFILS_FILE, DOCS_INDEX, REC.CANDIDATS_FILE, MEMOIRE_FILE, PJ_INDEX,
-         REC.CANDIDATS_DOCS_INDEX,
+         REC.CANDIDATS_DOCS_INDEX, employees_path(pour_ecriture=True),
          reponses_file(mois, annee), reponses_file()]
     return list(dict.fromkeys(f))
 
@@ -860,6 +861,72 @@ def _w_ajouter_note_journal(args, annuaire, executer):
         profils[e["email"]] = profil
         sauvegarder_profils(profils)
     return resume, True
+
+
+def _w_creer_salarie(args, annuaire, executer):
+    """Séquence d'ONBOARDING en une seule action confirmable : entrée dans la
+    liste des salariés + profil (poste, date d'entrée, heures) + note journal.
+    Le mail de bienvenue et la checklist restent des étapes séparées, proposées
+    dans le compte-rendu (jamais d'envoi automatique)."""
+    prenom = (args.get("prenom") or "").strip()
+    nom = (args.get("nom") or "").strip()
+    email = (args.get("email") or "").strip().lower()
+    if not prenom or not nom:
+        return "Prénom ET nom obligatoires pour créer la fiche.", False
+    if not re.match(r"^[\w.+-]+@[\w-]+\.[\w.-]+$", email):
+        return "E-mail invalide ou manquant (indispensable : il y recevra ses relevés d'heures).", False
+    employes = charger_employes()
+    if any(x["email"].strip().lower() == email for x in employes):
+        return f"Refusé : un salarié utilise déjà cet e-mail.", False
+    if any(_fold(x["prenom"]) == _fold(prenom) and _fold(x.get("nom", "")) == _fold(nom)
+           for x in employes):
+        return f"Refusé : {prenom} {nom} est déjà dans l'équipe.", False
+    poste = (args.get("poste") or "").strip()
+    if poste:
+        p_ok = next((p for p in POSTES if _fold(p) == _fold(poste)
+                     or _fold(p).startswith(_fold(poste))), None)
+        if not p_ok:
+            return "Poste inconnu « " + poste + " ». Postes : " + ", ".join(POSTES) + ".", False
+        poste = p_ok
+    d_entree = _date(args.get("date_entree")) if args.get("date_entree") else None
+    if args.get("date_entree") and not d_entree:
+        return "date_entree invalide (attendu AAAA-MM-JJ).", False
+    heures = (args.get("heures_hebdo") or "").strip()
+    actif = str(args.get("actif", "true")).lower() not in ("false", "0", "non", "no")
+    etapes = [f"fiche {prenom} {nom} <{email}>"]
+    if poste:
+        etapes.append(f"poste « {poste} »")
+    if d_entree:
+        etapes.append(f"entrée le {_fr(d_entree)}")
+    if heures:
+        etapes.append(f"{heures} h/semaine")
+    etapes.append("statut ACTIF (relevés + planning)" if actif
+                  else "statut INACTIF (pas encore arrivé : hors relevés et planning)")
+    resume = "Onboarding : " + ", ".join(etapes) + ", note au journal"
+    if not executer:
+        return resume, True
+    employes.append({"prenom": prenom, "nom": nom, "email": email})
+    sauvegarder_employes(employes)
+    profils = charger_profils()
+    prof = profils.get(email, {})
+    if poste:
+        prof["poste"] = poste
+    if d_entree:
+        prof["date_entree"] = d_entree.strftime("%d/%m/%Y")
+    if heures:
+        prof["heures_contractuelles_hebdo"] = heures
+    if not actif:
+        prof["releves_actif"] = False
+    prof.setdefault("journal", []).append({
+        "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"),
+        "type": "Autre", "note": "Arrivée dans l'équipe — fiche créée par l'agent RH."})
+    profils[email] = prof
+    sauvegarder_profils(profils)
+    from assistant_rh import _alpha
+    label = f"Employé {_alpha(len(employes) - 1)}"
+    return (resume + f". Nouvelle étiquette : {label}. Étapes suivantes à proposer : "
+            "mail de bienvenue (envoyer_mail), checklist d'arrivée (cocher_checklist), "
+            "documents à réclamer (dossier_salarie)."), True
 
 
 def _w_mettre_a_jour_profil(args, annuaire, executer):
@@ -2201,6 +2268,7 @@ OUTILS_ECRITURE_IMPL = {
     "traiter_demande_conges": _w_traiter_demande_conges,
     "envoyer_demande_collaborateur": _w_envoyer_demande_collaborateur,
     "ajouter_note_journal": _w_ajouter_note_journal,
+    "creer_salarie": _w_creer_salarie,
     "mettre_a_jour_profil": _w_mettre_a_jour_profil,
     "envoyer_mail": _w_envoyer_mail,
     "envoyer_relance": _w_envoyer_relance,

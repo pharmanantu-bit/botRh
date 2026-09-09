@@ -103,7 +103,11 @@ SYSTEM_DOMAINES = {
     "- DOSSIER SALARIÉ : dossier_salarie donne documents, suggestions, checklists et "
     "statut ; appliquer_suggestion / ignorer_suggestion, cocher_checklist, "
     "changer_statut, valider_document, retyper_document, generer_attestation et "
-    "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"),
+    "envoyer_attestation agissent dessus. Utilise les ids renvoyés par dossier_salarie.\n"
+    "- ONBOARDING : pour une nouvelle embauche (hors module candidats), creer_salarie "
+    "fait la séquence complète (fiche, poste, date d'entrée, heures, journal) en UNE "
+    "validation. Enchaîne ensuite en proposant le mail de bienvenue (envoyer_mail) et "
+    "la checklist d'arrivée (cocher_checklist). Pas encore arrivé : actif=false.\n"),
     "mails": (
     "- MAILS RH : mails_rh_du_jour donne la synthèse des e-mails reçus (comptable, "
     "salariés, administratif). Quand une tâche en découle (préparer un document, "
@@ -336,6 +340,22 @@ OUTILS_SPECS = [
                    "type_evenement": ("string", "Entretien | Augmentation | Avertissement | "
                                                  "Formation | Congés | Autre (optionnel)")},
         "requis": ["employe", "note"],
+    },
+    {
+        "nom": "creer_salarie",
+        "description": "ONBOARDING en une action : crée un nouveau salarié (fiche + "
+                       "poste + date d'entrée + heures/semaine + note au journal). Pour "
+                       "une arrivée hors module candidats. À la suite, propose le mail "
+                       "de bienvenue (envoyer_mail) et la checklist d'arrivée.",
+        "params": {"prenom": ("string", "Prénom"),
+                   "nom": ("string", "Nom de famille"),
+                   "email": ("string", "E-mail personnel (recevra ses relevés d'heures)"),
+                   "poste": ("string", "Poste (optionnel, libellé approximatif accepté)"),
+                   "date_entree": ("string", "Premier jour AAAA-MM-JJ (optionnel)"),
+                   "heures_hebdo": ("string", "Heures contractuelles/semaine, ex. 35 (optionnel)"),
+                   "actif": ("boolean", "false = pas encore arrivé : hors relevés et "
+                                        "planning jusqu'à activation (défaut true)")},
+        "requis": ["prenom", "nom", "email"],
     },
     {
         "nom": "mettre_a_jour_profil",
@@ -679,7 +699,7 @@ OUTILS_SPECS += [
 OUTILS_ECRITURE = {
     "ajouter_absence", "supprimer_absence", "modifier_horaires_jour",
     "retablir_horaires_jour", "traiter_demande_conges", "envoyer_demande_collaborateur",
-    "ajouter_note_journal", "mettre_a_jour_profil", "envoyer_mail", "envoyer_relance",
+    "ajouter_note_journal", "creer_salarie", "mettre_a_jour_profil", "envoyer_mail", "envoyer_relance",
     "corriger_releve", "valider_releve", "envoyer_recap_comptable", "annuler_derniere_action",
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
@@ -714,7 +734,7 @@ DOMAINE_OUTILS = {
                 "analyser_documents", "cocher_checklist", "changer_statut",
                 "valider_document", "retyper_document", "generer_attestation",
                 "envoyer_attestation", "preparer_attestation", "mettre_a_jour_profil",
-                "ajouter_note_journal", "documents_manquants_equipe"},
+                "ajouter_note_journal", "documents_manquants_equipe", "creer_salarie"},
     "mails": {"mails_rh_du_jour", "actualiser_mails", "documents_manquants_equipe",
               "preparer_mail", "envoyer_mail"},
     "recrutement": {"lister_candidats", "fiche_candidat", "rechercher_candidat",
@@ -732,7 +752,8 @@ MOTS_DOMAINES = {
     "paie": r"\b(?:relev|heure|paie|comptable|recap|valid|relance|solde|sup\b)",
     "dossier": r"\b(?:dossier|document|attestation|contrat|checklist|statut|suggestion|"
                r"fiche|profil|journal|note|rib\b|diplome|identite|visite|essai|cdd\b|"
-               r"adresse|telephone|archiv|avenant|certificat|entretien|arret\b|arrets\b)",
+               r"adresse|telephone|archiv|avenant|certificat|entretien|arret\b|arrets\b|"
+               r"embauch|onboard|recrue|nouveau|nouvelle|arrive|integr)",
     "mails": r"\b(?:mail|courriel|synthese|comptable|boite|message)",
     "recrutement": r"\b(?:candidat|cv\b|recrut|entretien|embauche|convoc|refus|postul|annonce)",
     "pj": r"(?:\b(?:piece|fichier|photo|rang|depos|scan)|pj_)",
