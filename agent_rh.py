@@ -41,6 +41,11 @@ SYSTEM_AGENT = (
     "étiquettes telles quelles et TOUJOURS complètes (« Employé C », jamais « C » ni "
     "« Employés C, D ») dans tes appels d'outils comme dans ta réponse ; n'écris JAMAIS "
     "de nom de famille. L'affichage ré-identifiera localement.\n"
+    "- Si l'utilisateur désigne quelqu'un par un nom, prénom ou surnom qui n'apparaît "
+    "pas sous forme « Employé X » (faute de frappe, diminutif…), NE réponds PAS que tu "
+    "ne connais pas cette personne : appelle chercher_salarie avec ce nom tel quel pour "
+    "obtenir la bonne étiquette, puis continue. Plusieurs correspondances : demande de "
+    "préciser.\n"
     "- Pour les questions purement juridiques/RH (sans donnée nominative), réponds "
     "directement, en français, de façon concrète et actionnable, et signale quand "
     "un point délicat relève de l'avocat ou de l'expert-comptable. Information "
@@ -147,6 +152,15 @@ OUTILS_SPECS = [
         "description": "Annuaire des salariés actifs (étiquette, poste, type de contrat).",
         "params": {},
         "requis": [],
+    },
+    {
+        "nom": "chercher_salarie",
+        "description": "Retrouve l'étiquette « Employé X » d'un salarié à partir d'un "
+                       "nom écrit par l'utilisateur (accents, fautes de frappe et débuts "
+                       "de nom tolérés). À appeler dès qu'un nom cité ne correspond à "
+                       "aucune étiquette connue, avant de répondre « inconnu ».",
+        "params": {"nom": ("string", "Le nom tel que l'utilisateur l'a écrit")},
+        "requis": ["nom"],
     },
     # --- Outils ACTION : préparent un livrable à CONFIRMER (jamais d'envoi/écriture auto) ---
     {

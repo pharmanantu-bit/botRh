@@ -245,6 +245,33 @@ if employes:
         print(f"{statut}[--] agent fake (pseudonymisation + ré-identification) "
               f"· outils={res['outils_utilises']}")
 
+# --- Noms tolérants : accents/fautes/préfixes (pseudonymisation + résolution + outil) ---
+if employes:
+    from assistant_rh import construire_table, pseudonymiser_texte, annuaire_pseudo
+    import agent_outils as AO
+    _emps = [{"prenom": "Melanie", "nom": "Duval", "email": "mel@x.fr"},
+             {"prenom": "Maelys", "nom": "GIROUSSE", "email": "mae@x.fr"},
+             {"prenom": "Khadijetou", "nom": "MAHMOUD", "email": "kha@x.fr"}]
+    _table, _ = construire_table(_emps)
+    _ann = annuaire_pseudo(_emps)
+    ok_acc = ("Melanie" not in pseudonymiser_texte("Mélanie est là", _table)
+              and "Employé A" in pseudonymiser_texte("Mélanie est là", _table)
+              and "Employé B" in pseudonymiser_texte("planning de Maëlys", _table))
+    ok_res = ((AO._employe("Mélanie", _ann) or {}).get("prenom") == "Melanie"
+              and (AO._employe("Kadijetou", _ann) or {}).get("prenom") == "Khadijetou"
+              and (AO._employe("Mae", _ann) or {}).get("prenom") == "Maelys"
+              and AO._employe("inconnu", _ann) is None)
+    with A.app.app_context():
+        _r1 = AO._o_chercher_salarie({"nom": "Maëlys"}, _ann)
+        _r2 = AO._o_chercher_salarie({"nom": "zzz"}, _ann)
+    ok_outil = ("Employé B" in _r1 and "Maelys" not in _r1
+                and "Aucun salarié" in _r2)
+    ok_noms = ok_acc and ok_res and ok_outil
+    print(("OK " if ok_noms else "KO ")
+          + f"[--] noms tolérants (accents={ok_acc} résolution={ok_res} chercher_salarie={ok_outil})")
+    if not ok_noms:
+        echecs.append("noms tolérants KO")
+
 # --- Agent Phase 2 : action « préparer une relance » (fake, hors-ligne) ---
 # Vérifie qu'une ACTION est proposée et RÉ-IDENTIFIÉE (vrai prénom, plus d'étiquette),
 # sans aucun envoi réel (le fake ne fait qu'assembler l'objet action).

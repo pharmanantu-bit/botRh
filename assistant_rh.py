@@ -14,6 +14,7 @@ Le moteur d'analyse est interchangeable via le paramètre `moteur` :
 import os
 import re
 import json
+import unicodedata
 import urllib.request
 import urllib.error
 
@@ -49,6 +50,24 @@ def _alpha(n):
     return s
 
 
+# Variantes accentuées par lettre de base : le CSV stocke souvent les prénoms sans
+# accents (« Melanie ») alors que l'utilisateur les tape accentués (« Mélanie »),
+# et inversement. Sans ça le nom n'est pas pseudonymisé et le modèle reçoit un
+# prénom absent de son roster anonymisé -> « salarié inconnu ».
+_VARIANTES = {"a": "aàâä", "e": "eéèêë", "i": "iîï", "o": "oôö", "u": "uùûü",
+              "c": "cç", "y": "yÿ", "n": "nñ"}
+
+
+def _motif_nom(nom):
+    """Regex qui matche un nom quelle que soit son accentuation (les deux côtés) ;
+    la casse est gérée par re.IGNORECASE."""
+    out = []
+    for ch in nom:
+        base = unicodedata.normalize("NFD", ch)[0].lower()
+        out.append("[" + _VARIANTES[base] + "]" if base in _VARIANTES else re.escape(ch))
+    return "".join(out)
+
+
 def construire_table(employes, extra_noms=None):
     """employes: [{prenom, nom?, email}] -> étiquettes « Employé X » (ré-identifiables).
     extra_noms: noms de tiers à masquer en « [nom] » (non ré-identifiés).
@@ -61,9 +80,9 @@ def construire_table(employes, extra_noms=None):
         if e.get("email"):
             motifs.append(re.escape(e["email"].strip()))
         if e.get("prenom"):
-            motifs.append(r"\b" + re.escape(e["prenom"].strip()) + r"\b")
+            motifs.append(r"\b" + _motif_nom(e["prenom"].strip()) + r"\b")
         if e.get("nom"):
-            motifs.append(r"\b" + re.escape(e["nom"].strip()) + r"\b")
+            motifs.append(r"\b" + _motif_nom(e["nom"].strip()) + r"\b")
         if motifs:
             table.append((re.compile("|".join(motifs), re.IGNORECASE), etq))
     # Noms de tiers (cités par le comptable, etc.) à masquer sans ré-identification.
@@ -71,8 +90,8 @@ def construire_table(employes, extra_noms=None):
         nom = nom.strip()
         if not nom:
             continue
-        motifs = [re.escape(nom)]
-        motifs += [r"\b" + re.escape(t) + r"\b" for t in re.split(r"\s+", nom) if len(t) >= 3]
+        motifs = [_motif_nom(nom)]
+        motifs += [r"\b" + _motif_nom(t) + r"\b" for t in re.split(r"\s+", nom) if len(t) >= 3]
         table.append((re.compile("|".join(motifs), re.IGNORECASE), "[nom]"))
     return table, inverse
 

@@ -25,6 +25,8 @@ import os
 import re
 import json
 import uuid
+import difflib
+import unicodedata
 from datetime import date, datetime, timedelta
 
 from flask import Blueprint, request, render_template, redirect, url_for, session, abort, current_app
@@ -289,24 +291,75 @@ def journaliser(outil, resume, mode, origine):
 
 # --- Helpers communs -------------------------------------------------------------
 
-def _employe(val, annuaire):
-    """Retrouve un salarié par étiquette (« Employé B »), prénom ou e-mail.
-    L'étiquette vient du modèle ; le prénom vient d'une carte ré-identifiée."""
+def _fold(s):
+    """minuscules sans accents, pour comparer « Mélanie » et « Melanie »."""
+    s = unicodedata.normalize("NFD", (s or "").strip().lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def _candidats_salarie(val, annuaire):
+    """Salariés qui peuvent correspondre à `val` (étiquette, e-mail, prénom, nom,
+    « prénom nom »), tolérant : accents, casse, préfixe, petite faute de frappe.
+    Renvoie la liste des candidats (souvent 0 ou 1)."""
     v = (val or "").strip()
     if not v:
-        return None
+        return []
     if v in annuaire:
-        return annuaire[v]
-    vl = v.lower()
-    for e in annuaire.values():
-        if e.get("email", "").lower() == vl:
-            return e
-    cands = [e for e in annuaire.values() if (e.get("prenom") or "").lower() == vl]
-    if len(cands) == 1:
-        return cands[0]
-    cands = [e for e in annuaire.values()
-             if f"{e.get('prenom', '')} {e.get('nom', '')}".strip().lower() == vl]
+        return [annuaire[v]]
+    vf = _fold(v)
+    if not vf:
+        return []
+    emps = list(annuaire.values())
+    for exact in (lambda e: _fold(e.get("email")) == vf,
+                  lambda e: _fold(e.get("prenom")) == vf,
+                  lambda e: _fold(f"{e.get('prenom', '')} {e.get('nom', '')}") == vf,
+                  lambda e: _fold(e.get("nom")) == vf):
+        cands = [e for e in emps if exact(e)]
+        if cands:
+            return cands
+    if len(vf) >= 3:  # préfixe (« Steph » -> Stephanie)
+        cands = [e for e in emps if _fold(e.get("prenom")).startswith(vf)]
+        if cands:
+            return cands
+        # petite faute de frappe (« Kadijetou » -> Khadijetou)
+        proches = difflib.get_close_matches(vf, {_fold(e.get("prenom")) for e in emps},
+                                            n=2, cutoff=0.8)
+        if len(proches) == 1:
+            return [e for e in emps if _fold(e.get("prenom")) == proches[0]]
+    return []
+
+
+def _employe(val, annuaire):
+    """Retrouve un salarié par étiquette (« Employé B »), prénom ou e-mail.
+    L'étiquette vient du modèle ; le prénom vient d'une carte ré-identifiée.
+    None si aucun candidat OU plusieurs (ambigu : ne jamais deviner)."""
+    cands = _candidats_salarie(val, annuaire)
     return cands[0] if len(cands) == 1 else None
+
+
+def _o_chercher_salarie(args, annuaire):
+    """Outil agent : nom tel que tapé par l'utilisateur -> étiquette(s) « Employé X ».
+    Tout se passe en local ; seule l'étiquette repart vers le modèle."""
+    txt = (args.get("nom") or "").strip()
+    if not txt:
+        return "Donne le nom (ou début de nom) à chercher."
+    cands = _candidats_salarie(txt, annuaire)
+    if not cands:
+        vf = _fold(txt)   # dernier recours : sous-chaîne (« lou » -> Monlouis)
+        cands = [e for e in annuaire.values()
+                 if len(vf) >= 3 and (vf in _fold(e.get("prenom")) or vf in _fold(e.get("nom")))]
+    if not cands:
+        return ("Aucun salarié ne correspond à ce nom. Demande à l'utilisateur de "
+                "vérifier l'orthographe, ou utilise lister_employes.")
+    profils = charger_profils()
+    lignes = []
+    for e in cands[:5]:
+        p = profils.get(e["email"], {})
+        etat = "actif" if collaborateur_actif(p) else "inactif"
+        lignes.append(f"- {_label_de(e, annuaire)} : {p.get('poste') or '—'} ({etat})")
+    tete = ("C'est :" if len(cands) == 1
+            else f"{len(cands)} correspondances — demande à l'utilisateur de préciser :")
+    return tete + "\n" + "\n".join(lignes)
 
 
 def _label_de(emp, annuaire):
@@ -483,6 +536,7 @@ def _o_absences_en_cours(args, annuaire):
 
 
 OUTILS_LECTURE_PLANNING = {
+    "chercher_salarie": _o_chercher_salarie,
     "planning_jour": _o_planning_jour,
     "planning_collaborateur": _o_planning_collaborateur,
     "solde_conges": _o_solde_conges,
