@@ -394,6 +394,45 @@ if employes and _libs_pdf:
     if not ok_ld:
         echecs.append("lire_document KO")
 
+# --- Modification d'une absence enregistrée (dates corrigées sans recréer) ---
+if employes:
+    import planning_equipe as PEa
+    _fab = PEa.ABSENCES_FILE
+    _ab_avant = open(_fab, encoding="utf-8").read() if os.path.exists(_fab) else None
+    try:
+        with client.session_transaction() as s:
+            s["admin"] = True
+            s["_csrf_token"] = "tok"
+        _em = employes[0]["email"]
+        client.post("/admin/planning-equipe/absence",
+                    data={"email": _em, "debut": "2027-08-14", "fin": "2027-09-01",
+                          "motif": "Congés payés", "csrf_token": "tok"})
+        _aid = next(a["id"] for a in PEa.charger_absences()
+                    if a["email"] == _em and a["debut"] == "2027-08-14")
+        _rm = client.post("/admin/planning-equipe/absence/modifier",
+                          data={"id": _aid, "debut": "2027-08-14", "fin": "2027-08-31",
+                                "motif": "Congés payés", "csrf_token": "tok"})
+        _a = next(x for x in PEa.charger_absences() if x["id"] == _aid)
+        ok_mod = ("absence_modifiee" in _rm.headers.get("Location", "")
+                  and _a["fin"] == "2027-08-31")
+        _rko = client.post("/admin/planning-equipe/absence/modifier",
+                           data={"id": _aid, "debut": "2027-08-14", "fin": "2027-08-31",
+                                 "motif": "", "csrf_token": "tok"})
+        ok_motif = "motif_requis" in _rko.headers.get("Location", "")
+    finally:
+        if _ab_avant is None:
+            try:
+                os.remove(_fab)
+            except OSError:
+                pass
+        else:
+            open(_fab, "w", encoding="utf-8").write(_ab_avant)
+    ok_abm = ok_mod and ok_motif
+    print(("OK " if ok_abm else "KO ")
+          + f"[--] modifier absence (dates corrigées={ok_mod} motif requis={ok_motif})")
+    if not ok_abm:
+        echecs.append("modifier absence KO")
+
 # --- Sélection collante de la trame en édition (créée -> reste affichée) ---
 if employes:
     import planning_equipe as PEt

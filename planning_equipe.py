@@ -1325,6 +1325,7 @@ def vue():
                     "id": a.get("id", ""), "prenom": emap[em]["prenom"],
                     "couleur": couleurs.get(em, "#888"), "motif": a.get("motif", "Non catégorisé"),
                     "debut": _fr_date(a.get("debut", "")), "fin": _fr_date(a.get("fin", "")),
+                    "debut_iso": a.get("debut", ""), "fin_iso": a.get("fin", ""),
                     "commentaire": a.get("commentaire", "")})
         # Semaine antérieure au démarrage de la 1re trame activée → planning vide
         # avec message dédié (et non « aucune trame active »).
@@ -2405,6 +2406,44 @@ def _purger_ponctuels_couverts(email, d1, d2):
     if n:
         sauvegarder_changements(data)
     return n
+
+
+@bp.route("/admin/planning-equipe/absence/modifier", methods=["POST"])
+def modifier_absence():
+    """Modifie une absence enregistrée (dates, motif, commentaire) sans la
+    supprimer/recréer. Mêmes règles qu'à l'ajout : motif obligatoire, pas de
+    chevauchement avec une AUTRE absence du même collaborateur, purge des
+    ponctuels contradictoires sur la nouvelle plage."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    aid = request.form.get("id", "")
+    motif = request.form.get("motif", "")
+    commentaire = (request.form.get("commentaire", "") or "").strip()
+    try:
+        d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
+        d2 = datetime.strptime(request.form.get("fin", "") or request.form.get("debut", ""),
+                               "%Y-%m-%d").date()
+    except ValueError:
+        d1 = d2 = None
+    absences = charger_absences()
+    a = next((x for x in absences if x.get("id") == aid), None)
+    if not a:
+        return redirect(url_for(".vue", onglet="planning", absence=1, msg="no_absence"))
+    if motif not in MOTIFS or motif == "Non catégorisé":
+        return redirect(url_for(".vue", onglet="planning", absence=1, msg="motif_requis"))
+    if not d1 or not d2:
+        return redirect(url_for(".vue", onglet="planning", absence=1))
+    if d2 < d1:
+        d1, d2 = d2, d1
+    autres = [x for x in absences if x.get("id") != aid]
+    if absence_chevauchante(autres, a.get("email"), d1, d2):
+        return redirect(url_for(".vue", onglet="planning", absence=1, msg="absence_chevauche"))
+    purges = _purger_ponctuels_couverts(a.get("email"), d1, d2)
+    a.update({"debut": d1.isoformat(), "fin": d2.isoformat(),
+              "motif": motif, "commentaire": commentaire})
+    sauvegarder_absences(absences)
+    return redirect(url_for(".vue", onglet="planning", absence=1,
+                            msg="absence_modifiee", purges=purges))
 
 
 @bp.route("/admin/planning-equipe/absence/supprimer", methods=["POST"])

@@ -139,6 +139,8 @@
   {% if msg == 'dem_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Demande incomplète — choisis un collaborateur et un type.</div>{% endif %}
   {% if msg == 'creneau_invalide' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Créneau invalide</strong> — l'heure de fin doit être après l'heure de début. Rien n'a été enregistré.</div>{% endif %}
   {% if msg == 'absence_chevauche' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Une absence existe déjà sur ces dates pour ce collaborateur — rien n'a été ajouté. Supprime-la ou ajuste les dates.</div>{% endif %}
+  {% if msg == 'absence_modifiee' %}<div class="msg">Absence modifiée.{% if request.args.get('purges', '0') not in ('0', '') %} {{ request.args.get('purges') }} changement(s) ponctuel(s) avec horaires sur ces dates ont été retirés (remplacés par l'absence).{% endif %}</div>{% endif %}
+  {% if msg == 'no_absence' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Absence introuvable (déjà supprimée ?).</div>{% endif %}
   {% if msg == 'absence_ok' %}<div class="msg">Absence enregistrée.{% if request.args.get('purges', '0') not in ('0', '') %} {{ request.args.get('purges') }} changement(s) ponctuel(s) avec horaires sur ces dates ont été retirés (remplacés par l'absence).{% endif %}</div>{% endif %}
   {% if msg == 'motif_requis' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Motif obligatoire</strong> — la modification sans motif n'a <strong>pas</strong> été enregistrée. Choisis un motif (retard, congés, heures sup…) puis valide à nouveau.</div>{% endif %}
 
@@ -337,12 +339,37 @@
             <span style="display:inline-block; background:#eef2f8; color:#1F4E79; border-radius:5px; padding:1px 7px; font-size:0.74em; margin-left:4px;">{{ a.motif }}</span></div>
           <div style="font-size:0.84em; color:#445;">Du <strong>{{ a.debut }}</strong> au <strong>{{ a.fin }}</strong>{% if a.commentaire %} <span class="meta">— {{ a.commentaire }}</span>{% endif %}</div>
         </div>
+        <button type="button" class="btn-mini" style="background:#2E75B6;"
+                onclick="var f=document.getElementById('edit-abs-{{ a.id }}'); f.style.display = f.style.display === 'none' ? '' : 'none';">✏️ Modifier</button>
         <form method="POST" action="{{ url_for('.supprimer_absence') }}" style="margin:0;" onsubmit="return confirm('Supprimer cette absence ?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="id" value="{{ a.id }}">
           <button type="submit" class="btn-mini rouge">Supprimer</button>
         </form>
       </div>
+      <form method="POST" action="{{ url_for('.modifier_absence') }}" id="edit-abs-{{ a.id }}"
+            style="display:none; padding:10px 12px 12px 37px; background:#f7f9fb; border-top:1px dashed #dde3ed;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="id" value="{{ a.id }}">
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:end;">
+          <label style="font-size:0.78em; color:#556;">Du<br>
+            <input type="date" name="debut" value="{{ a.debut_iso }}" required
+                   style="padding:5px 7px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+          <label style="font-size:0.78em; color:#556;">au<br>
+            <input type="date" name="fin" value="{{ a.fin_iso }}" required
+                   style="padding:5px 7px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+          <label style="font-size:0.78em; color:#556;">Motif<br>
+            <select name="motif" style="padding:6px 7px; border:1px solid #ccd6e4; border-radius:6px;">
+              {% for m in motifs %}{% if m != 'Non catégorisé' %}
+              <option value="{{ m }}" {% if m == a.motif %}selected{% endif %}>{{ m }}</option>
+              {% endif %}{% endfor %}
+            </select></label>
+          <label style="font-size:0.78em; color:#556; flex:1; min-width:140px;">Commentaire<br>
+            <input type="text" name="commentaire" value="{{ a.commentaire }}"
+                   style="width:100%; padding:5px 7px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+          <button type="submit" class="btn-mini" style="background:#1F7A3D;">Enregistrer</button>
+        </div>
+      </form>
       {% endfor %}
     </div>
     {% else %}
