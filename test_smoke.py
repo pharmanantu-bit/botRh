@@ -394,6 +394,42 @@ if employes and _libs_pdf:
     if not ok_ld:
         echecs.append("lire_document KO")
 
+# --- Sélection collante de la trame en édition (créée -> reste affichée) ---
+if employes:
+    import planning_equipe as PEt
+    _ftr = PEt.TRAME_FILE
+    _tr_avant = open(_ftr, encoding="utf-8").read() if os.path.exists(_ftr) else None
+    try:
+        with client.session_transaction() as s:
+            s["admin"] = True
+            s["_csrf_token"] = "tok"
+        _rc = client.post("/admin/planning-equipe/creer",
+                          data={"commentaire": "smoke collant", "date_demarrage": "2026-12-01",
+                                "nb_semaines": "2", "csrf_token": "tok"})
+        _mt = re.search(r"trame=([A-Za-z0-9_-]+)", _rc.headers.get("Location", ""))
+        ok_cre = _rc.status_code == 302 and bool(_mt)
+        ok_stick = False
+        if ok_cre:
+            client.get(f"/admin/planning-equipe?onglet=trame&trame={_mt.group(1)}")
+            client.get("/admin/planning-equipe?onglet=planning")   # on va ailleurs
+            _html = client.get("/admin/planning-equipe?onglet=trame").get_data(as_text=True)
+            ok_stick = "smoke collant" in _html
+    finally:
+        if _tr_avant is None:
+            try:
+                os.remove(_ftr)
+            except OSError:
+                pass
+        else:
+            open(_ftr, "w", encoding="utf-8").write(_tr_avant)
+        with client.session_transaction() as s:
+            s.pop("trame_sel", None)
+    ok_tr = ok_cre and ok_stick
+    print(("OK " if ok_tr else "KO ")
+          + f"[--] trame collante (création={ok_cre} réaffichée sans paramètre={ok_stick})")
+    if not ok_tr:
+        echecs.append("trame collante KO")
+
 # --- vigie_effectif + arbitrer_conges (données CP fabriquées puis restaurées) ---
 if employes:
     import agent_outils as AOv

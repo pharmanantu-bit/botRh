@@ -931,8 +931,15 @@ def vue():
     if sem not in SEMAINES:
         sem = "A"
     data = charger_trames()
-    trame = trame_selectionnee(data, request.args.get("trame"))
+    # Sélection COLLANTE de la trame en édition : sans paramètre ?trame=, on
+    # réaffiche la dernière trame ouverte (session) plutôt que de retomber sur
+    # la trame en vigueur aujourd'hui — sinon une trame fraîchement créée
+    # « disparaît » à chaque changement de page tant qu'elle n'a pas pris effet.
+    tid_demande = request.args.get("trame") or session.get("trame_sel")
+    trame = trame_selectionnee(data, tid_demande)
     tid = trame.get("id") if trame else None
+    if onglet == "trame" and tid:
+        session["trame_sel"] = tid
     profils = charger_profils()
     employes_tous = charger_employes()
     couleurs = couleurs_map(employes_tous, profils)        # couleurs stables (liste complète)
