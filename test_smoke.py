@@ -272,6 +272,20 @@ if employes:
     if not ok_noms:
         echecs.append("noms tolérants KO")
 
+# --- proposer_remplacant : fenêtre explicite, garde-fous ---
+if employes:
+    import agent_outils as AOr
+    from assistant_rh import annuaire_pseudo as _ann_ps
+    _annr = _ann_ps(employes)
+    with A.app.app_context():
+        _r1 = AOr._o_proposer_remplacant({"date": "2026-09-14", "h_debut": "09:00", "h_fin": "13:00"}, _annr)
+        _r2 = AOr._o_proposer_remplacant({}, _annr)
+    ok_rp = ("Créneau à couvrir" in _r1 and "Employé" in _r1 + _r2
+             and "Précise" in _r2 and not any((e.get("prenom") or "zzz") in _r1 for e in employes))
+    print(("OK " if ok_rp else "KO ") + f"[--] proposer_remplacant (fenêtre + garde-fous + pseudonymisé)")
+    if not ok_rp:
+        echecs.append("proposer_remplacant KO")
+
 # --- Routage par domaine : sous-catalogue d'outils + blocs de prompt ---
 if employes:
     import agent_outils as AOx

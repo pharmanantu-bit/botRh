@@ -59,6 +59,8 @@ CAS = [
     {"phrase": "supprime l'absence de Lise de jeudi",
      "attendus": {"supprimer_absence", "absences_en_cours"}},
     {"phrase": "qui est absent en ce moment ?", "attendus": {"absences_en_cours"}},
+    {"phrase": "qui peut remplacer Maëlys demain matin ?",
+     "attendus": {"proposer_remplacant"}},
     # Relevés d'heures / paie
     {"phrase": "qui n'a pas rendu son relevé d'heures ?",
      "attendus": {"releves_manquants"}},

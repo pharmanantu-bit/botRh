@@ -90,7 +90,9 @@ SYSTEM_DOMAINES = {
     "W »), c'est une demande d'ENREGISTREMENT : appelle l'outil d'écriture adapté "
     "(ajouter_absence pour plusieurs jours, modifier_horaires_jour pour un jour) dès "
     "que tu as les informations, puis réponds à sa question. Ne te contente JAMAIS de "
-    "reformuler le fait comme s'il était déjà enregistré.\n"),
+    "reformuler le fait comme s'il était déjà enregistré.\n"
+    "- Après avoir enregistré une absence (ou si on te demande qui peut couvrir un "
+    "créneau), appelle proposer_remplacant et propose le meilleur choix.\n"),
     "paie": (
     "- RELEVÉS D'HEURES & PAIE : releve_du_mois / stats_heures répondent aux questions "
     "chiffrées (heures sup, soldes) ; corriger_releve, valider_releve et "
@@ -243,6 +245,18 @@ OUTILS_SPECS = [
         "description": "Absences prolongées en cours ou à venir (congés, arrêts…) "
                        "sur les 60 prochains jours.",
         "params": {},
+        "requis": [],
+    },
+    {
+        "nom": "proposer_remplacant",
+        "description": "Qui peut COUVRIR un créneau (absence, renfort) : salariés "
+                       "actifs libres sur la fenêtre, classés même poste d'abord puis "
+                       "par marge d'heures restante sur la semaine. Donne soit l'absent "
+                       "(ses créneaux prévus servent de fenêtre), soit h_debut/h_fin.",
+        "params": {"date": ("string", "Date AAAA-MM-JJ (défaut : aujourd'hui)"),
+                   "employe": ("string", "Étiquette de l'ABSENT à remplacer (optionnel)"),
+                   "h_debut": ("string", "Début du créneau HH:MM (optionnel)"),
+                   "h_fin": ("string", "Fin du créneau HH:MM (optionnel)")},
         "requis": [],
     },
     # --- Outils ÉCRITURE : exécutés (mode autonome) ou proposés (mode validation) ---
@@ -689,6 +703,7 @@ OUTILS_BASE = {"profil_salarie", "lister_employes", "chercher_salarie",
 
 DOMAINE_OUTILS = {
     "planning": {"planning_jour", "planning_collaborateur", "solde_conges",
+                 "proposer_remplacant",
                  "demandes_conges_en_attente", "absences_en_cours", "ajouter_absence",
                  "supprimer_absence", "modifier_horaires_jour", "retablir_horaires_jour",
                  "traiter_demande_conges", "envoyer_demande_collaborateur"},
@@ -713,7 +728,7 @@ DOMAINE_OUTILS = {
 MOTS_DOMAINES = {
     "planning": r"\b(?:planning|horaire|absen|conge|malad|arret\b|arrets\b|formation|"
                 r"travail|repos|vacance|recup|garde|ferie|lundi|mardi|mercredi|jeudi|"
-                r"vendredi|samedi|dimanche|demain|semaine|demande)",
+                r"vendredi|samedi|dimanche|demain|semaine|demande|remplac|couvrir|renfort)",
     "paie": r"\b(?:relev|heure|paie|comptable|recap|valid|relance|solde|sup\b)",
     "dossier": r"\b(?:dossier|document|attestation|contrat|checklist|statut|suggestion|"
                r"fiche|profil|journal|note|rib\b|diplome|identite|visite|essai|cdd\b|"

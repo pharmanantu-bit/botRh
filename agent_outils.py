@@ -415,6 +415,96 @@ def _actifs(annuaire):
 
 # --- Outils LECTURE planning ----------------------------------------------------
 
+def _marge_semaine(email, prof, d, trames, chgs, absences):
+    """Minutes de marge du salarié sur la semaine de `d` : contrat − effectif
+    planifié (0 si pas d'heures contractuelles renseignées). Renvoie
+    (marge_minutes, effectif_minutes, contrat_minutes)."""
+    lundi = d - timedelta(days=d.weekday())
+    eff = 0
+    for k in range(7):
+        jour = lundi + timedelta(days=k)
+        act = PE.trame_active_pour(trames, jour)
+        if not act:
+            continue
+        for c in PE.creneaux_effectifs_jour(act, email, jour, chgs, absences):
+            a, b = PE._minutes(c.get("debut")), PE._minutes(c.get("fin"))
+            if a is not None and b is not None and b > a:
+                eff += b - a
+    try:
+        contrat = round(PE._heures_hebdo(prof.get("heures_contractuelles_hebdo", "")) * 60)
+    except Exception:
+        contrat = 0
+    return (contrat - eff if contrat else 0), eff, contrat
+
+
+def _fmt_h(minutes):
+    h, m = divmod(max(0, int(minutes)), 60)
+    return f"{h}h{m:02d}" if m else f"{h}h"
+
+
+def _o_proposer_remplacant(args, annuaire):
+    """Qui peut couvrir un créneau (absence, coup de bourre) : salariés actifs,
+    non absents ce jour-là et LIBRES sur la fenêtre visée, classés même poste
+    d'abord puis par marge d'heures restante sur la semaine."""
+    d = _date(args.get("date")) or PE.jour_courant()
+    absent = _employe(args.get("employe"), annuaire) if (args.get("employe") or "").strip() else None
+    trames = PE.charger_trames()
+    chgs, absences = PE.charger_changements(), PE.charger_absences()
+    profils = charger_profils()
+
+    # Fenêtre à couvrir : créneau explicite > créneaux PRÉVUS de l'absent (trame
+    # + ponctuels, absences ignorées : c'est justement ce qu'il faut couvrir).
+    hd, hf = PE._norm_hhmm(args.get("h_debut") or ""), PE._norm_hhmm(args.get("h_fin") or "")
+    if hd and hf:
+        fenetres = [{"debut": hd, "fin": hf}]
+    elif absent:
+        act = PE.trame_active_pour(trames, d)
+        fenetres = PE.creneaux_effectifs_jour(act, absent["email"], d, chgs, []) if act else []
+        if not fenetres:
+            return (f"{_label_de(absent, annuaire)} n'a pas de créneau prévu le {_fr(d)} : "
+                    "rien à couvrir. Donne un créneau (h_debut/h_fin) si besoin.")
+    else:
+        return "Précise l'absent à remplacer (employe) ou un créneau (date + h_debut/h_fin)."
+
+    def _chevauche(creneaux):
+        for c in creneaux:
+            a, b = PE._minutes(c.get("debut")), PE._minutes(c.get("fin"))
+            for f in fenetres:
+                fa, fb = PE._minutes(f["debut"]), PE._minutes(f["fin"])
+                if None not in (a, b, fa, fb) and a < fb and fa < b:
+                    return True
+        return False
+
+    poste_absent = (profils.get(absent["email"], {}).get("poste") or "").strip().lower() if absent else ""
+    candidats = []
+    act_j = PE.trame_active_pour(trames, d)
+    for lab, e in _actifs(annuaire):
+        em = e["email"]
+        if absent and em == absent["email"]:
+            continue
+        if PE.absence_active(absences, em, d):
+            continue
+        cr = PE.creneaux_effectifs_jour(act_j, em, d, chgs, absences) if act_j else []
+        if _chevauche(cr):
+            continue   # déjà en poste sur la fenêtre
+        prof = profils.get(em, {})
+        marge, eff, contrat = _marge_semaine(em, prof, d, trames, chgs, absences)
+        meme_poste = bool(poste_absent) and (prof.get("poste") or "").strip().lower() == poste_absent
+        dispo = "libre toute la journée" if not cr else f"déjà présent {_cr_txt(cr)}"
+        detail = f"{_fmt_h(eff)} prévues / {_fmt_h(contrat)} contrat cette semaine" if contrat \
+                 else "heures contractuelles non renseignées"
+        candidats.append((meme_poste, marge, f"- {lab} ({prof.get('poste') or 'poste —'}"
+                          f"{', même poste' if meme_poste else ''}) : {dispo} · {detail}"))
+    fen_txt = " et ".join(f"{f['debut']}-{f['fin']}" for f in fenetres)
+    tete = (f"Créneau à couvrir le {_fr(d)} : {fen_txt}"
+            + (f" (remplacement de {_label_de(absent, annuaire)})" if absent else "") + "\n")
+    if not candidats:
+        return tete + "Personne de disponible : tous les salariés actifs sont absents ou déjà en poste sur ce créneau."
+    candidats.sort(key=lambda c: (not c[0], -c[1]))
+    return (tete + "Disponibles (même poste d'abord, puis plus grande marge d'heures) :\n"
+            + "\n".join(txt for _, _, txt in candidats[:6]))
+
+
 def _o_planning_jour(args, annuaire):
     d = _date(args.get("date")) or PE.jour_courant()
     trames = PE.charger_trames()
@@ -537,6 +627,7 @@ def _o_absences_en_cours(args, annuaire):
 
 OUTILS_LECTURE_PLANNING = {
     "chercher_salarie": _o_chercher_salarie,
+    "proposer_remplacant": _o_proposer_remplacant,
     "planning_jour": _o_planning_jour,
     "planning_collaborateur": _o_planning_collaborateur,
     "solde_conges": _o_solde_conges,
