@@ -44,6 +44,9 @@
     .navitem { padding: 5px 11px; border-radius: 7px; text-decoration: none; font-size: 0.78em; font-weight: bold; border: 1px solid #d4deeb; color: #1F4E79; background: #fff; text-align: center; line-height: 1.2; white-space: nowrap; }
     .navitem.actif { background: #D68910; color: #fff; border-color: #D68910; }
     .navitem:not(.actif):hover { background: #eef2f8; }
+    /* Rangée des semaines : flèches de défilement (mobile uniquement) */
+    .snav-wrap { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .snav-fl { display: none; }
     .meta { color: #9aa7b5; font-size: 0.8em; }
     .btn { background: #1F4E79; color: white; border: none; padding: 9px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9em; }
     .btn:hover { background: #163d60; }
@@ -112,6 +115,17 @@
       /* Mobile : onglets en bandeau balayable pleine largeur, boutons ⊕ en dessous */
       .sec-row { padding-left: 0; }
       .sec-row .ongs-sec { flex: 0 0 100%; }
+      /* Semaines : bandeau 1 ligne, 6 pastilles visibles, flèches ‹ › pour défiler */
+      .snav-wrap { flex: 0 0 100%; flex-wrap: nowrap; min-width: 0; }
+      .snav-fl { display: inline-flex; align-items: center; justify-content: center;
+                 flex: none; width: 30px; align-self: stretch; border: 1px solid #d4deeb;
+                 border-radius: 7px; background: #fff; color: #1F4E79;
+                 font-size: 1.15em; font-weight: bold; cursor: pointer; padding: 0; }
+      #snav { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow-x: auto;
+              -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      #snav::-webkit-scrollbar { display: none; }
+      #snav .navitem { flex: 0 0 calc((100% - 20px) / 6); min-width: 0;
+                       padding: 5px 2px; font-size: 0.72em; overflow: hidden; }
       /* Frise : colonne des noms réduite pour laisser la place aux barres */
       .fr-label, .fr-axis .sp { width: 92px; }
       .fr-label { font-size: 0.72em; }
@@ -174,12 +188,31 @@
   {% if onglet == 'planning' and trame and nav %}
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
     <a href="{{ nav.aujourdhui }}" class="btn-mini" style="background:#1F4E79;">Aujourd'hui</a>
-    <div style="display:flex; gap:4px; flex-wrap:wrap;">
-      {% for it in nav.boutons %}
-      <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
-      {% endfor %}
+    <div class="snav-wrap">
+      <button type="button" class="snav-fl" data-sens="-1" aria-label="Semaines précédentes">‹</button>
+      <div id="snav" style="display:flex; gap:4px; flex-wrap:wrap;">
+        {% for it in nav.boutons %}
+        <a href="{{ it.url }}" class="navitem {{ 'actif' if it.actif else '' }}">{{ it.label }}{% if it.sub %}<br><span style="font-size:.78em; opacity:.85;">{{ it.sub }}</span>{% endif %}</a>
+        {% endfor %}
+      </div>
+      <button type="button" class="snav-fl" data-sens="1" aria-label="Semaines suivantes">›</button>
     </div>
   </div>
+  <script>
+    (function () {
+      var sc = document.getElementById('snav');
+      if (!sc) return;
+      document.querySelectorAll('.snav-fl').forEach(function (b) {
+        b.addEventListener('click', function () {
+          sc.scrollBy({left: b.dataset.sens * sc.clientWidth, behavior: 'smooth'});
+        });
+      });
+      // Au chargement mobile : la semaine active visible (calée en 2e position).
+      var actif = sc.querySelector('.navitem.actif');
+      if (actif && sc.scrollWidth > sc.clientWidth)
+        sc.scrollLeft = Math.max(0, actif.offsetLeft - sc.clientWidth / 6);
+    })();
+  </script>
   {% endif %}
   {% if onglet_principal == 'planning' %}
   {# Rangée sous-onglets + boutons ⊕, placée SOUS la barre des jours/semaines #}
