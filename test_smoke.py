@@ -398,11 +398,14 @@ if employes and _libs_pdf:
 if employes:
     with client.session_transaction() as s:
         s["admin"] = True
-    client.get("/admin/planning-equipe?onglet=planning&date=2026-08-31")
+    _h_ref = client.get("/admin/planning-equipe?onglet=planning&date=2026-08-31").get_data(as_text=True)
     client.get("/admin/planning-equipe?onglet=trame")
     _hp = client.get("/admin/planning-equipe?onglet=planning").get_data(as_text=True)
-    ok_semc = "31/08" in _hp
+    # La page au retour = la page de la semaine mémorisée (marche aussi sans
+    # trame en CI, où aucune date n'apparaît dans le rendu).
+    ok_semc = "31/08" in _hp or _hp == _h_ref
     with client.session_transaction() as s:
+        ok_semc = ok_semc and s.get("planning_date") == "2026-08-31"
         s.pop("planning_date", None)
     print(("OK " if ok_semc else "KO ") + "[--] semaine planning collante (retour sans ?date=)")
     if not ok_semc:
