@@ -1027,11 +1027,17 @@ def vue():
         montrer_h = opts.get("horaires_grille") != "masquer"
         mode = opts.get("mode", "grille")
         periode = opts.get("periode", "hebdo")
-        # Date de référence pour la navigation réelle.
+        # Date de référence pour la navigation réelle. COLLANTE : en revenant
+        # d'un autre onglet (trame…) sans ?date=, on réaffiche la semaine
+        # consultée juste avant, pas la semaine du jour.
         try:
             ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+            session["planning_date"] = ref.isoformat()
         except (ValueError, TypeError):
-            ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
+            try:
+                ref = datetime.strptime(session.get("planning_date", ""), "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
         # Le planning suit la trame ACTIVÉE en vigueur pour la semaine consultée
         # (les trames activées se succèdent : l'historique garde ses anciennes trames).
         act = trame_active_pour(data, ref)
@@ -1474,10 +1480,16 @@ def vue():
         cfg = charger_effectifs()
         changements = charger_changements()
         absences = charger_absences()
+        # Même date collante que l'onglet Planning (semaine suivie en passant
+        # de Planning à Effectifs et retour).
         try:
             ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+            session["planning_date"] = ref.isoformat()
         except (ValueError, TypeError):
-            ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
+            try:
+                ref = datetime.strptime(session.get("planning_date", ""), "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                ref = jour_courant()   # à 00h30, rester sur la semaine de la veille
         lundi = _lundi(ref)
         act = trame_active_pour(data, lundi)     # trame en vigueur pour CETTE semaine
         jours_eff, ticks, alertes_total = [], [], 0

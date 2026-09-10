@@ -394,6 +394,20 @@ if employes and _libs_pdf:
     if not ok_ld:
         echecs.append("lire_document KO")
 
+# --- Semaine du planning collante (trame -> retour planning = même semaine) ---
+if employes:
+    with client.session_transaction() as s:
+        s["admin"] = True
+    client.get("/admin/planning-equipe?onglet=planning&date=2026-08-31")
+    client.get("/admin/planning-equipe?onglet=trame")
+    _hp = client.get("/admin/planning-equipe?onglet=planning").get_data(as_text=True)
+    ok_semc = "31/08" in _hp
+    with client.session_transaction() as s:
+        s.pop("planning_date", None)
+    print(("OK " if ok_semc else "KO ") + "[--] semaine planning collante (retour sans ?date=)")
+    if not ok_semc:
+        echecs.append("semaine planning collante KO")
+
 # --- Modification d'une absence enregistrée (dates corrigées sans recréer) ---
 if employes:
     import planning_equipe as PEa
