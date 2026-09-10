@@ -670,6 +670,21 @@ def appareil_expire_le():
     return datetime.fromtimestamp(int(exp)).strftime("%d/%m/%Y")
 
 
+def _sur_mobile():
+    """True si la requête vient d'un téléphone/tablette (User-Agent).
+    Sert à ouvrir directement le planning équipe à l'entrée dans l'app."""
+    ua = (request.headers.get("User-Agent") or "").lower()
+    return any(m in ua for m in ("mobi", "android", "iphone", "ipad"))
+
+
+def _accueil_admin():
+    """Page d'accueil après connexion : planning équipe sur mobile,
+    tableau de bord sur ordinateur."""
+    if _sur_mobile():
+        return redirect(url_for("planning_equipe.vue"))
+    return redirect(url_for("admin_dashboard"))
+
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     twofa = deuxieme_facteur_actif()
@@ -689,7 +704,7 @@ def admin():
             # (code saisi), jamais depuis un appareil déjà en confiance.
             if twofa and not confiance and request.form.get("retenir"):
                 exp = str(int(_time.time() + APPAREIL_DUREE.total_seconds()))
-                resp = redirect(url_for("admin_dashboard"))
+                resp = _accueil_admin()
                 resp.set_cookie(APPAREIL_COOKIE, f"{exp}.{_appareil_signature(exp)}",
                                 max_age=int(APPAREIL_DUREE.total_seconds()),
                                 httponly=True, samesite="Lax", secure=EST_PROD,
@@ -704,8 +719,8 @@ def admin():
         return render_template("admin_login.html", erreur=False, twofa=twofa,
                                appareil_ok=confiance)
 
-    # Page d'accueil = tableau de bord
-    return redirect(url_for("admin_dashboard"))
+    # Page d'accueil = tableau de bord (planning équipe sur mobile)
+    return _accueil_admin()
 
 
 @app.route("/admin/securite/oublier-appareil", methods=["POST"])
@@ -1349,6 +1364,12 @@ def admin_absences():
 def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin"))
+
+    # Sur mobile, une ARRIVÉE DIRECTE (favori/écran d'accueil, pas de Referer
+    # interne) ouvre le planning équipe ; la navigation dans l'app (menu 📊)
+    # garde bien sûr accès au tableau de bord.
+    if _sur_mobile() and request.host not in (request.referrer or ""):
+        return redirect(url_for("planning_equipe.vue"))
 
     employes = charger_employes()
     # Les collaborateurs ARCHIVÉS (ont quitté l'entreprise) ne figurent plus sur
