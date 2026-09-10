@@ -54,26 +54,34 @@
 
     /* ===== FRISE (Gantt horizontal) ===== */
     .frise { border: none; }
-    .fr-axis { display: flex; align-items: flex-end; height: 22px; border: 1px solid #aab6c8; border-radius: 8px; background: #f0f4f9; margin-bottom: 10px; }
+    .fr-axis { display: flex; align-items: flex-end; height: 22px; border: 1px solid #7e94b0; border-radius: 8px; background: #f0f4f9; margin-bottom: 10px; }
     .fr-axis .sp { width: 140px; flex: none; }
     .fr-axis .track { position: relative; flex: 1; height: 100%; }
-    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.7em; color: #556; white-space: nowrap; }
+    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.8em; font-weight: 600; color: #3d5570; white-space: nowrap; }
     /* Chaque jour = un bloc séparé, espacé du suivant, bordure contrastée. */
-    .fr-jour { border: 1px solid #aab6c8; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+    .fr-jour { border: 1px solid #7e94b0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
     /* Jour en cours : cadre rouge pour le repérer immédiatement. */
     .fr-jour.fr-auj { border: 2px solid #C0392B; box-shadow: 0 0 0 1px rgba(192,57,43,.25); }
     .fr-jour.fr-auj .fr-jour-tt { background: #fdecea; border-bottom-color: #C0392B; }
-    .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #aab6c8; }
+    .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #7e94b0; }
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
-    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #ccd5e2; min-height: 26px; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #a9b7c9; min-height: 26px; }
     .fr-jour-tt + .fr-row { border-top: none; }
     .fr-label { width: 140px; flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 8px; font-size: 0.8em; }
     .fr-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-    .fr-track { position: relative; flex: 1; background-size: 100% 100%; border-left: 1px solid #ccd5e2; }
-    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #d5dce8; }
+    .fr-track { position: relative; flex: 1; background-size: 100% 100%; border-left: 1px solid #a9b7c9; }
+    /* Quadrillage horaire AU PREMIER PLAN (au-dessus des barres colorées),
+       semi-transparent pour rester lisible à travers les barres. */
+    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px;
+               background: rgba(31,78,121,.32); z-index: 2; pointer-events: none; }
+    /* Graduations aux quarts d'heure (15/45 discrètes, 30 min plus marquée) :
+       les fins de créneau à 19h15 / 19h30 / 19h45 se lisent d'un coup d'œil. */
+    .fr-grid-min { position: absolute; top: 0; bottom: 0; width: 1px;
+                   background: rgba(31,78,121,.10); z-index: 2; pointer-events: none; }
+    .fr-grid-demi { background: rgba(31,78,121,.18); }
     .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
-    .fr-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; color: white; font-size: 0.7em; line-height: 1; display: flex; align-items: center; justify-content: flex-start; padding-left: 5px; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
-    .fr-tot { width: 52px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.75em; color: #667; }
+    .fr-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; color: white; font-size: 0.8em; font-weight: 600; line-height: 1; display: flex; align-items: center; justify-content: flex-start; padding-left: 5px; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 0 1px rgba(15,30,50,.28); }
+    .fr-tot { width: 56px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.82em; font-weight: 600; color: #556; }
 
     /* ===== Saisie trame ===== */
     .cfg { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; background: #f7f9fc; border: 1px solid #dde3ed; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
@@ -139,6 +147,10 @@
   {% if msg == 'dem_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Demande incomplète — choisis un collaborateur et un type.</div>{% endif %}
   {% if msg == 'creneau_invalide' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Créneau invalide</strong> — l'heure de fin doit être après l'heure de début. Rien n'a été enregistré.</div>{% endif %}
   {% if msg == 'absence_chevauche' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Une absence existe déjà sur ces dates pour ce collaborateur — rien n'a été ajouté. Supprime-la ou ajuste les dates.</div>{% endif %}
+  {% if msg == 'garde_ok' %}<div class="msg">💊 Garde enregistrée : {{ request.args.get('n', '0') }} collaborateur(s) noté(s).{% if request.args.get('saut', '0') not in ('0', '') %} {{ request.args.get('saut') }} ignoré(s) : en absence prolongée ce jour-là.{% endif %}</div>{% endif %}
+  {% if msg == 'garde_suppr' %}<div class="msg">Garde retirée.</div>{% endif %}
+  {% if msg == 'garde_incomplet' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Il faut au moins un créneau horaire ET un collaborateur coché.</div>{% endif %}
+  {% if msg == 'garde_date' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Date invalide.</div>{% endif %}
   {% if msg == 'absence_modifiee' %}<div class="msg">Absence modifiée.{% if request.args.get('purges', '0') not in ('0', '') %} {{ request.args.get('purges') }} changement(s) ponctuel(s) avec horaires sur ces dates ont été retirés (remplacés par l'absence).{% endif %}</div>{% endif %}
   {% if msg == 'no_absence' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Absence introuvable (déjà supprimée ?).</div>{% endif %}
   {% if msg == 'absence_ok' %}<div class="msg">Absence enregistrée.{% if request.args.get('purges', '0') not in ('0', '') %} {{ request.args.get('purges') }} changement(s) ponctuel(s) avec horaires sur ces dates ont été retirés (remplacés par l'absence).{% endif %}</div>{% endif %}
@@ -184,15 +196,6 @@
       {% else %}
       <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Remplaçant / horaires ponctuels</a>
       <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absences prolongées</a>
-      <details style="align-self:center;">
-        <summary style="cursor:pointer; font-size:0.78em; color:#556;">ℹ️ À noter</summary>
-        <ul style="font-size:0.78em; color:#556; margin:6px 0 0 18px; line-height:1.6;">
-          <li>Pour un <strong>changement ponctuel</strong> (absence, échange, heures supplémentaires, formation…) : bouton « ⊕ Remplaçant / horaires ponctuels ».</li>
-          <li>Pour une <strong>absence prolongée</strong> : bouton « ⊕ Absences prolongées ».</li>
-          <li>Pour un <strong>changement régulier</strong> du planning : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage.</li>
-          <li>Pour les horaires d'un <strong>remplaçant</strong> : passe par « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable (Équipe &amp; RH) et ne pas être archivé.</li>
-        </ul>
-      </details>
       {% endif %}
     </div>
     {% endif %}
@@ -503,6 +506,20 @@
       <p style="font-size:1.05em;">Aucune trame active.</p>
       <p class="meta" style="margin-top:6px;">Va dans l'onglet <strong>Trame</strong>, crée une trame (ou sélectionne-en une) puis clique <strong>« Activer cette trame »</strong> : c'est elle qui alimente le planning.</p>
       {% endif %}
+    </div>
+    {% endif %}
+
+    {# Note d'usage, toujours visible en bas du planning #}
+    {% if not ponctuel and not abs_view %}
+    <div style="margin-top:22px; border:1px solid #dde3ed; border-radius:10px; background:#f7f9fc; padding:12px 16px; max-width:900px;">
+      <div style="font-weight:bold; color:#1F4E79; font-size:0.88em; margin-bottom:6px;">ℹ️ À noter</div>
+      <ul style="font-size:0.82em; color:#445; margin:0 0 0 18px; line-height:1.7;">
+        <li>Pour enregistrer un <strong>changement ponctuel</strong> (retard, échange, heures supplémentaires, formation…) : bouton <strong>« ⊕ Remplaçant / horaires ponctuels »</strong> en haut du planning — ou clique directement la ligne du collaborateur sur le jour concerné.</li>
+        <li>Pour enregistrer une <strong>absence prolongée</strong> (congés, arrêt…) : bouton <strong>« ⊕ Absences prolongées »</strong>. Les absences enregistrées se corrigent ensuite avec ✏️ Modifier.</li>
+        <li>Si un <strong>changement régulier</strong> du planning doit être fait : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage, puis active-la — l'ancienne reste pour l'historique.</li>
+        <li>Pour les horaires d'un <strong>remplaçant</strong> : « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable dans <strong>Équipe &amp; RH</strong> et ne pas être archivé.</li>
+        <li>Pour un dimanche ou un férié de <strong>garde</strong> : onglet <strong>Garde</strong> (saisie groupée) — le jour s'affiche « 💊 GARDE » sur le planning.</li>
+      </ul>
     </div>
     {% endif %}
 
@@ -1070,6 +1087,63 @@
     </details>
 
   {# ===================== ONGLET TOTAUX / FIN DE MOIS ===================== #}
+  {% elif onglet == 'garde' %}
+    <h2 style="font-size:1.05em; color:#1F4E79; margin:0 0 4px;">💊 Jours de garde</h2>
+    <p class="meta" style="margin:0 0 14px;">Note en une fois qui assure la garde un dimanche ou un férié :
+      chaque personne cochée reçoit un changement ponctuel « Garde » avec les créneaux saisis.
+      Le jour apparaît « 💊 GARDE » sur le planning ; les horaires restent ajustables personne
+      par personne en cliquant sa ligne sur la frise.</p>
+
+    <form method="POST" action="{{ url_for('.ajouter_garde') }}"
+          style="border:1px solid #dde3ed; border-radius:10px; padding:14px; margin-bottom:20px; max-width:720px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
+        <label style="font-size:0.82em; color:#556;">Date de la garde<br>
+          <input type="date" name="date" value="{{ garde_date_defaut }}" required
+                 style="padding:6px 8px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+        <label style="font-size:0.82em; color:#556;">Créneau<br>
+          <input type="time" name="g1d" value="09:00" style="padding:6px; border:1px solid #ccd6e4; border-radius:6px;">
+          – <input type="time" name="g1f" value="19:30" style="padding:6px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+        <label style="font-size:0.82em; color:#556;">2ᵉ créneau (optionnel)<br>
+          <input type="time" name="g2d" style="padding:6px; border:1px solid #ccd6e4; border-radius:6px;">
+          – <input type="time" name="g2f" style="padding:6px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+      </div>
+      <div style="font-size:0.82em; color:#556; margin-bottom:6px;">Collaborateurs de garde :</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:6px; margin-bottom:12px;">
+        {% for c in collabs_garde %}
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.86em; cursor:pointer;">
+          <input type="checkbox" name="emails" value="{{ c.email }}"> {{ c.prenom }} {{ c.nom|upper }}
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn-mini" style="background:#6b4fa0; padding:8px 18px; font-size:0.9em;">💊 Enregistrer la garde</button>
+    </form>
+
+    <h3 style="font-size:0.95em; color:#1F4E79; margin:0 0 8px;">Gardes enregistrées <span class="meta" style="font-weight:normal;">— {{ gardes|length }}</span></h3>
+    {% if gardes %}
+    <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:720px;">
+      {% for g in gardes %}
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 12px;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}{% if g.passe %} opacity:0.65;{% endif %}">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:0.9em;"><strong style="color:#6b4fa0;">💊 {{ g.label }}</strong>{% if g.passe %} <span class="meta">(passée)</span>{% endif %}</div>
+          <div style="font-size:0.84em; color:#445;">
+            {% for p in g.personnes %}{{ p.prenom }} ({{ p.creneaux }}){% if not loop.last %} · {% endif %}{% endfor %}
+          </div>
+        </div>
+        <a href="{{ url_for('.vue', onglet='planning', date=g.date_iso) }}" class="btn-mini">Voir au planning</a>
+        <form method="POST" action="{{ url_for('.supprimer_garde') }}" style="margin:0;"
+              onsubmit="return confirm('Retirer toute la garde du {{ g.label }} ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="date" value="{{ g.date_iso }}">
+          <button type="submit" class="btn-mini rouge">Supprimer</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="meta">Aucune garde enregistrée pour l'instant.</p>
+    {% endif %}
+
   {% elif onglet == 'demandes' %}
     <h2 style="margin:0 0 4px; font-size:1.1em;">📨 Mes demandes</h2>
     <p class="meta" style="margin:0 0 14px;">Propose des <strong>congés</strong> ou demande des <strong>heures supplémentaires</strong> à un collaborateur : il voit la demande dans son <strong>Mon espace</strong> (aucun e-mail) et répond Accepter / Refuser. Congés acceptés → l'absence est créée au planning ; heures sup acceptées → le créneau est ajouté au jour concerné.</p>

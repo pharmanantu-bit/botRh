@@ -8,13 +8,14 @@
   </div>
   {% for j in frise.jours %}
   <div class="fr-jour{% if j.aujourdhui %} fr-auj{% endif %}"{% if j.date_iso %} id="j-{{ j.date_iso }}"{% endif %}>
-    <div class="fr-jour-tt">{% if j.aujourdhui %}<span id="auj"></span>{% endif %}{{ j.nom }}{% if j.aujourdhui %} <span style="color:#C0392B;">• aujourd'hui</span>{% endif %}{% if j.ferie %} <span class="ferme" style="color:#9C6500;">— férié ({{ j.ferie }})</span>{% elif j.ferme %} <span class="ferme">— fermé</span>{% endif %}</div>
+    <div class="fr-jour-tt">{% if j.aujourdhui %}<span id="auj"></span>{% endif %}{{ j.nom }}{% if j.aujourdhui %} <span style="color:#C0392B;">• aujourd'hui</span>{% endif %}{% if j.ferie %} <span class="ferme" style="color:#9C6500;">— férié ({{ j.ferie }})</span>{% endif %}{% if j.garde %} <span style="color:#6b4fa0; font-weight:bold;">— 💊 GARDE</span>{% elif j.ferme and not j.ferie %} <span class="ferme">— fermé</span>{% endif %}</div>
     {% for l in j.lignes %}
     <div class="fr-row{% if j.date_iso %} fr-clic{% endif %}"
       {% if j.date_iso %}data-email="{{ l.email }}" data-date="{{ j.date_iso }}" data-jour="{{ j.nom }}" data-prenom="{{ l.prenom }}" data-creneaux='{{ l.creneaux|tojson }}' data-trame='{{ l.creneaux_trame|tojson }}' data-motif="{{ l.motif }}"{% endif %}>
       <div class="fr-label">{{ l.prenom }}{% if l.marque %}<span title="{{ l.marque_titre }}" style="color:{{ {'rouge': '#C0392B', 'bleu': '#2E75B6', 'orange': '#E67E22', 'gris': '#95A5A6'}[l.marque] }}; font-size:0.9em; margin-left:auto;">◆</span>{% endif %}</div>
       <div class="fr-track">
         {% for o in j.ouverture %}<div class="fr-ouv" style="left:{{ o.left }}%; width:{{ o.width }}%;"></div>{% endfor %}
+        {% for t in frise.sticks or [] %}<div class="fr-grid-min{% if t.demi %} fr-grid-demi{% endif %}" style="left:{{ t.left }}%;"></div>{% endfor %}
         {% for t in frise.ticks %}<div class="fr-grid" style="left:{{ t.left }}%;"></div>{% endfor %}
         {% for b in l.barres %}<div class="fr-bar" style="left:{{ b.left }}%; width:{{ b.width }}%; background:{{ b.couleur }};{% if b.bordure %} border:1px dashed {{ b.bordure }}; box-shadow:none;{% endif %}{% if b.deborde %} overflow:visible; z-index:1;{% endif %}">{{ b.label }}</div>{% endfor %}
         {% if not l.barres and j.date_iso %}<span style="position:absolute; left:6px; top:50%; transform:translateY(-50%); font-size:0.68em; color:#b0b8c4;">— absent —</span>{% endif %}

@@ -394,6 +394,45 @@ if employes and _libs_pdf:
     if not ok_ld:
         echecs.append("lire_document KO")
 
+# --- Onglet Garde : enregistrement groupé + libellé 💊 GARDE sur la frise ---
+if employes and len(employes) >= 2:
+    import planning_equipe as PEg
+    _fch = PEg.CHANGEMENTS_FILE
+    _ch_avant = open(_fch, encoding="utf-8").read() if os.path.exists(_fch) else None
+    try:
+        with client.session_transaction() as s:
+            s["admin"] = True
+            s["_csrf_token"] = "tok"
+        _rg = client.post("/admin/planning-equipe/garde",
+                          data={"date": "2026-09-06", "g1d": "09:00", "g1f": "19:30",
+                                "emails": [employes[0]["email"], employes[1]["email"]],
+                                "csrf_token": "tok"})
+        _chg = PEg.charger_changements().get("2026-09-06", {})
+        ok_gadd = ("garde_ok" in _rg.headers.get("Location", "")
+                   and all(_chg.get(e["email"], {}).get("motif") == "Garde"
+                           for e in employes[:2]))
+        _hg = client.get("/admin/planning-equipe?onglet=planning&date=2026-09-06").get_data(as_text=True)
+        ok_glab = "💊 GARDE" in _hg
+        _ho = client.get("/admin/planning-equipe?onglet=garde").get_data(as_text=True)
+        ok_gtab = "Jours de garde" in _ho and "06/09/2026" in _ho
+        client.post("/admin/planning-equipe/garde/supprimer",
+                    data={"date": "2026-09-06", "csrf_token": "tok"})
+        ok_gsup = "2026-09-06" not in PEg.charger_changements()
+    finally:
+        if _ch_avant is None:
+            try:
+                os.remove(_fch)
+            except OSError:
+                pass
+        else:
+            open(_fch, "w", encoding="utf-8").write(_ch_avant)
+    ok_garde = ok_gadd and ok_glab and ok_gtab and ok_gsup
+    print(("OK " if ok_garde else "KO ")
+          + f"[--] onglet garde (ajout groupé={ok_gadd} libellé frise={ok_glab} "
+            f"onglet={ok_gtab} suppression={ok_gsup})")
+    if not ok_garde:
+        echecs.append("onglet garde KO")
+
 # --- Semaine du planning collante (trame -> retour planning = même semaine) ---
 if employes:
     with client.session_transaction() as s:

@@ -738,6 +738,14 @@ def _eclaircir(couleur, t=0.8):
         return "#e8e8e8"
 
 
+def _sous_ticks(amp_min, amp_max, span):
+    """Graduations intermédiaires aux quarts d'heure (hors heures pleines), la
+    demi-heure un peu plus marquée : rend lisible une fin de créneau à 19h15,
+    19h30 ou 19h45 sur la frise."""
+    return [{"left": round((m - amp_min) / span * 100, 2), "demi": m % 30 == 0}
+            for m in range(amp_min, amp_max + 1, 15) if m % 60]
+
+
 def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires=True,
            lundi_date=None, changements=None, absences=None, masquer_vides=False,
            masquer_fermes=False):
@@ -746,6 +754,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
     span = amp_max - amp_min
     ticks = [{"label": f"{h}h", "left": round((h * 60 - amp_min) / span * 100, 2)}
              for h in range(amp_min // 60, amp_max // 60 + 1)]
+    sticks = _sous_ticks(amp_min, amp_max, span)
     jours = []
     for j in range(1, 8):
         if jours_affiches is not None and j not in jours_affiches:
@@ -873,10 +882,13 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
         nom = JOURS_NOMS[j]
         if lundi_date:
             nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
+        # Jour où des présents sont notés motif « Garde » : libellé dédié
+        # (remplace « fermé » — dimanche/férié de garde).
+        garde = any(l.get("motif") == "Garde" and l["barres"] for l in lignes)
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
-                      "lignes": lignes, "ferme": ferme, "ferie": ferie,
+                      "lignes": lignes, "ferme": ferme, "ferie": ferie, "garde": garde,
                       "aujourdhui": bool(date_reelle) and date_reelle == jour_courant()})
-    return {"ticks": ticks, "jours": jours}
+    return {"ticks": ticks, "sticks": sticks, "jours": jours}
 
 
 def _frise_solo(trame, sem, email, couleur):
@@ -886,6 +898,7 @@ def _frise_solo(trame, sem, email, couleur):
     span = amp_max - amp_min
     ticks = [{"label": f"{h}h", "left": round((h * 60 - amp_min) / span * 100, 2)}
              for h in range(amp_min // 60, amp_max // 60 + 1)]
+    sticks = _sous_ticks(amp_min, amp_max, span)
     jours = []
     for j in range(1, 8):
         ouv = []
@@ -904,13 +917,13 @@ def _frise_solo(trame, sem, email, couleur):
         jours.append({"nom": JOURS_NOMS[j], "ouverture": ouv, "barres": barres,
                       "ferme": not horaires.get(str(j)),
                       "total": total_jour(_jours_sem(trame, email, sem).get(str(j), []))})
-    return {"ticks": ticks, "jours": jours}
+    return {"ticks": ticks, "sticks": sticks, "jours": jours}
 
 
 # --- Routes -----------------------------------------------------------------
 
 ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
-           ("changements", "Changements"), ("conges", "Congés"),
+           ("changements", "Changements"), ("conges", "Congés"), ("garde", "Garde"),
            ("totaux", "Fin de mois"),
            # « Mes demandes » : rendu séparé, poussé à droite de la barre.
            ("demandes", "Mes demandes")]
@@ -1809,6 +1822,39 @@ def vue():
                    pas_active=act is None)
         return render_template("planning_equipe.html", **ctx)
 
+    if onglet == "garde":
+        # Jours de garde = présents notés via changements ponctuels motif
+        # « Garde » (mêmes données que la saisie jour par jour du planning).
+        chgs_g = charger_changements()
+        emap_g = {e["email"]: e for e in employes_tous}
+        gardes = []
+        for diso in sorted(chgs_g, reverse=True):
+            pers = [{"email": em, "prenom": emap_g[em]["prenom"],
+                     "creneaux": " · ".join(f"{c['debut']}–{c['fin']}"
+                                            for c in (ch.get("creneaux") or []))}
+                    for em, ch in (chgs_g[diso] or {}).items()
+                    if (ch or {}).get("motif") == "Garde" and (ch.get("creneaux") or [])
+                    and em in emap_g]
+            if not pers:
+                continue
+            try:
+                dg = datetime.strptime(diso, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            gardes.append({"date_iso": diso,
+                           "label": f"{JOURS_NOMS[dg.isoweekday()]} {dg.strftime('%d/%m/%Y')}",
+                           "passe": dg < date.today(),
+                           "personnes": sorted(pers, key=lambda p: p["prenom"].lower())})
+        auj_g = date.today()
+        prochain_dim = auj_g + timedelta(days=(7 - auj_g.isoweekday()) or 7)
+        ctx.update(gardes=gardes,
+                   collabs_garde=sorted(({"email": e["email"], "prenom": e["prenom"],
+                                          "nom": e["nom"]} for e in employes_tous
+                                         if collaborateur_actif(profils.get(e["email"], {}))),
+                                        key=lambda c: c["prenom"].lower()),
+                   garde_date_defaut=prochain_dim.isoformat())
+        return render_template("planning_equipe.html", **ctx)
+
     # sous-onglets à venir
     return render_template("planning_equipe.html", **ctx)
 
@@ -2266,6 +2312,65 @@ def enregistrer_changement():
     # Retour centré sur le jour modifié (ancre #j-date), pas en haut de page.
     return redirect(url_for(".vue", onglet="planning", date=date_iso,
                             _anchor=f"j-{date_iso}"))
+
+
+@bp.route("/admin/planning-equipe/garde", methods=["POST"])
+def ajouter_garde():
+    """Onglet Garde : note en UNE fois les collaborateurs de garde d'une date
+    (dimanche, férié…) — un changement ponctuel motif « Garde » chacun, avec
+    les mêmes créneaux. Modifiable ensuite personne par personne sur la frise."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    date_iso = request.form.get("date", "")
+    try:
+        d_obj = datetime.strptime(date_iso, "%Y-%m-%d").date()
+    except ValueError:
+        return redirect(url_for(".vue", onglet="garde", msg="garde_date"))
+    creneaux = []
+    for s in (1, 2):
+        deb = _norm_hhmm(request.form.get(f"g{s}d"))
+        fin = _norm_hhmm(request.form.get(f"g{s}f"))
+        if creneau_incoherent(deb, fin):
+            return redirect(url_for(".vue", onglet="garde", msg="creneau_invalide"))
+        if deb and fin:
+            creneaux.append({"debut": deb, "fin": fin})
+    creneaux.sort(key=lambda c: _minutes(c["debut"]) or 0)
+    emails = request.form.getlist("emails")
+    if not creneaux or not emails:
+        return redirect(url_for(".vue", onglet="garde", msg="garde_incomplet"))
+    data = charger_changements()
+    absences = charger_absences()
+    valides = {e["email"] for e in charger_employes()}
+    n = saut = 0
+    for em in emails:
+        if em not in valides:
+            continue
+        if absence_active(absences, em, d_obj):
+            saut += 1   # en absence prolongée ce jour-là : on ne l'écrase pas
+            continue
+        data.setdefault(date_iso, {})[em] = {"motif": "Garde", "creneaux": creneaux,
+                                             "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+        n += 1
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="garde", msg="garde_ok", n=n, saut=saut))
+
+
+@bp.route("/admin/planning-equipe/garde/supprimer", methods=["POST"])
+def supprimer_garde():
+    """Retire la garde d'une date : toute l'équipe de garde, ou une personne."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    date_iso = request.form.get("date", "")
+    email = request.form.get("email", "")   # vide = toute la date
+    data = charger_changements()
+    m = data.get(date_iso) or {}
+    for em in list(m):
+        if (not email or em == email) and (m[em] or {}).get("motif") == "Garde":
+            del m[em]
+    if date_iso in data and not data[date_iso]:
+        del data[date_iso]
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="garde", msg="garde_suppr"))
 
 
 @bp.route("/admin/planning-equipe/changement/supprimer", methods=["POST"])
