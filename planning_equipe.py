@@ -70,6 +70,7 @@ OPTIONS_DEFAUT = {
     "mode": "grille",                                    # grille / texte / tableau
     "lignes_vides": "afficher",                          # afficher / masquer
     "horaires_grille": "afficher",                       # afficher / masquer (libellés sur barres)
+    "compteurs_heures": "masquer",                       # afficher / masquer (pastilles heures/contrat)
     "recap_changements": "masquer",                      # afficher / masquer
     "heures_travaillees": "aucun",                       # aucun / non_admin / tous
 }
@@ -1038,6 +1039,7 @@ def vue():
         jours_aff = [j for j in range(1, 8)
                      if str(j) in opts.get("jours", []) or not opts.get("jours")]
         montrer_h = opts.get("horaires_grille") != "masquer"
+        montrer_cpt = opts.get("compteurs_heures") == "afficher"
         mode = opts.get("mode", "grille")
         periode = opts.get("periode", "hebdo")
         # Date de référence pour la navigation réelle. COLLANTE : en revenant
@@ -1124,7 +1126,7 @@ def vue():
                 nb_rot = max(1, min(len(SEMAINES),
                                     int(act_l.get("nb_semaines") or len(SEMAINES))))
                 compteurs = []
-                for e in emp_sm:
+                for e in (emp_sm if montrer_cpt else []):
                     eff, eff_cycle = 0, 0
                     for s in range(nb_rot):
                         l_s = lundi + timedelta(days=7 * s)
@@ -1970,6 +1972,7 @@ def enregistrer_options():
     o["mode"] = request.form.get("mode", "grille")
     o["lignes_vides"] = request.form.get("lignes_vides", "afficher")
     o["horaires_grille"] = request.form.get("horaires_grille", "afficher")
+    o["compteurs_heures"] = request.form.get("compteurs_heures", "masquer")
     o["recap_changements"] = request.form.get("recap_changements", "masquer")
     o["heures_travaillees"] = request.form.get("heures_travaillees", "aucun")
     sauvegarder_options(o)

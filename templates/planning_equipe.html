@@ -194,8 +194,8 @@
       {% if ponctuel or abs_view %}
       <a href="{{ url_for('.vue', onglet='planning', date=ref_date) }}" class="btn-mini" style="background:#888;">← Retour au planning</a>
       {% else %}
-      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.82em; padding:6px 13px;">⊕ Remplaçant / horaires ponctuels</a>
-      <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.82em; padding:6px 13px;">⊕ Absences prolongées</a>
+      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ref_date) }}" class="btn-mini vert" style="font-size:0.74em; padding:4px 9px;">⊕ Horaires ponctuels</a>
+      <a href="{{ url_for('.vue', onglet='planning', absence=1, date=ref_date) }}" class="btn-mini" style="background:#5b4a9e; font-size:0.74em; padding:4px 9px;">⊕ Absences prolongées</a>
       {% endif %}
     </div>
     {% endif %}
@@ -217,7 +217,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date" value="{{ saisie.date_iso }}">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-        <h2 style="margin:0; font-size:1em;">⊕ Remplaçant / horaires ponctuels — {{ saisie.date_label }}</h2>
+        <h2 style="margin:0; font-size:1em;">⊕ Horaires ponctuels — {{ saisie.date_label }}</h2>
         <button class="btn" type="submit">💾 Enregistrer ce jour</button>
       </div>
       <p class="meta" style="margin:0 0 10px; font-size:0.78em;">Modifie les heures réelles du jour (retard, départ, absence, heures sup). Vide = non travaillé. <strong>↺ trame</strong> remet les horaires habituels. Les horaires identiques à la trame ne sont pas comptés comme une modif.</p>
@@ -514,10 +514,10 @@
     <div style="margin-top:22px; border:1px solid #dde3ed; border-radius:10px; background:#f7f9fc; padding:12px 16px; max-width:900px;">
       <div style="font-weight:bold; color:#1F4E79; font-size:0.88em; margin-bottom:6px;">ℹ️ À noter</div>
       <ul style="font-size:0.82em; color:#445; margin:0 0 0 18px; line-height:1.7;">
-        <li>Pour enregistrer un <strong>changement ponctuel</strong> (retard, échange, heures supplémentaires, formation…) : bouton <strong>« ⊕ Remplaçant / horaires ponctuels »</strong> en haut du planning — ou clique directement la ligne du collaborateur sur le jour concerné.</li>
+        <li>Pour enregistrer un <strong>changement ponctuel</strong> (retard, échange, heures supplémentaires, formation…) : bouton <strong>« ⊕ Horaires ponctuels »</strong> en haut du planning — ou clique directement la ligne du collaborateur sur le jour concerné.</li>
         <li>Pour enregistrer une <strong>absence prolongée</strong> (congés, arrêt…) : bouton <strong>« ⊕ Absences prolongées »</strong>. Les absences enregistrées se corrigent ensuite avec ✏️ Modifier.</li>
         <li>Si un <strong>changement régulier</strong> du planning doit être fait : crée une <strong>nouvelle trame</strong> (onglet Trame) avec sa date de démarrage, puis active-la — l'ancienne reste pour l'historique.</li>
-        <li>Pour les horaires d'un <strong>remplaçant</strong> : « ⊕ Remplaçant / horaires ponctuels » — le collaborateur doit être créé au préalable dans <strong>Équipe &amp; RH</strong> et ne pas être archivé.</li>
+        <li>Pour les horaires d'un <strong>remplaçant</strong> : « ⊕ Horaires ponctuels » — le collaborateur doit être créé au préalable dans <strong>Équipe &amp; RH</strong> et ne pas être archivé.</li>
         <li>Pour un dimanche ou un férié de <strong>garde</strong> : onglet <strong>Garde</strong> (saisie groupée) — le jour s'affiche « 💊 GARDE » sur le planning.</li>
       </ul>
     </div>
@@ -854,6 +854,7 @@
       {{ toggle("Mode d'affichage", "mode", [("grille","Grille"),("texte","Texte"),("tableau","Tableau")], options.mode) }}
       {{ toggle("Lignes vides (collaborateurs sans horaire ce jour-là : repos, absence…)", "lignes_vides", [("masquer","Masquer"),("afficher","Afficher")], options.lignes_vides) }}
       {{ toggle("Afficher les horaires sur la grille", "horaires_grille", [("masquer","Masquer"),("afficher","Afficher")], options.horaires_grille) }}
+      {{ toggle("Afficher les compteurs d'heures par collaborateur", "compteurs_heures", [("masquer","Masquer"),("afficher","Afficher")], options.compteurs_heures) }}
       {{ toggle("Afficher le récapitulatif des changements", "recap_changements", [("masquer","Masquer"),("afficher","Afficher")], options.recap_changements) }}
       {{ toggle("Afficher les heures travaillées sous le planning", "heures_travaillees", [("aucun","Aucun"),("non_admin","Non admin"),("tous","Tous")], options.heures_travaillees) }}
 
@@ -975,7 +976,7 @@
     </div>
     {% endif %}
     {% endfor %}
-    <p class="meta" style="margin-top:10px;">🟩 ouverture · 🔴 pas assez de présents · 🟠 pas assez de pharmaciens. Corrige via la trame ou ⊕ Remplaçant / horaires ponctuels.</p>
+    <p class="meta" style="margin-top:10px;">🟩 ouverture · 🔴 pas assez de présents · 🟠 pas assez de pharmaciens. Corrige via la trame ou ⊕ Horaires ponctuels.</p>
     {% endif %}
 
   {# ===================== ONGLET CONGÉS ===================== #}
