@@ -1261,6 +1261,13 @@ def vue():
                     for em, ch in (changements.get(dt.isoformat(), {}) or {}).items():
                         if em not in emap:
                             continue
+                        # Archivés (partis) : ignorés de tout, récap compris.
+                        if not collaborateur_actif(profils.get(em, {})):
+                            continue
+                        # Fermeture exceptionnelle : le bandeau ⛔ du jour dit déjà
+                        # tout — inutile de lister chaque collaborateur au récap.
+                        if ch.get("motif") == "Fermeture exceptionnelle":
+                            continue
                         crs = ch.get("creneaux", []) or []
                         # Changement rétabli à la trame (horaires identiques) → pas une vraie
                         # modif : on ne l'affiche pas dans « Modifications apportées ».
@@ -1439,7 +1446,8 @@ def vue():
                 except ValueError:
                     continue
                 for em, ch in (parem or {}).items():
-                    if em not in emap:
+                    # Archivés (partis) : ignorés du journal aussi.
+                    if em not in emap or not collaborateur_actif(profils.get(em, {})):
                         continue
                     crs = ch.get("creneaux", []) or []
                     cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
@@ -1457,7 +1465,7 @@ def vue():
                                 "tri": (emap[em]["prenom"], diso)})
             for a in absences:
                 em = a.get("email")
-                if em not in emap:
+                if em not in emap or not collaborateur_actif(profils.get(em, {})):
                     continue
                 try:
                     d1 = datetime.strptime(a.get("debut", ""), "%Y-%m-%d").date()
