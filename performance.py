@@ -25,7 +25,7 @@ from flask import (Blueprint, request, render_template, redirect, url_for,
                    session, abort)
 
 from app import (_lire_json, _ecrire_json, _nombre_fr, BASE_DIR, MOIS_FR,
-                 charger_employes, charger_profils)
+                 charger_employes, charger_profils, collaborateur_actif)
 import crypto_rh
 
 bp = Blueprint("performance", __name__)
@@ -281,7 +281,11 @@ def admin_performance():
         return redirect(url_for("admin"))
     perf = charger_perf()
     options = perf["options"]
-    employes = charger_employes()
+    profils = charger_profils()
+    # Collaborateurs ACTIFS seulement : un archivé (parti, dossier conservé)
+    # est ignoré partout — tableau, cumul, correspondances, fiches.
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils.get(e["email"], {}))]
     emails_noms = {e["email"]: f"{e['prenom']} {e.get('nom', '')}".strip() for e in employes}
     mois_dispo = sorted(perf["mois"], reverse=True)
     mois_sel = request.args.get("mois", "")
@@ -292,11 +296,12 @@ def admin_performance():
     if collab and collab in emails_noms:
         return _page_collaborateur(perf, options, collab, emails_noms, mois_dispo)
 
-    profils = charger_profils()
     lignes, sans_collab = [], []
     if mois_sel:
         for code, bloc in sorted(perf["mois"][mois_sel].items()):
             email = perf["mapping"].get(code, "")
+            if email and email not in emails_noms:
+                continue   # associé à un collaborateur parti (archivé) : ignoré
             rem, rem_source = remuneration_effective(email, perf, profils)
             b = bilan_collaborateur(bloc, rem, options)
             objs = [suivi_objectif({**o, "email": email}, perf, options)
@@ -312,8 +317,8 @@ def admin_performance():
     cumul = []
     derniers = sorted(perf["mois"])[-12:]
     for code, email in perf["mapping"].items():
-        if not email:
-            continue
+        if not email or email not in emails_noms:
+            continue   # non associé, ou associé à un archivé : ignoré
         blocs = [perf["mois"][m][code] for m in derniers if code in perf["mois"][m]]
         if not blocs:
             continue
@@ -379,7 +384,10 @@ def importer():
     perf["vendeurs"].update(vendeurs)
     for m, bloc in mois.items():      # ré-importer un mois déjà connu l'écrase
         perf["mois"][m] = bloc
-    proposer_mapping(perf["vendeurs"], perf["mapping"], charger_employes())
+    profils_i = charger_profils()
+    proposer_mapping(perf["vendeurs"], perf["mapping"],
+                     [e for e in charger_employes()
+                      if collaborateur_actif(profils_i.get(e["email"], {}))])
     perf["dernier_import"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     sauvegarder_perf(perf)
     return redirect(url_for("performance.admin_performance",
@@ -391,7 +399,9 @@ def enregistrer_mapping():
     if not session.get("admin"):
         return redirect(url_for("admin"))
     perf = charger_perf()
-    emails_ok = {e["email"] for e in charger_employes()}
+    profils_m = charger_profils()
+    emails_ok = {e["email"] for e in charger_employes()
+                 if collaborateur_actif(profils_m.get(e["email"], {}))}
     for code in perf["vendeurs"]:
         champ = f"map_{code.replace(' ', '_')}"
         if champ in request.form:

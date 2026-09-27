@@ -1632,8 +1632,9 @@ def admin_historique():
     if not session.get("admin"):
         return redirect(url_for("admin"))
 
-    employes = charger_employes()
-    nb_total = len(employes)
+    profils_h = charger_profils()
+    nb_total = sum(1 for e in charger_employes()
+                   if collaborateur_actif(profils_h.get(e["email"], {})))
     historique = []
 
     for fichier in sorted(os.listdir(BASE_DIR), reverse=True):
@@ -1661,7 +1662,12 @@ def admin_historique_mois(mois, annee):
         return redirect(url_for("admin"))
 
     reponses = charger_reponses(mois, annee)
-    employes = charger_employes()
+    # Actifs seulement, mais on garde ceux (partis depuis) qui ont un relevé
+    # sur le mois consulté — même règle que /admin/mois (historique intact).
+    profils_h = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils_h.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
     mois_annee = f"{MOIS_FR[mois]} {annee}"
 
     resultats = []
@@ -1691,7 +1697,11 @@ def admin_historique_export(mois, annee):
         return redirect(url_for("admin"))
 
     reponses = charger_reponses(mois, annee)
-    employes = charger_employes()
+    # Même règle que /admin/mois : actifs + partis ayant un relevé sur le mois.
+    profils_h = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils_h.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
     mois_annee = f"{MOIS_FR[mois]} {annee}"
 
     wb = Workbook()
