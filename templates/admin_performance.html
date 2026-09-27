@@ -88,6 +88,7 @@
     <form method="post" action="/admin/performance/remuneration">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="email" value="{{ email }}">
+      {% if rem.source == 'promesse' %}<p class="aide" style="margin-bottom:8px">ℹ️ Brut prérempli depuis la <strong>promesse d'embauche</strong> de la fiche — vérifie qu'il est toujours d'actualité (augmentations, avenants) puis Enregistrer pour le figer, ou corrige-le.</p>{% endif %}
       <p><label>Brut mensuel (€) : <input type="text" name="brut" value="{{ rem.brut }}" placeholder="ex : 2400"></label></p>
       <p style="margin-top:8px"><label>Prime variable mensuelle (€) : <input type="text" name="variable" value="{{ rem.variable }}" placeholder="0"></label></p>
       <p class="aide" style="margin:8px 0">Coût employeur = brut × {{ options.coef_charges }} (coefficient de charges réglable dans le tableau de bord) + variable.</p>
@@ -210,7 +211,9 @@
       <td>{{ eur(l.bilan.ca_ttc_global) }}</td>
       <td>{{ eur(l.bilan.ca_ttc_hors) }}</td>
       <td>{{ eur(l.bilan.marge_estimee) }}</td>
-      <td>{% if l.rem_saisie %}{{ eur(l.bilan.cout) }}{% else %}<a href="/admin/performance?collab={{ l.email|urlencode }}" class="aide">à saisir</a>{% endif %}</td>
+      <td>{% if l.rem_source == 'saisie' %}{{ eur(l.bilan.cout) }}
+          {% elif l.rem_source == 'promesse' %}{{ eur(l.bilan.cout) }} <span class="badge b-gris" title="Brut repris de la promesse d'embauche — à confirmer sur la fiche">promesse</span>
+          {% else %}<a href="/admin/performance?collab={{ l.email|urlencode }}" class="aide">à saisir</a>{% endif %}</td>
       <td>{{ signe(l.bilan.rentabilite) }}</td>
       <td>{% if l.bilan.ratio is not none %}× {{ l.bilan.ratio }}{% else %}<span class="muet">—</span>{% endif %}</td>
       <td>{% for o in l.objectifs %}{% if o.atteint %}<span class="badge b-ok">✅</span>{% else %}<span class="badge b-cours">{{ o.avancement|round(0)|int if o.avancement is not none else '?' }}%</span>{% endif %}{% else %}<span class="muet">—</span>{% endfor %}</td>

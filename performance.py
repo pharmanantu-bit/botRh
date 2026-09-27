@@ -24,7 +24,8 @@ from datetime import datetime
 from flask import (Blueprint, request, render_template, redirect, url_for,
                    session, abort)
 
-from app import _lire_json, _ecrire_json, BASE_DIR, MOIS_FR, charger_employes
+from app import (_lire_json, _ecrire_json, _nombre_fr, BASE_DIR, MOIS_FR,
+                 charger_employes, charger_profils)
 import crypto_rh
 
 bp = Blueprint("performance", __name__)
@@ -159,6 +160,20 @@ def proposer_mapping(vendeurs, mapping, employes):
     return mapping
 
 
+def remuneration_effective(email, perf, profils):
+    """Rémunération à utiliser pour un collaborateur : la saisie admin si elle
+    existe, sinon repli sur le salaire brut de la PROMESSE D'EMBAUCHE stockée
+    sur la fiche (le salaire des contrats n'est volontairement pas conservé —
+    minimisation). Renvoie (rem, source) avec source 'saisie' / 'promesse' / None."""
+    rem = perf["remunerations"].get(email)
+    if rem:
+        return rem, "saisie"
+    brut = _nombre_fr((profils.get(email, {}).get("promesse") or {}).get("salaire_brut"))
+    if brut:
+        return {"brut": crypto_rh.chiffrer(str(brut))}, "promesse"
+    return {}, None
+
+
 # ------------------------------------------------------------------ Calculs
 
 def _cout(rem, options):
@@ -248,7 +263,8 @@ def suivi_objectif(obj, perf, options):
     mois_mesure = echeance if echeance in perf["mois"] else mois_dispo[-1]
     code = next((c for c, e in perf["mapping"].items() if e == email), None)
     bloc = perf["mois"][mois_mesure].get(code or "", {})
-    bilan = bilan_collaborateur(bloc, perf["remunerations"].get(email, {}), options)
+    rem, _ = remuneration_effective(email, perf, charger_profils())
+    bilan = bilan_collaborateur(bloc, rem, options)
     valeur = valeur_indicateur(bilan, obj.get("indicateur"))
     cible = obj.get("cible")
     avancement = round(100 * valeur / cible, 1) if valeur is not None and cible else None
@@ -276,17 +292,19 @@ def admin_performance():
     if collab and collab in emails_noms:
         return _page_collaborateur(perf, options, collab, emails_noms, mois_dispo)
 
+    profils = charger_profils()
     lignes, sans_collab = [], []
     if mois_sel:
         for code, bloc in sorted(perf["mois"][mois_sel].items()):
             email = perf["mapping"].get(code, "")
-            b = bilan_collaborateur(bloc, perf["remunerations"].get(email, {}), options)
+            rem, rem_source = remuneration_effective(email, perf, profils)
+            b = bilan_collaborateur(bloc, rem, options)
             objs = [suivi_objectif({**o, "email": email}, perf, options)
                     for o in perf["objectifs"].get(email, []) if not o.get("clos")]
             ligne = {"code": code, "email": email,
                      "nom": emails_noms.get(email, "") or perf["vendeurs"].get(code, code),
                      "bilan": b, "objectifs": objs,
-                     "rem_saisie": email in perf["remunerations"]}
+                     "rem_source": rem_source}
             (lignes if email else sans_collab).append(ligne)
         lignes.sort(key=lambda x: -(x["bilan"].get("ca_ttc_global") or 0))
 
@@ -300,7 +318,8 @@ def admin_performance():
         if not blocs:
             continue
         total = sommer_mois(blocs)
-        b = bilan_collaborateur(total, perf["remunerations"].get(email, {}), options)
+        rem, _src = remuneration_effective(email, perf, profils)
+        b = bilan_collaborateur(total, rem, options)
         cout_mensuel = b.pop("cout", None)
         b["cout"] = round(cout_mensuel * len(blocs), 2) if cout_mensuel is not None else None
         b["rentabilite"] = (round(b["marge_estimee"] - b["cout"], 2)
@@ -324,15 +343,16 @@ def admin_performance():
 def _page_collaborateur(perf, options, email, emails_noms, mois_dispo):
     """Vue détaillée : historique mensuel + rémunération + objectifs."""
     code = next((c for c, e in perf["mapping"].items() if e == email), None)
+    rem_eff, rem_source = remuneration_effective(email, perf, charger_profils())
     histo = []
     for m in sorted(perf["mois"], reverse=True):
         bloc = perf["mois"][m].get(code or "")
         if bloc:
             histo.append({"mois": m,
-                          "bilan": bilan_collaborateur(bloc, perf["remunerations"].get(email, {}), options)})
-    rem = perf["remunerations"].get(email, {})
-    rem_aff = {"brut": crypto_rh.dechiffrer(rem["brut"]) if rem.get("brut") else "",
-               "variable": crypto_rh.dechiffrer(rem["variable"]) if rem.get("variable") else ""}
+                          "bilan": bilan_collaborateur(bloc, rem_eff, options)})
+    rem_aff = {"brut": crypto_rh.dechiffrer(rem_eff["brut"]) if rem_eff.get("brut") else "",
+               "variable": crypto_rh.dechiffrer(rem_eff["variable"]) if rem_eff.get("variable") else "",
+               "source": rem_source}
     objectifs = [suivi_objectif({**o, "email": email}, perf, options)
                  for o in perf["objectifs"].get(email, [])]
     return render_template("admin_performance.html", vue="collab",
