@@ -1876,7 +1876,10 @@ def vue():
                 continue
             tr_j = trame_active_pour(data_trames, dch)
             for em, ch in (m or {}).items():
-                if em not in emap_g or not ch:
+                # Seuls les collaborateurs ACTIFS ont des heures à rattraper —
+                # les archivés (partis) et inactifs sortent du décompte.
+                if em not in emap_g or not ch \
+                        or not collaborateur_actif(profils.get(em, {})):
                     continue
                 if ch.get("motif") == "Fermeture exceptionnelle":
                     du_r[em] = round(du_r.get(em, 0)
@@ -1901,7 +1904,8 @@ def vue():
             pers_f = sorted(
                 f"{emap_g[em]['prenom']} ({_fmt_hmin(total_jour(creneaux_trame_jour(tr_f, em, df) if tr_f else []))})"
                 for em, ch in (chgs_g[diso] or {}).items()
-                if (ch or {}).get("motif") == "Fermeture exceptionnelle" and em in emap_g)
+                if (ch or {}).get("motif") == "Fermeture exceptionnelle" and em in emap_g
+                and collaborateur_actif(profils.get(em, {})))
             if not pers_f:
                 continue
             fermetures.append({"date_iso": diso,
@@ -2456,9 +2460,12 @@ def ajouter_fermeture():
         return redirect(url_for(".vue", onglet="garde", msg="fermeture_date"))
     data = charger_changements()
     absences = charger_absences()
+    profils_f = charger_profils()
     n = saut = 0
     for e in charger_employes():
         em = e["email"]
+        if not collaborateur_actif(profils_f.get(em, {})):
+            continue   # archivé (parti) ou inactif : rien à vider ni à rattraper
         if not creneaux_trame_jour(trame, em, d_obj):
             continue   # pas prévu ce jour-là : rien à vider
         if absence_active(absences, em, d_obj):
