@@ -57,10 +57,6 @@
 
     /* ===== FRISE (Gantt horizontal) ===== */
     .frise { border: none; }
-    .fr-axis { display: flex; align-items: flex-end; height: 22px; border: 1px solid #7e94b0; border-radius: 8px; background: #f0f4f9; margin-bottom: 10px; }
-    .fr-axis .sp { width: 140px; flex: none; }
-    .fr-axis .track { position: relative; flex: 1; height: 100%; }
-    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.8em; font-weight: 600; color: #3d5570; white-space: nowrap; }
     /* Chaque jour = un bloc séparé, espacé du suivant, bordure contrastée. */
     .fr-jour { border: 1px solid #7e94b0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
     /* Jour en cours : cadre rouge pour le repérer immédiatement. */
@@ -75,6 +71,8 @@
     .fr-jour-axe .sp { width: 140px; flex: none; }
     .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #a9b7c9; }
     .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.7em; font-weight: 600; color: #4a6280; white-space: nowrap; }
+    /* Dernier repère (ex. 20h) : calé vers l'intérieur pour ne pas être coupé */
+    .fr-jour-axe .tick-fin { transform: translateX(-100%); padding-right: 2px; }
     .fr-jour-axe + .fr-row { border-top: none; }
     .fr-label { width: 140px; flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 8px; font-size: 0.8em; }
     .fr-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
@@ -133,7 +131,7 @@
       #snav .navitem { flex: 0 0 calc((100% - 20px) / 6); min-width: 0;
                        padding: 5px 2px; font-size: 0.72em; overflow: hidden; }
       /* Frise : colonne des noms réduite pour laisser la place aux barres */
-      .fr-label, .fr-axis .sp, .fr-jour-axe .sp { width: 92px; }
+      .fr-label, .fr-jour-axe .sp { width: 92px; }
       .fr-label { font-size: 0.72em; }
       .fr-tot { width: 42px; }
     }

@@ -12,10 +12,6 @@
     .btn { background: #1F4E79; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
     /* Frise — même look que l'écran : un bloc par jour, bordures contrastées. */
     .frise { border: none; }
-    .fr-axis { display: flex; align-items: flex-end; height: 20px; border: 1px solid #aab6c8; border-radius: 6px; background: #f0f4f9; margin-bottom: 8px; }
-    .fr-axis .sp { width: 130px; flex: none; }
-    .fr-axis .track { position: relative; flex: 1; height: 100%; }
-    .fr-axis .tick { position: absolute; bottom: 2px; transform: translateX(-50%); font-size: 0.65em; color: #556; white-space: nowrap; }
     .fr-jour { border: 1px solid #aab6c8; border-radius: 6px; overflow: hidden; margin-bottom: 8px; break-inside: avoid; }
     .fr-jour.fr-auj { border: 2px solid #C0392B; }
     .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.78em; padding: 3px 10px; border-bottom: 1px solid #aab6c8; }
@@ -27,6 +23,7 @@
     .fr-jour-axe .sp { width: 130px; flex: none; }
     .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #ccd5e2; }
     .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.62em; color: #556; white-space: nowrap; }
+    .fr-jour-axe .tick-fin { transform: translateX(-100%); padding-right: 2px; }
     .fr-jour-axe + .fr-row { border-top: none; }
     .fr-label { width: 130px; flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.76em; }
     .fr-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
