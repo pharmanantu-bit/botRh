@@ -70,6 +70,12 @@
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
     .fr-row { display: flex; align-items: stretch; border-top: 1px solid #a9b7c9; min-height: 26px; }
     .fr-jour-tt + .fr-row { border-top: none; }
+    /* Rangée d'heures (8h, 9h…) répétée en tête de CHAQUE jour, en plus du bandeau global */
+    .fr-jour-axe { display: flex; align-items: flex-end; height: 17px; background: #eef3f9; border-bottom: 1px solid #a9b7c9; }
+    .fr-jour-axe .sp { width: 140px; flex: none; }
+    .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #a9b7c9; }
+    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.7em; font-weight: 600; color: #4a6280; white-space: nowrap; }
+    .fr-jour-axe + .fr-row { border-top: none; }
     .fr-label { width: 140px; flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 8px; font-size: 0.8em; }
     .fr-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
     .fr-track { position: relative; flex: 1; background-size: 100% 100%; border-left: 1px solid #a9b7c9; }
@@ -127,7 +133,7 @@
       #snav .navitem { flex: 0 0 calc((100% - 20px) / 6); min-width: 0;
                        padding: 5px 2px; font-size: 0.72em; overflow: hidden; }
       /* Frise : colonne des noms réduite pour laisser la place aux barres */
-      .fr-label, .fr-axis .sp { width: 92px; }
+      .fr-label, .fr-axis .sp, .fr-jour-axe .sp { width: 92px; }
       .fr-label { font-size: 0.72em; }
       .fr-tot { width: 42px; }
     }

@@ -22,6 +22,12 @@
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
     .fr-row { display: flex; align-items: stretch; border-top: 1px solid #ccd5e2; min-height: 22px; }
     .fr-jour-tt + .fr-row { border-top: none; }
+    /* Rangée d'heures répétée en tête de chaque jour */
+    .fr-jour-axe { display: flex; align-items: flex-end; height: 15px; background: #eef3f9; border-bottom: 1px solid #ccd5e2; }
+    .fr-jour-axe .sp { width: 130px; flex: none; }
+    .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #ccd5e2; }
+    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.62em; color: #556; white-space: nowrap; }
+    .fr-jour-axe + .fr-row { border-top: none; }
     .fr-label { width: 130px; flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.76em; }
     .fr-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     .fr-track { position: relative; flex: 1; border-left: 1px solid #ccd5e2; }
