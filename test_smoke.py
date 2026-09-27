@@ -1034,6 +1034,52 @@ if employes:
             except OSError:
                 pass
 
+# ---- Performance : import OSPharm simulé, calculs, page ----
+import io as _io
+import tempfile as _tf2
+import performance as PF
+from openpyxl import Workbook as _Wb
+_pf_tmp = _tf2.mkdtemp(prefix="perf_smoke_")
+_pf_file = PF.PERF_FILE
+PF.PERF_FILE = os.path.join(_pf_tmp, "performance.json")
+try:
+    with client.session_transaction() as s:
+        s["admin"] = True
+        s["_csrf_token"] = "t"
+    _wb = _Wb()
+    _ws = _wb.active
+    _ws.append(["", "", prenom0.upper()])
+    _ws.append(["PERIODE", "INDICATEUR", "VENDEUR 1"])
+    _ws.append(["202509:202608", "nombre ventes global", 999])   # cumul : ignoré
+    _ws.append(["202608", "nombre ventes global", 100])
+    _ws.append(["202608", "panier ttc moyen global", 30.0])
+    _ws.append(["202608", "nombre ventes ordonnance", 60])
+    _ws.append(["202608", "panier ttc moyen ordonnance", 40.0])
+    _ws.append(["202608", "nombre ventes hors ordonnance", 40])
+    _ws.append(["202608", "panier ttc moyen hors ordonnance", 15.0])
+    _buf = _io.BytesIO()
+    _wb.save(_buf)
+    _buf.seek(0)
+    _r = client.post("/admin/performance/import", data={
+        "csrf_token": "t", "fichier": (_buf, "ospharm.xlsx")},
+        content_type="multipart/form-data")
+    _perf = PF.charger_perf()
+    ok_imp = "import_ok:1" in _r.headers.get("Location", "") and \
+        _perf["mois"]["202608"]["VENDEUR 1"]["nb_global"] == 100
+    ok_map = _perf["mapping"].get("VENDEUR 1") == (employes[0]["email"] if employes else "")
+    _b = PF.bilan_collaborateur(_perf["mois"]["202608"]["VENDEUR 1"], {}, _perf["options"])
+    ok_calc = _b["ca_ttc_global"] == 3000.0 and _b["ca_ttc_ordo"] == 2400.0 \
+        and _b["marge_estimee"] == round(2400 * 0.08 + 600 * 0.30, 2) and _b["cout"] is None
+    ok_page = client.get("/admin/performance").status_code == 200 \
+        and client.get(f"/admin/performance?collab={employes[0]['email']}").status_code == 200
+    ok_pf = ok_imp and ok_map and ok_calc and ok_page
+    print(("OK " if ok_pf else "KO ")
+          + f"[--] performance (import={ok_imp} mapping auto={ok_map} calculs={ok_calc} pages={ok_page})")
+    if not ok_pf:
+        echecs.append("performance KO")
+finally:
+    PF.PERF_FILE = _pf_file
+
 # ---- Newsletter « Apothical Inside » : page, brouillon isolé, PDF, export ----
 import tempfile as _tf
 import newsletter as NL

@@ -40,3 +40,6 @@ agent_pieces_jointes/
 # Newsletter Apothical Inside
 newsletters.json
 newsletter_photos/
+
+# Performance collaborateurs (dont remunerations chiffrees)
+performance.json

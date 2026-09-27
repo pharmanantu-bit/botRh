@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📈 Performance — botRh</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 26px 30px; max-width: 1150px; margin: 0 auto 18px; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 6px; }
+    h2 { color: #1F4E79; font-size: 1.02em; margin: 4px 0 10px; }
+    p, li, label, td, th { color: #444; font-size: 0.9em; line-height: 1.5; }
+    .aide { color: #778; font-size: 0.82em; }
+    .msg { padding: 10px 14px; border-radius: 8px; margin: 12px 0; font-size: 0.9em; }
+    .msg-ok { background: #C6EFCE; color: #276221; }
+    .msg-err { background: #FFE5E5; color: #9C0006; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th { background: #2E75B6; color: white; padding: 7px 9px; font-size: 0.82em; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    td { border-bottom: 1px solid #e4e9f1; padding: 6px 9px; text-align: right; white-space: nowrap; }
+    tr:hover td { background: #f5f8fc; }
+    .pos { color: #1e7a34; font-weight: bold; }
+    .neg { color: #b03a2e; font-weight: bold; }
+    .muet { color: #9aa; }
+    input[type=text], input[type=number], input[type=month], input[type=date], select { padding: 7px 9px; border: 1px solid #ccd5e0; border-radius: 7px; font-size: 0.9em; font-family: inherit; }
+    .btn { display: inline-block; padding: 8px 15px; border-radius: 8px; border: 0; cursor: pointer; font-size: 0.9em; text-decoration: none; }
+    .btn-vert { background: #1F4E79; color: white; }
+    .btn-clair { background: #eef2f7; color: #333; }
+    .btn-rouge { background: #fdecea; color: #b03a2e; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 15px 17px; margin-top: 14px; }
+    .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grille2 { grid-template-columns: 1fr; } }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 0.78em; font-weight: bold; margin: 1px; }
+    .b-ok { background: #C6EFCE; color: #276221; }
+    .b-cours { background: #FFEB9C; color: #9C6500; }
+    .b-gris { background: #e8ecf2; color: #667; }
+    .warn { background: #fff8e1; border: 1px solid #ffe0a3; color: #7a5b00; padding: 10px 14px; border-radius: 8px; font-size: 0.86em; margin-top: 12px; }
+    .tab-scroll { overflow-x: auto; }
+    form.inline { display: inline; }
+    .barre-haut { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+
+{% macro eur(v) -%}
+  {%- if v is none -%}<span class="muet">—</span>
+  {%- else -%}{{ '{:,.0f}'.format(v).replace(',', ' ') }} €{%- endif -%}
+{%- endmacro %}
+{% macro eur2(v) -%}
+  {%- if v is none -%}<span class="muet">—</span>
+  {%- else -%}{{ '{:,.2f}'.format(v).replace(',', ' ').replace('.', ',') }} €{%- endif -%}
+{%- endmacro %}
+{% macro signe(v) -%}
+  {%- if v is none -%}<span class="muet">—</span>
+  {%- elif v >= 0 -%}<span class="pos">+{{ '{:,.0f}'.format(v).replace(',', ' ') }} €</span>
+  {%- else -%}<span class="neg">−{{ '{:,.0f}'.format(-v).replace(',', ' ') }} €</span>{%- endif -%}
+{%- endmacro %}
+
+{% if msg %}
+  {% if msg.startswith('import_ok') %}<div class="carte msg msg-ok" style="padding:12px 18px">Import réussi — {{ msg.split(':')[1] }} mois de données chargés (ré-importer un mois déjà connu l'écrase).</div>
+  {% elif msg == 'fichier_ko' %}<div class="carte msg msg-err" style="padding:12px 18px">Fichier attendu : l'export OSPharm au format .xlsx.</div>
+  {% elif msg == 'import_ko' %}<div class="carte msg msg-err" style="padding:12px 18px">Import impossible : aucun mois de données reconnu dans ce fichier.</div>
+  {% elif msg == 'mapping_ok' %}<div class="carte msg msg-ok" style="padding:12px 18px">Correspondances vendeur ↔ collaborateur enregistrées.</div>
+  {% elif msg == 'options_ok' %}<div class="carte msg msg-ok" style="padding:12px 18px">Paramètres enregistrés.</div>
+  {% elif msg == 'rem_ok' %}<div class="carte msg msg-ok" style="padding:12px 18px">Rémunération enregistrée{% if crypto_ok %} (chiffrée){% endif %}.</div>
+  {% elif msg == 'obj_ok' %}<div class="carte msg msg-ok" style="padding:12px 18px">Objectif ajouté.</div>
+  {% elif msg == 'obj_maj' %}<div class="carte msg msg-ok" style="padding:12px 18px">Objectif mis à jour.</div>
+  {% elif msg == 'obj_suppr' %}<div class="carte msg msg-ok" style="padding:12px 18px">Objectif supprimé.</div>
+  {% elif msg == 'cible_ko' %}<div class="carte msg msg-err" style="padding:12px 18px">Cible invalide : saisis un nombre.</div>
+  {% endif %}
+{% endif %}
+
+{% if vue == 'collab' %}
+<!-- ==================== VUE COLLABORATEUR ==================== -->
+<div class="carte">
+  <a href="/admin/performance" class="btn btn-clair">← Tableau de bord</a>
+  <h1 style="margin-top:12px">📈 {{ nom }}</h1>
+  {% if code %}<p class="aide">Colonne OSPharm : {{ code }}</p>
+  {% else %}<div class="warn">Aucune colonne vendeur associée — fais la correspondance dans le tableau de bord.</div>{% endif %}
+</div>
+
+<div class="carte grille2">
+  <div class="bloc">
+    <h2>💶 Rémunération (visible admin uniquement{% if crypto_ok %}, chiffrée au repos{% endif %})</h2>
+    {% if not crypto_ok %}<p class="warn" style="margin-bottom:8px">⚠️ Clé de chiffrement absente : la rémunération serait stockée en clair (normal en local ; en prod BOTRH_CRYPTO_KEY est posée).</p>{% endif %}
+    <form method="post" action="/admin/performance/remuneration">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" value="{{ email }}">
+      <p><label>Brut mensuel (€) : <input type="text" name="brut" value="{{ rem.brut }}" placeholder="ex : 2400"></label></p>
+      <p style="margin-top:8px"><label>Prime variable mensuelle (€) : <input type="text" name="variable" value="{{ rem.variable }}" placeholder="0"></label></p>
+      <p class="aide" style="margin:8px 0">Coût employeur = brut × {{ options.coef_charges }} (coefficient de charges réglable dans le tableau de bord) + variable.</p>
+      <button class="btn btn-vert">Enregistrer</button>
+    </form>
+  </div>
+  <div class="bloc">
+    <h2>🎯 Nouvel objectif (entretien individuel)</h2>
+    <form method="post" action="/admin/performance/objectif">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="email" value="{{ email }}">
+      <p><select name="indicateur">
+        {% for cle, (lib, unite) in indicateurs_obj.items() %}
+        <option value="{{ cle }}">{{ lib }} ({{ unite }})</option>
+        {% endfor %}
+      </select></p>
+      <p style="margin-top:8px"><label>Cible : <input type="text" name="cible" placeholder="ex : 35" style="width:110px"></label>
+         <label style="margin-left:10px">Échéance : <input type="month" name="echeance"></label></p>
+      <p style="margin-top:8px"><label>Entretien du : <input type="date" name="entretien"></label></p>
+      <p style="margin-top:8px"><input type="text" name="commentaire" placeholder="Commentaire (contexte, moyens convenus…)" style="width:100%"></p>
+      <button class="btn btn-vert" style="margin-top:8px">Ajouter l'objectif</button>
+    </form>
+  </div>
+</div>
+
+<div class="carte">
+  <h2>🎯 Objectifs suivis</h2>
+  {% if not objectifs %}<p class="aide">Aucun objectif pour l'instant — fixe-les lors de l'entretien individuel ci-dessus.</p>{% endif %}
+  {% if objectifs %}
+  <div class="tab-scroll"><table>
+    <tr><th>Objectif</th><th>Cible</th><th>Échéance</th><th>Mesure ({{ '' }}dernier mois)</th><th>Avancement</th><th>Statut</th><th>Entretien</th><th></th></tr>
+    {% for o in objectifs %}
+    <tr {% if o.clos %}style="opacity:.55"{% endif %}>
+      <td style="white-space:normal">{{ indicateurs_obj[o.indicateur][0] if o.indicateur in indicateurs_obj else o.indicateur }}
+        {% if o.commentaire %}<br><span class="aide">{{ o.commentaire }}</span>{% endif %}</td>
+      <td>{{ o.cible }} {{ indicateurs_obj[o.indicateur][1] if o.indicateur in indicateurs_obj }}</td>
+      <td>{{ o.echeance or '—' }}</td>
+      <td>{% if o.valeur is not none %}{{ o.valeur }} <span class="aide">({{ titre_periode(o.mois_mesure) }})</span>{% else %}<span class="muet">—</span>{% endif %}</td>
+      <td>{% if o.avancement is not none %}{{ o.avancement }} %{% else %}<span class="muet">—</span>{% endif %}</td>
+      <td>{% if o.clos %}<span class="badge b-gris">Clos</span>
+          {% elif o.atteint %}<span class="badge b-ok">✅ Atteint</span>
+          {% else %}<span class="badge b-cours">En cours</span>{% endif %}</td>
+      <td>{{ o.entretien or '—' }}</td>
+      <td>
+        <form method="post" action="/admin/performance/objectif/clore" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" value="{{ email }}"><input type="hidden" name="id" value="{{ o.id }}">
+          <button class="btn btn-clair" title="Clore / rouvrir">{{ '↺' if o.clos else '✔' }}</button>
+        </form>
+        <form method="post" action="/admin/performance/objectif/supprimer" class="inline" onsubmit="return confirm('Supprimer cet objectif ?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" value="{{ email }}"><input type="hidden" name="id" value="{{ o.id }}">
+          <button class="btn btn-rouge" title="Supprimer">🗑</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</div>
+
+<div class="carte">
+  <h2>📅 Historique mensuel</h2>
+  {% if not histo %}<p class="aide">Pas encore de données importées pour ce collaborateur.</p>{% endif %}
+  {% if histo %}
+  <div class="tab-scroll"><table>
+    <tr><th>Mois</th><th>Ventes</th><th>Panier moyen</th><th>CA TTC estimé</th><th>dont hors ord.</th><th>Substitution</th><th>Marge estimée</th><th>Coût employeur</th><th>Rentabilité</th></tr>
+    {% for h in histo %}
+    <tr>
+      <td>{{ titre_periode(h.mois) }}</td>
+      <td>{{ h.bilan.get('nb_global')|round(0)|int if h.bilan.get('nb_global') is not none else '—' }}</td>
+      <td>{{ eur2(h.bilan.get('panier_global')) }}</td>
+      <td>{{ eur(h.bilan.ca_ttc_global) }}</td>
+      <td>{{ eur(h.bilan.ca_ttc_hors) }}</td>
+      <td>{% if h.bilan.get('taux_subst') is not none %}{{ (h.bilan.get('taux_subst') * 100)|round(1) }} %{% else %}<span class="muet">—</span>{% endif %}</td>
+      <td>{{ eur(h.bilan.marge_estimee) }}</td>
+      <td>{{ eur(h.bilan.cout) }}</td>
+      <td>{{ signe(h.bilan.rentabilite) }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="aide" style="margin-top:8px">CA TTC estimé = nombre de ventes × panier moyen. Marge estimée = CA ordonnance × {{ options.taux_marge_ordo }} % + CA hors ordonnance × {{ options.taux_marge_hors }} % (taux réglables). Ce sont des estimations de pilotage, pas des chiffres comptables.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<!-- ==================== TABLEAU DE BORD ==================== -->
+<div class="carte">
+  <h1>📈 Performance des collaborateurs</h1>
+  <p class="aide">Croise ce que chaque collaborateur rapporte (export OSPharm) et ce qu'il coûte (rémunération chargée), et suit les objectifs fixés en entretien individuel.{% if perf.dernier_import %} Dernier import : {{ perf.dernier_import }}.{% endif %}</p>
+
+  <div class="bloc">
+    <h2>📥 Importer l'export OSPharm du mois</h2>
+    <form method="post" action="/admin/performance/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="fichier" accept=".xlsx" required>
+      <button class="btn btn-vert">Importer</button>
+      <p class="aide" style="margin-top:6px">Fichier « MAJospharm_recap_mois_collaborateur_… .xlsx ». Tous les mois présents dans le fichier sont chargés ; ré-importer un mois déjà connu remplace ses données.</p>
+    </form>
+  </div>
+</div>
+
+{% if mois_sel %}
+<div class="carte">
+  <div class="barre-haut">
+    <h2 style="margin:0">📊 Mois : </h2>
+    <form method="get" action="/admin/performance">
+      <select name="mois" onchange="this.form.submit()">
+        {% for m in mois_dispo %}<option value="{{ m }}" {% if m == mois_sel %}selected{% endif %}>{{ titre_periode(m) }}</option>{% endfor %}
+      </select>
+    </form>
+  </div>
+  <div class="tab-scroll"><table>
+    <tr><th>Collaborateur</th><th>Ventes</th><th>Panier moyen</th><th>CA TTC estimé</th><th>dont hors ord.</th><th>Marge estimée</th><th>Coût employeur</th><th>Rentabilité</th><th>CA / coût</th><th>Objectifs</th></tr>
+    {% for l in lignes %}
+    <tr>
+      <td><a href="/admin/performance?collab={{ l.email|urlencode }}">{{ l.nom }}</a></td>
+      <td>{{ l.bilan.get('nb_global')|round(0)|int if l.bilan.get('nb_global') is not none else '—' }}</td>
+      <td>{{ eur2(l.bilan.get('panier_global')) }}</td>
+      <td>{{ eur(l.bilan.ca_ttc_global) }}</td>
+      <td>{{ eur(l.bilan.ca_ttc_hors) }}</td>
+      <td>{{ eur(l.bilan.marge_estimee) }}</td>
+      <td>{% if l.rem_saisie %}{{ eur(l.bilan.cout) }}{% else %}<a href="/admin/performance?collab={{ l.email|urlencode }}" class="aide">à saisir</a>{% endif %}</td>
+      <td>{{ signe(l.bilan.rentabilite) }}</td>
+      <td>{% if l.bilan.ratio is not none %}× {{ l.bilan.ratio }}{% else %}<span class="muet">—</span>{% endif %}</td>
+      <td>{% for o in l.objectifs %}{% if o.atteint %}<span class="badge b-ok">✅</span>{% else %}<span class="badge b-cours">{{ o.avancement|round(0)|int if o.avancement is not none else '?' }}%</span>{% endif %}{% else %}<span class="muet">—</span>{% endfor %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="aide" style="margin-top:8px">Marge estimée = CA ordonnance × {{ options.taux_marge_ordo }} % + CA hors ordonnance × {{ options.taux_marge_hors }} % — estimation de pilotage (l'export ne contient pas la marge réelle). Rentabilité = marge estimée − coût employeur.</p>
+  {% if sans_collab %}
+  <div class="warn">Colonnes du fichier sans collaborateur associé (invisibles dans le tableau) :
+    {% for l in sans_collab %}<strong>{{ l.code }}</strong> ({{ perf.vendeurs.get(l.code, '?') }}){{ ', ' if not loop.last }}{% endfor %}
+    — fais la correspondance ci-dessous.</div>
+  {% endif %}
+</div>
+
+{% if cumul %}
+<div class="carte">
+  <h2>Σ Cumul des {{ 12 if mois_dispo|length > 12 else mois_dispo|length }} derniers mois importés</h2>
+  <div class="tab-scroll"><table>
+    <tr><th>Collaborateur</th><th>Mois</th><th>Ventes</th><th>CA TTC estimé</th><th>Marge estimée</th><th>Coût (× mois)</th><th>Rentabilité cumulée</th><th>CA / coût</th></tr>
+    {% for c in cumul %}
+    <tr>
+      <td><a href="/admin/performance?collab={{ c.email|urlencode }}">{{ c.nom }}</a></td>
+      <td>{{ c.nb_mois }}</td>
+      <td>{{ c.bilan.get('nb_global')|round(0)|int if c.bilan.get('nb_global') is not none else '—' }}</td>
+      <td>{{ eur(c.bilan.ca_ttc_global) }}</td>
+      <td>{{ eur(c.bilan.marge_estimee) }}</td>
+      <td>{{ eur(c.bilan.cout) }}</td>
+      <td>{{ signe(c.bilan.rentabilite) }}</td>
+      <td>{% if c.bilan.ratio is not none %}× {{ c.bilan.ratio }}{% else %}<span class="muet">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="carte grille2">
+  <div class="bloc">
+    <h2>🔗 Correspondance vendeur OSPharm ↔ collaborateur</h2>
+    {% if not perf.vendeurs %}<p class="aide">Importe d'abord un fichier : les colonnes vendeur apparaîtront ici.</p>{% endif %}
+    {% if perf.vendeurs %}
+    <form method="post" action="/admin/performance/mapping">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for code, prenom in perf.vendeurs.items()|sort %}
+      <p style="margin-top:6px"><label>{{ code }} <span class="aide">({{ prenom }})</span> →
+        <select name="map_{{ code.replace(' ', '_') }}">
+          <option value="">— ignorer —</option>
+          {% for e in employes %}
+          <option value="{{ e.email }}" {% if perf.mapping.get(code) == e.email %}selected{% endif %}>{{ e.prenom }} {{ e.nom }}</option>
+          {% endfor %}
+        </select></label></p>
+      {% endfor %}
+      <button class="btn btn-vert" style="margin-top:10px">Enregistrer les correspondances</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="bloc">
+    <h2>⚙️ Paramètres de calcul</h2>
+    <form method="post" action="/admin/performance/options">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p><label>Coefficient de charges patronales : <input type="text" name="coef_charges" value="{{ options.coef_charges }}" style="width:80px"></label>
+        <span class="aide">(coût employeur ≈ brut × ce coefficient)</span></p>
+      <p style="margin-top:8px"><label>Taux de marge ordonnance (%) : <input type="text" name="taux_marge_ordo" value="{{ options.taux_marge_ordo }}" style="width:80px"></label></p>
+      <p style="margin-top:8px"><label>Taux de marge hors ordonnance (%) : <input type="text" name="taux_marge_hors" value="{{ options.taux_marge_hors }}" style="width:80px"></label></p>
+      <p class="aide" style="margin:8px 0">Ces taux servent uniquement à ESTIMER la marge depuis le CA (l'export OSPharm ne la contient pas). Ajuste-les à la réalité de l'officine.</p>
+      <button class="btn btn-vert">Enregistrer</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+</body>
+</html>

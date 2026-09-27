@@ -3414,6 +3414,8 @@ def construire_sauvegarde():
     # Newsletter « Apothical Inside » : textes seulement (les photos, lourdes,
     # feraient exploser la sauvegarde quotidienne envoyée par mail).
     data["newsletters"] = _lire_json(os.path.join(BASE_DIR, "newsletters.json"))
+    # Performance collaborateurs (rémunérations restent chiffrées telles quelles).
+    data["performance"] = _lire_json(os.path.join(BASE_DIR, "performance.json"))
     return data
 
 
@@ -3455,6 +3457,8 @@ def restaurer_sauvegarde(data):
     resume["candidats_fichiers"] = _ecrire_fichiers_dossier(_cand_docs, data.get("candidats_fichiers"))
     if isinstance(data.get("newsletters"), dict) and data["newsletters"]:
         _ecrire_json(os.path.join(BASE_DIR, "newsletters.json"), data["newsletters"])
+    if isinstance(data.get("performance"), dict) and data["performance"]:
+        _ecrire_json(os.path.join(BASE_DIR, "performance.json"), data["performance"])
     return resume
 
 
@@ -3630,6 +3634,8 @@ from agent_outils import bp as agent_bp  # noqa: E402
 app.register_blueprint(agent_bp)
 from newsletter import bp as newsletter_bp  # noqa: E402
 app.register_blueprint(newsletter_bp)
+from performance import bp as performance_bp  # noqa: E402
+app.register_blueprint(performance_bp)
 
 
 if __name__ == "__main__":
