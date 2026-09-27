@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📰 Apothical Inside — {{ titre_mois }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 880px; margin: 0 auto 18px; }
+    h1 { color: #1c4532; font-size: 1.3em; margin-bottom: 4px; }
+    h2 { color: #1c4532; font-size: 1em; margin: 18px 0 8px; }
+    p, li, label { color: #444; font-size: 0.92em; line-height: 1.5; }
+    .pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.82em; font-weight: bold; }
+    .pill-brouillon { background: #FFEB9C; color: #9C6500; }
+    .pill-validee { background: #cfe2ff; color: #1e4e8c; }
+    .pill-envoyee { background: #C6EFCE; color: #276221; }
+    .msg { padding: 10px 14px; border-radius: 8px; margin: 12px 0; font-size: 0.9em; }
+    .msg-ok { background: #C6EFCE; color: #276221; }
+    .msg-err { background: #FFE5E5; color: #9C0006; }
+    input[type=text], textarea { width: 100%; padding: 9px 11px; border: 1px solid #ccd5e0; border-radius: 8px; font-size: 0.93em; font-family: inherit; }
+    textarea { resize: vertical; }
+    .section { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 18px; margin-top: 14px; background: #fbfcfe; }
+    .section .ligne-titre { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+    .section .ligne-titre input { font-weight: bold; }
+    .photos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .photo { position: relative; }
+    .photo img { height: 84px; border-radius: 8px; border: 1px solid #ccd5e0; display: block; }
+    .photo button { position: absolute; top: -7px; right: -7px; background: #c0392b; color: white; border: 0; border-radius: 50%; width: 21px; height: 21px; cursor: pointer; font-size: 0.75em; line-height: 1; }
+    .btn { display: inline-block; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; font-size: 0.92em; text-decoration: none; }
+    .btn-vert { background: #1c4532; color: white; }
+    .btn-bleu { background: #2E75B6; color: white; }
+    .btn-clair { background: #eef2f7; color: #333; }
+    .btn-rouge { background: #fdecea; color: #b03a2e; }
+    .barre { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; align-items: center; }
+    .encart { background: #f0fdf4; border: 1px solid #bfe6cd; border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+    .anciens a { margin-right: 12px; font-size: 0.9em; }
+    .aide { color: #778; font-size: 0.82em; margin-top: 4px; }
+    form.inline { display: inline; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+
+<div class="carte">
+  <h1>📰 Apothical Inside — {{ titre_mois }}</h1>
+  <p>
+    {% if n.statut == 'envoyee' %}<span class="pill pill-envoyee">✅ Envoyée à l'équipe{% if n.validee_le %} le {{ n.validee_le }}{% endif %}</span>
+    {% elif n.statut == 'validee' %}<span class="pill pill-validee">Validée — envoi en cours</span>
+    {% else %}<span class="pill pill-brouillon">✏️ Brouillon — rien ne part sans ta validation</span>{% endif %}
+  </p>
+
+  {% if msg == 'enregistre' %}<div class="msg msg-ok">Brouillon enregistré.</div>
+  {% elif msg == 'ia_ok' %}<div class="msg msg-ok">✨ Sections rédigées par l'IA à partir de tes notes — relis et corrige avant validation.</div>
+  {% elif msg == 'ia_err' %}<div class="msg msg-err">L'IA n'a pas pu rédiger (moteur indisponible ou réponse illisible). Réessaie, ou rédige à la main.</div>
+  {% elif msg == 'notes_vides' %}<div class="msg msg-err">Écris d'abord quelques notes en vrac dans le bloc « Notes du mois ».</div>
+  {% elif msg == 'photo_ok' %}<div class="msg msg-ok">Photo ajoutée.</div>
+  {% elif msg == 'photo_type' %}<div class="msg msg-err">Format non accepté (JPG ou PNG uniquement).</div>
+  {% elif msg == 'photo_err' %}<div class="msg msg-err">Photo impossible à ajouter (enregistre d'abord le brouillon).</div>
+  {% elif msg == 'photo_supprimee' %}<div class="msg msg-ok">Photo retirée.</div>
+  {% elif msg == 'vide' %}<div class="msg msg-err">Impossible de valider : aucune section n'a de texte.</div>
+  {% elif msg == 'dispatch_err' %}<div class="msg msg-err">Le numéro est validé mais l'envoi n'a pas pu être déclenché (GitHub injoignable). Réessaie « Valider et envoyer ».</div>
+  {% elif msg == 'envoyee' %}<div class="msg msg-ok">🎉 Newsletter validée — l'envoi à tous les collaborateurs actifs est en cours (runner GitHub, quelques minutes).</div>
+  {% endif %}
+
+  <form method="post" action="/admin/newsletter/enregistrer" id="form-nl">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="num" value="{{ num }}">
+    <input type="hidden" name="action" value="" id="action-nl">
+
+    <div class="encart">
+      <h2 style="margin-top:0">🗒️ Notes du mois (en vrac)</h2>
+      <p class="aide">Jette ici tes idées comme elles viennent : évènements, travaux, animations, arrivées/départs, remerciements…
+        Puis clique « ✨ Rédiger avec l'IA » : elle écrit les sections dans le ton des anciens numéros (identités pseudonymisées avant envoi). Tu relis, corriges, et valides.</p>
+      <textarea name="notes" rows="5" placeholder="Ex. : visite du CEO de Gallia le 4 — très impressionnés par les rayons ; salle de repos terminée (frigo + eau chaude) ; 4 animations les samedis ; réunion d'équipe le 5 février…">{{ n.notes }}</textarea>
+      <div class="barre" style="margin-top:10px">
+        <button type="submit" class="btn btn-bleu" onclick="document.getElementById('action-nl').value='ia'">✨ Rédiger avec l'IA</button>
+      </div>
+    </div>
+
+    <h2>Sous-titre du numéro</h2>
+    <input type="text" name="sous_titre" value="{{ n.sous_titre }}" placeholder="Ex. : Ensemble, vers 2026">
+
+    <h2>Sections</h2>
+    {% for s in n.sections %}
+    <div class="section">
+      <div class="ligne-titre">
+        <input type="text" name="titre_{{ s.id }}" value="{{ s.titre }}" placeholder="Titre de la section">
+        <button type="submit" class="btn btn-rouge" title="Supprimer cette section"
+                onclick="return confirm('Supprimer cette section (et ses photos) ?') && (document.getElementById('action-nl').value='supprimer_section:{{ s.id }}');">🗑</button>
+      </div>
+      <textarea name="texte_{{ s.id }}" rows="6" placeholder="Texte de la section — paragraphes séparés par une ligne vide, puces avec « - »">{{ s.texte }}</textarea>
+      {% if s.photos %}
+      <div class="photos">
+        {% for f in s.photos %}
+        <div class="photo">
+          <img src="/admin/newsletter/photo/{{ num }}/{{ f }}" alt="">
+          <button type="button" onclick="supprimerPhoto('{{ s.id }}','{{ f }}')" title="Retirer">✕</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <p class="aide">📷 Ajouter une photo à cette section (JPG/PNG) :</p>
+      <input type="file" accept=".jpg,.jpeg,.png" onchange="envoyerPhoto('{{ s.id }}', this)">
+    </div>
+    {% endfor %}
+
+    <div class="barre">
+      <button type="submit" class="btn btn-clair" onclick="document.getElementById('action-nl').value='ajouter_section'">➕ Ajouter une section</button>
+      <button type="submit" class="btn btn-vert" onclick="document.getElementById('action-nl').value=''">💾 Enregistrer le brouillon</button>
+      <a class="btn btn-bleu" href="/admin/newsletter/pdf?num={{ num }}" target="_blank">👁 Aperçu PDF</a>
+    </div>
+  </form>
+
+  <div class="encart" style="background:#fff8e1;border-color:#ffe0a3">
+    <h2 style="margin-top:0">✅ Validation & envoi</h2>
+    <p>Une fois le PDF relu et conforme, l'envoi part <strong>par mail à tous les collaborateurs actifs</strong>, PDF joint, avec la signature de la pharmacie.</p>
+    <form method="post" action="/admin/newsletter/valider" class="inline"
+          onsubmit="return confirm('Envoyer « Apothical Inside — {{ titre_mois }} » à toute l\'équipe ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="num" value="{{ num }}">
+      <button type="submit" class="btn btn-vert" style="margin-top:8px">✅ Valider et envoyer à l'équipe</button>
+    </form>
+  </div>
+</div>
+
+{% if anciens %}
+<div class="carte anciens">
+  <h2 style="margin-top:0">🗄️ Anciens numéros</h2>
+  {% for a in anciens %}
+  <a href="/admin/newsletter?num={{ a }}">{{ titres_anciens[a] }}</a>
+  <a href="/admin/newsletter/pdf?num={{ a }}" target="_blank" title="PDF">📄</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Formulaires photo hors du formulaire principal (multipart séparé) -->
+<form method="post" action="/admin/newsletter/photo" enctype="multipart/form-data" id="form-photo" hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="num" value="{{ num }}">
+  <input type="hidden" name="section" id="photo-section">
+</form>
+<form method="post" action="/admin/newsletter/photo/supprimer" id="form-photo-suppr" hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="num" value="{{ num }}">
+  <input type="hidden" name="section" id="suppr-section">
+  <input type="hidden" name="fichier" id="suppr-fichier">
+</form>
+<script>
+function envoyerPhoto(sid, input) {
+  if (!input.files.length) return;
+  const form = document.getElementById('form-photo');
+  document.getElementById('photo-section').value = sid;
+  input.name = 'photo';
+  form.appendChild(input);           // le champ file rejoint le form multipart
+  form.submit();
+}
+function supprimerPhoto(sid, fichier) {
+  if (!confirm('Retirer cette photo ?')) return;
+  document.getElementById('suppr-section').value = sid;
+  document.getElementById('suppr-fichier').value = fichier;
+  document.getElementById('form-photo-suppr').submit();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+name: Newsletter Apothical Inside
+
+# Deux déclencheurs :
+#   - cron du 1er du mois (07:00 UTC) → mode "rappel" : mail à l'admin pour
+#     préparer le numéro (RIEN n'est envoyé à l'équipe) ;
+#   - repository_dispatch 'newsletter_envoi' (bouton « Valider et envoyer » de
+#     /admin/newsletter) → mode "envoi" : le runner récupère le PDF validé sur
+#     le serveur et l'envoie à tous les collaborateurs actifs.
+# Le serveur PythonAnywhere gratuit ne peut pas envoyer d'e-mail (SMTP bloqué).
+
+on:
+  schedule:
+    - cron: '0 7 1 * *'
+  repository_dispatch:
+    types: [newsletter_envoi]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'rappel (mail admin) ou envoi (nécessite un numéro validé ce mois-ci)'
+        default: 'rappel'
+
+jobs:
+  newsletter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Newsletter
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          API_CLE: ${{ secrets.API_CLE }}
+          MODE: ${{ github.event_name == 'repository_dispatch' && 'envoi' || (github.event.inputs.mode || 'rappel') }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: python newsletter_sender.py

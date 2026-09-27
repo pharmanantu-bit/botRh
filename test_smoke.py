@@ -1034,6 +1034,41 @@ if employes:
             except OSError:
                 pass
 
+# ---- Newsletter « Apothical Inside » : page, brouillon isolé, PDF, export ----
+import tempfile as _tf
+import newsletter as NL
+import newsletter_sender as NS
+_nl_tmp = _tf.mkdtemp(prefix="nl_smoke_")
+_nl_file, _nl_photos = NL.NEWSLETTERS_FILE, NL.PHOTOS_NL_DIR
+NL.NEWSLETTERS_FILE = os.path.join(_nl_tmp, "newsletters.json")
+NL.PHOTOS_NL_DIR = os.path.join(_nl_tmp, "photos")
+try:
+    with client.session_transaction() as s:
+        s["admin"] = True
+        s["_csrf_token"] = "t"
+    _r = client.get("/admin/newsletter")
+    _data = json.load(open(NL.NEWSLETTERS_FILE, encoding="utf-8"))
+    _num = list(_data)[0]
+    _sid = _data[_num]["sections"][0]["id"]
+    ok_page = _r.status_code == 200 and len(_data[_num]["sections"]) == 4
+    client.post("/admin/newsletter/enregistrer", data={
+        "csrf_token": "t", "num": _num, "action": "", "sous_titre": "Test",
+        "notes": "", f"titre_{_sid}": "Le mot de la direction",
+        f"texte_{_sid}": "Merci a tous.\n\n- point un\n- point deux"})
+    _rp = client.get(f"/admin/newsletter/pdf?num={_num}")
+    ok_pdf = _rp.status_code == 200 and _rp.data.startswith(b"%PDF")
+    ok_cle = client.get(f"/export_newsletter?cle=mauvaise&num={_num}").status_code == 403
+    # non validée -> le runner ne peut pas la récupérer
+    ok_nonval = client.get(f"/export_newsletter?cle={A.API_CLE}&num={_num}").status_code == 404
+    ok_sender = NS.titre_mois("2026-10") == "Octobre 2026"
+    ok_nl = ok_page and ok_pdf and ok_cle and ok_nonval and ok_sender
+    print(("OK " if ok_nl else "KO ")
+          + f"[--] newsletter (page={ok_page} pdf={ok_pdf} clé={ok_cle} non-validée=404:{ok_nonval} sender={ok_sender})")
+    if not ok_nl:
+        echecs.append("newsletter KO")
+finally:
+    NL.NEWSLETTERS_FILE, NL.PHOTOS_NL_DIR = _nl_file, _nl_photos
+
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)
 
