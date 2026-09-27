@@ -1862,16 +1862,47 @@ def vue():
                            "passe": dg < date.today(),
                            "personnes": sorted(pers, key=lambda p: p["prenom"].lower())})
         # Fermetures exceptionnelles enregistrées (jour vidé pour toute l'équipe)
+        # + DÉCOMPTE DU RATTRAPAGE par personne : heures vidées (trame du jour
+        # fermé) vs heures replacées via le motif « Rattrapage d'heures »
+        # (heures effectives − trame du jour où elles sont posées).
         fermetures = []
-        for diso in sorted(chgs_g, reverse=True):
-            pers_f = sorted(emap_g[em]["prenom"] for em, ch in (chgs_g[diso] or {}).items()
-                            if (ch or {}).get("motif") == "Fermeture exceptionnelle"
-                            and em in emap_g)
-            if not pers_f:
+        data_trames = charger_trames()
+        du_r = {}   # email -> heures à rattraper (toutes fermetures confondues)
+        fait_r = {}  # email -> heures rattrapées
+        for diso, m in chgs_g.items():
+            try:
+                dch = datetime.strptime(diso, "%Y-%m-%d").date()
+            except ValueError:
                 continue
+            tr_j = trame_active_pour(data_trames, dch)
+            for em, ch in (m or {}).items():
+                if em not in emap_g or not ch:
+                    continue
+                if ch.get("motif") == "Fermeture exceptionnelle":
+                    du_r[em] = round(du_r.get(em, 0)
+                                     + total_jour(creneaux_trame_jour(tr_j, em, dch) if tr_j else []), 2)
+                elif ch.get("motif") == "Rattrapage d'heures":
+                    h_tr = total_jour(creneaux_trame_jour(tr_j, em, dch) if tr_j else [])
+                    fait_r[em] = round(fait_r.get(em, 0)
+                                       + max(0, total_jour(ch.get("creneaux")) - h_tr), 2)
+        rattrapage = []
+        for em in sorted(set(du_r) | set(fait_r), key=lambda e: emap_g[e]["prenom"].lower()):
+            du, fait = du_r.get(em, 0), fait_r.get(em, 0)
+            rattrapage.append({"prenom": emap_g[em]["prenom"],
+                               "du": _fmt_hmin(du), "fait": _fmt_hmin(fait),
+                               "reste": _fmt_hmin(max(0, du - fait)),
+                               "solde_ok": fait >= du})
+        for diso in sorted(chgs_g, reverse=True):
             try:
                 df = datetime.strptime(diso, "%Y-%m-%d").date()
             except ValueError:
+                continue
+            tr_f = trame_active_pour(data_trames, df)
+            pers_f = sorted(
+                f"{emap_g[em]['prenom']} ({_fmt_hmin(total_jour(creneaux_trame_jour(tr_f, em, df) if tr_f else []))})"
+                for em, ch in (chgs_g[diso] or {}).items()
+                if (ch or {}).get("motif") == "Fermeture exceptionnelle" and em in emap_g)
+            if not pers_f:
                 continue
             fermetures.append({"date_iso": diso,
                                "label": f"{JOURS_NOMS[df.isoweekday()]} {df.strftime('%d/%m/%Y')}",
@@ -1879,7 +1910,7 @@ def vue():
                                "prenoms": pers_f})
         auj_g = date.today()
         prochain_dim = auj_g + timedelta(days=(7 - auj_g.isoweekday()) or 7)
-        ctx.update(gardes=gardes, fermetures=fermetures,
+        ctx.update(gardes=gardes, fermetures=fermetures, rattrapage=rattrapage,
                    collabs_garde=sorted(({"email": e["email"], "prenom": e["prenom"],
                                           "nom": e["nom"]} for e in employes_tous
                                          if collaborateur_actif(profils.get(e["email"], {}))),

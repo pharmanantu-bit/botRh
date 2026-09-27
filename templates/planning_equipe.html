@@ -1205,6 +1205,25 @@
       </div>
     </form>
 
+    {% if rattrapage %}
+    <h3 style="font-size:0.95em; color:#1F4E79; margin:0 0 8px;">⏱️ Décompte du rattrapage <span class="meta" style="font-weight:normal;">— heures vidées vs heures replacées (motif « Rattrapage d'heures »)</span></h3>
+    <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:720px; margin-bottom:20px;">
+      <div style="display:flex; gap:12px; padding:7px 12px; background:#f0f4f9; font-size:0.78em; font-weight:bold; color:#1F4E79;">
+        <span style="flex:1;">Collaborateur</span><span style="width:90px; text-align:right;">À rattraper</span>
+        <span style="width:90px; text-align:right;">Rattrapé</span><span style="width:110px; text-align:right;">Reste</span>
+      </div>
+      {% for r in rattrapage %}
+      <div style="display:flex; gap:12px; padding:7px 12px; font-size:0.86em; border-top:1px solid #f0f3f8; align-items:center;">
+        <span style="flex:1;">{{ r.prenom }}</span>
+        <span style="width:90px; text-align:right;">{{ r.du }}</span>
+        <span style="width:90px; text-align:right;">{{ r.fait }}</span>
+        <span style="width:110px; text-align:right; font-weight:bold; color:{{ '#1e7a34' if r.solde_ok else '#C0392B' }};">
+          {{ '✅ à jour' if r.solde_ok else r.reste }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% if fermetures %}
     <h3 style="font-size:0.95em; color:#1F4E79; margin:0 0 8px;">Fermetures enregistrées <span class="meta" style="font-weight:normal;">— {{ fermetures|length }}</span></h3>
     <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:720px;">
