@@ -2736,7 +2736,12 @@ def export_resume_paie():
 def construire_recap_xlsx(mois, annee):
     """Construit le classeur Excel récapitulatif des relevés du mois donné."""
     reponses = charger_reponses(mois, annee)
-    employes = charger_employes()
+    # Même règle que /admin/mois : collaborateurs actifs seulement, mais on garde
+    # ceux (devenus inactifs ou archivés depuis) qui ont un relevé sur le mois.
+    profils_recap = charger_profils()
+    employes = [e for e in charger_employes()
+                if collaborateur_actif(profils_recap.get(e["email"], {}))
+                or reponse_de(reponses, e["prenom"], e["email"])]
     mois_annee = f"{MOIS_FR[mois]} {annee}"
 
     wb = Workbook()
