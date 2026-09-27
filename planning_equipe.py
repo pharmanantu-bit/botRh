@@ -91,7 +91,8 @@ def sauvegarder_options(o):
 # --- Changements ponctuels (surcharge de la trame pour une date réelle) ------
 CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
 MOTIFS = ["Non catégorisé", "Heures sup/récup/échanges", "Contrat ponctuel",
-          "Repos compensatoire", "Garde", "Congés payés", "Arrêt maladie",
+          "Repos compensatoire", "Garde", "Fermeture exceptionnelle",
+          "Rattrapage d'heures", "Congés payés", "Arrêt maladie",
           "Accident du travail", "Congé maternité", "Congé parental",
           "Formation", "Congé sans solde", "Absence non justifiée", "Autre"]
 
@@ -770,6 +771,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                 left, width = _pos(d, f, amp_min, span)
                 ouv.append({"left": left, "width": width})
         lignes = []
+        fermeture_jour = False
         for e in employes:
             couleur = couleurs.get(e["email"], "#888")
             cr_trame = _jours_sem(trame, e["email"], sem).get(str(j), []) or []
@@ -838,7 +840,10 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     barres.append({
                         "left": left, "width": width, "label": lab,
                         "deborde": bool(lab),
+                        # Rattrapage (suite à fermeture) : les heures ajoutées
+                        # s'affichent en couleur NORMALE, pas en « heures en plus ».
                         "couleur": (couleur if s["typ"] == "normal"
+                                    or (s["typ"] == "ajout" and motif == "Rattrapage d'heures")
                                     else _assombrir(couleur, 0.55) if s["typ"] == "ajout"
                                     else _eclaircir(couleur)),
                         "bordure": couleur if s["typ"] == "retrait" else ""})
@@ -847,6 +852,10 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     left, width = _pos(d, f, amp_min, span)
                     barres.append({"left": left, "width": width, "couleur": couleur,
                                    "label": (f"{c['debut']}–{c['fin']}" if montrer_horaires else "")})
+            # Fermeture exceptionnelle : mémorisée AVANT le filtre « lignes vides »
+            # (la ligne vidée peut être masquée, le bandeau du jour doit rester).
+            if motif == "Fermeture exceptionnelle" and modifie and not barres:
+                fermeture_jour = True
             # Option « Lignes vides : masquer » = ne montrer que les présents du jour
             # (repos, absence ou jour vidé par un changement → ligne retirée).
             if masquer_vides and not barres:
@@ -856,7 +865,11 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             if modifie:
                 a_eff = any(creneau_valide(c) for c in cr_eff)
                 a_tr = any(creneau_valide(c) for c in cr_trame)
-                if a_eff and a_tr:
+                if a_eff and motif == "Rattrapage d'heures":
+                    # Heures replacées après une fermeture exceptionnelle :
+                    # ce ne sont PAS des heures en plus, losange dédié.
+                    marque, marque_titre = "vert", "Rattrapage d'heures (fermeture exceptionnelle)"
+                elif a_eff and a_tr:
                     marque, marque_titre = "orange", "Présent avec des heures différentes de la trame"
                 elif a_eff:
                     marque, marque_titre = "bleu", "Présent alors que non prévu dans la trame"
@@ -864,7 +877,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     marque, marque_titre = "rouge", "Absent alors que prévu dans la trame"
                 else:
                     marque, marque_titre = "gris", "Absence sur un jour non prévu dans la trame"
-                if motif:
+                if motif and marque != "vert":
                     marque_titre += f" — {motif}"
             lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
                            "barres": barres, "total": total_jour(cr_eff),
@@ -888,6 +901,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
         garde = any(l.get("motif") == "Garde" and l["barres"] for l in lignes)
         jours.append({"iso": j, "nom": nom, "date_iso": date_iso, "ouverture": ouv,
                       "lignes": lignes, "ferme": ferme, "ferie": ferie, "garde": garde,
+                      "fermeture": fermeture_jour,
                       "aujourdhui": bool(date_reelle) and date_reelle == jour_courant()})
     return {"ticks": ticks, "sticks": sticks, "jours": jours}
 
@@ -924,7 +938,7 @@ def _frise_solo(trame, sem, email, couleur):
 # --- Routes -----------------------------------------------------------------
 
 ONGLETS = [("equipe", "Équipe"), ("trame", "Trame"), ("planning", "Planning"),
-           ("changements", "Changements"), ("conges", "Congés"), ("garde", "Garde"),
+           ("changements", "Changements"), ("conges", "Congés"), ("garde", "Garde / Fermeture"),
            ("totaux", "Fin de mois"),
            # « Mes demandes » : rendu séparé, poussé à droite de la barre.
            ("demandes", "Mes demandes")]
@@ -1847,9 +1861,25 @@ def vue():
                            "label": f"{JOURS_NOMS[dg.isoweekday()]} {dg.strftime('%d/%m/%Y')}",
                            "passe": dg < date.today(),
                            "personnes": sorted(pers, key=lambda p: p["prenom"].lower())})
+        # Fermetures exceptionnelles enregistrées (jour vidé pour toute l'équipe)
+        fermetures = []
+        for diso in sorted(chgs_g, reverse=True):
+            pers_f = sorted(emap_g[em]["prenom"] for em, ch in (chgs_g[diso] or {}).items()
+                            if (ch or {}).get("motif") == "Fermeture exceptionnelle"
+                            and em in emap_g)
+            if not pers_f:
+                continue
+            try:
+                df = datetime.strptime(diso, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            fermetures.append({"date_iso": diso,
+                               "label": f"{JOURS_NOMS[df.isoweekday()]} {df.strftime('%d/%m/%Y')}",
+                               "passe": df < date.today(),
+                               "prenoms": pers_f})
         auj_g = date.today()
         prochain_dim = auj_g + timedelta(days=(7 - auj_g.isoweekday()) or 7)
-        ctx.update(gardes=gardes,
+        ctx.update(gardes=gardes, fermetures=fermetures,
                    collabs_garde=sorted(({"email": e["email"], "prenom": e["prenom"],
                                           "nom": e["nom"]} for e in employes_tous
                                          if collaborateur_actif(profils.get(e["email"], {}))),
@@ -2374,6 +2404,58 @@ def supprimer_garde():
         del data[date_iso]
     sauvegarder_changements(data)
     return redirect(url_for(".vue", onglet="garde", msg="garde_suppr"))
+
+
+@bp.route("/admin/planning-equipe/fermeture", methods=["POST"])
+def ajouter_fermeture():
+    """Fermeture exceptionnelle (travaux, coupure, événement…) : vide en UNE
+    fois le jour de TOUS les collaborateurs prévus à la trame — un changement
+    ponctuel motif « Fermeture exceptionnelle » chacun. Les heures sont ensuite
+    replacées ailleurs avec le motif « Rattrapage d'heures » (couleur normale
+    sur la frise, losange vert : pas comptées comme des heures en plus)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    date_iso = request.form.get("date", "")
+    try:
+        d_obj = datetime.strptime(date_iso, "%Y-%m-%d").date()
+    except ValueError:
+        return redirect(url_for(".vue", onglet="garde", msg="fermeture_date"))
+    trame = trame_active_pour(charger_trames(), d_obj)
+    if trame is None:
+        return redirect(url_for(".vue", onglet="garde", msg="fermeture_date"))
+    data = charger_changements()
+    absences = charger_absences()
+    n = saut = 0
+    for e in charger_employes():
+        em = e["email"]
+        if not creneaux_trame_jour(trame, em, d_obj):
+            continue   # pas prévu ce jour-là : rien à vider
+        if absence_active(absences, em, d_obj):
+            saut += 1  # déjà en absence prolongée : son jour n'est pas « à rattraper »
+            continue
+        data.setdefault(date_iso, {})[em] = {
+            "motif": "Fermeture exceptionnelle", "creneaux": [],
+            "maj": datetime.now().strftime("%d/%m/%Y %H:%M")}
+        n += 1
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="garde", msg="fermeture_ok", n=n, saut=saut))
+
+
+@bp.route("/admin/planning-equipe/fermeture/supprimer", methods=["POST"])
+def supprimer_fermeture():
+    """Annule la fermeture exceptionnelle d'une date (toute l'équipe)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    date_iso = request.form.get("date", "")
+    data = charger_changements()
+    m = data.get(date_iso) or {}
+    for em in list(m):
+        if (m[em] or {}).get("motif") == "Fermeture exceptionnelle":
+            del m[em]
+    if date_iso in data and not data[date_iso]:
+        del data[date_iso]
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="garde", msg="fermeture_suppr"))
 
 
 @bp.route("/admin/planning-equipe/changement/supprimer", methods=["POST"])

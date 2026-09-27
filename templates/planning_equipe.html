@@ -166,6 +166,9 @@
   {% if msg == 'creneau_invalide' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ <strong>Créneau invalide</strong> — l'heure de fin doit être après l'heure de début. Rien n'a été enregistré.</div>{% endif %}
   {% if msg == 'absence_chevauche' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Une absence existe déjà sur ces dates pour ce collaborateur — rien n'a été ajouté. Supprime-la ou ajuste les dates.</div>{% endif %}
   {% if msg == 'garde_ok' %}<div class="msg">💊 Garde enregistrée : {{ request.args.get('n', '0') }} collaborateur(s) noté(s).{% if request.args.get('saut', '0') not in ('0', '') %} {{ request.args.get('saut') }} ignoré(s) : en absence prolongée ce jour-là.{% endif %}</div>{% endif %}
+  {% if msg == 'fermeture_ok' %}<div class="msg">⛔ Fermeture enregistrée : le jour de {{ request.args.get('n', '0') }} collaborateur(s) prévu(s) a été vidé (heures à rattraper).{% if request.args.get('saut', '0') not in ('0', '') %} {{ request.args.get('saut') }} ignoré(s) : en absence prolongée ce jour-là.{% endif %} Replace leurs heures via « ⊕ Horaires ponctuels » avec le motif <strong>Rattrapage d'heures</strong>.</div>{% endif %}
+  {% if msg == 'fermeture_date' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Date de fermeture invalide (ou aucune trame active à cette date).</div>{% endif %}
+  {% if msg == 'fermeture_suppr' %}<div class="msg">Fermeture annulée : les horaires de trame reprennent leurs droits ce jour-là.</div>{% endif %}
   {% if msg == 'garde_suppr' %}<div class="msg">Garde retirée.</div>{% endif %}
   {% if msg == 'garde_incomplet' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Il faut au moins un créneau horaire ET un collaborateur coché.</div>{% endif %}
   {% if msg == 'garde_date' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Date invalide.</div>{% endif %}
@@ -511,7 +514,8 @@
       <span style="white-space:nowrap;"><span style="color:#C0392B;">◆</span> absent alors que prévu dans la trame</span> ·
       <span style="white-space:nowrap;"><span style="color:#2E75B6;">◆</span> présent alors que non prévu</span> ·
       <span style="white-space:nowrap;"><span style="color:#E67E22;">◆</span> présent avec des heures différentes <span class="meta">(heures en plus = foncé, heures en moins = très clair)</span></span> ·
-      <span style="white-space:nowrap;"><span style="color:#95A5A6;">◆</span> absence sur un jour non prévu</span>
+      <span style="white-space:nowrap;"><span style="color:#95A5A6;">◆</span> absence sur un jour non prévu</span> ·
+      <span style="white-space:nowrap;"><span style="color:#1e7a34;">◆</span> rattrapage d'heures <span class="meta">(fermeture exceptionnelle — couleur normale, pas des heures en plus)</span></span>
     </div>
     {% endif %}
 
@@ -1180,6 +1184,46 @@
     </div>
     {% else %}
     <p class="meta">Aucune garde enregistrée pour l'instant.</p>
+    {% endif %}
+
+    <h2 style="font-size:1.05em; color:#1F4E79; margin:26px 0 4px;">⛔ Fermeture exceptionnelle</h2>
+    <p class="meta" style="margin:0 0 14px;">La pharmacie est fermée un jour normalement travaillé (travaux, coupure,
+      événement…) : en un clic, le jour de <strong>tous les collaborateurs prévus à la trame</strong> est vidé
+      (motif « Fermeture exceptionnelle »), sans passer sur chaque personne. Leurs heures sont à replacer ensuite via
+      « ⊕ Horaires ponctuels » avec le motif <strong>Rattrapage d'heures</strong> : elles s'affichent alors en couleur
+      normale avec un losange <span style="color:#1e7a34;">◆</span> vert — pas comme des heures en plus.</p>
+
+    <form method="POST" action="{{ url_for('.ajouter_fermeture') }}"
+          style="border:1px solid #f3c4c4; border-radius:10px; padding:14px; margin-bottom:20px; max-width:720px; background:#fffafa;"
+          onsubmit="return confirm('Vider le jour de tous les collaborateurs prévus à cette date ?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+        <label style="font-size:0.82em; color:#556;">Date de la fermeture<br>
+          <input type="date" name="date" required
+                 style="padding:6px 8px; border:1px solid #ccd6e4; border-radius:6px;"></label>
+        <button type="submit" class="btn-mini rouge" style="padding:8px 18px; font-size:0.9em;">⛔ Fermer ce jour pour toute l'équipe</button>
+      </div>
+    </form>
+
+    {% if fermetures %}
+    <h3 style="font-size:0.95em; color:#1F4E79; margin:0 0 8px;">Fermetures enregistrées <span class="meta" style="font-weight:normal;">— {{ fermetures|length }}</span></h3>
+    <div style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:720px;">
+      {% for f in fermetures %}
+      <div style="display:flex; align-items:center; gap:12px; padding:10px 12px;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}{% if f.passe %} opacity:0.65;{% endif %}">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:0.9em;"><strong style="color:#C0392B;">⛔ {{ f.label }}</strong>{% if f.passe %} <span class="meta">(passée)</span>{% endif %}</div>
+          <div style="font-size:0.84em; color:#445;">{{ f.prenoms|join(' · ') }}</div>
+        </div>
+        <a href="{{ url_for('.vue', onglet='planning', date=f.date_iso) }}" class="btn-mini">Voir au planning</a>
+        <form method="POST" action="{{ url_for('.supprimer_fermeture') }}" style="margin:0;"
+              onsubmit="return confirm('Annuler la fermeture du {{ f.label }} (les horaires de trame reviennent) ?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="date" value="{{ f.date_iso }}">
+          <button type="submit" class="btn-mini rouge">Annuler</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
     {% endif %}
 
   {% elif onglet == 'demandes' %}
