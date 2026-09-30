@@ -197,6 +197,16 @@
   {% if onglet == 'planning' and trame and nav %}
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
     <a href="{{ nav.aujourdhui }}" class="btn-mini" style="background:#1F4E79;">Aujourd'hui</a>
+    {% if periode == 'periode' %}
+    <form method="GET" action="{{ url_for('.vue') }}" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+      <input type="hidden" name="onglet" value="planning">
+      <span class="meta">Période du</span>
+      <input type="date" name="du" value="{{ nav.du }}" required style="padding:4px 6px; border:1px solid #d4deeb; border-radius:7px; font-size:0.85em;">
+      <span class="meta">au</span>
+      <input type="date" name="au" value="{{ nav.au }}" required style="padding:4px 6px; border:1px solid #d4deeb; border-radius:7px; font-size:0.85em;">
+      <button type="submit" class="btn-mini" style="background:#1F4E79;">Afficher</button>
+    </form>
+    {% else %}
     <div class="snav-wrap">
       <button type="button" class="snav-fl" data-sens="-1" aria-label="Semaines précédentes">‹</button>
       <div id="snav">
@@ -206,6 +216,7 @@
       </div>
       <button type="button" class="snav-fl" data-sens="1" aria-label="Semaines suivantes">›</button>
     </div>
+    {% endif %}
   </div>
   <script>
     (function () {
@@ -440,12 +451,21 @@
       {% endif %}
     </div>
     {% endif %}
+    {% if periode != 'hebdo' and vues %}
+    {# Mensuel / Période : un seul titre global, les jours défilent en continu
+       sans entêtes de semaine intercalées. #}
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
+      <h2 style="margin:0; font-size:0.98em;">{{ periode_titre }}</h2>
+    </div>
+    {% endif %}
     {% for v in vues %}
+      {% if periode == 'hebdo' %}
       <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>
         {% if mode == 'grille' %}<a href="{{ url_for('.imprimer_frise', date=v.lundi) }}" target="_blank" rel="noopener" class="btn-mini" style="background:#2E75B6;">🖨️ Imprimer</a>{% endif %}
       </div>
-      {% if mode != 'tableau' and v.compteurs %}
+      {% endif %}
+      {% if periode == 'hebdo' and mode != 'tableau' and v.compteurs %}
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px;"
            title="Heures effectives de la semaine (trame + modifications + absences) / heures contractuelles de la fiche (moyenne si rotation A/B). Rouge = dépassement sur le cycle complet de rotation.">
         {% for cp in v.compteurs %}
@@ -458,7 +478,7 @@
         {% endfor %}
       </div>
       {% endif %}
-      {% if v.conformite %}
+      {% if periode == 'hebdo' and v.conformite %}
       <details style="border:1px solid #e0c080; background:#fffaf0; border-radius:8px; margin:0 0 10px; font-size:0.88em;">
         <summary style="cursor:pointer; padding:8px 12px; font-weight:bold; color:#9C6500; user-select:none;">⚠️ Durée du travail : {{ v.conformite|length }} point{{ 's' if v.conformite|length > 1 else '' }} à vérifier cette semaine</summary>
         <ul style="margin:2px 0 8px; padding-left:26px;">

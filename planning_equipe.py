@@ -1072,15 +1072,38 @@ def vue():
         act = trame_active_pour(data, ref)
         emp_base = [emap[em] for em in membres_semaine(act, employes_tous, profils, _lundi(ref))
                     if em not in masques]
-        # Lundis à afficher selon la période.
+        # Lundis à afficher selon la période. borne_min/borne_max = plage de jours
+        # réellement rendue : les semaines de bord sont ROGNÉES (mensuel = tous les
+        # jours du mois, rien du mois voisin ; période = plage libre du/au).
+        borne_min = borne_max = None
         if periode == "hebdo":
             lundis = [_lundi(ref)]
-        else:                                            # mensuel / période = semaines du mois
-            dernier = ref.replace(day=calendar.monthrange(ref.year, ref.month)[1])
-            L, lundis = _lundi(ref.replace(day=1)), []
-            while L <= dernier:
+        elif periode == "mensuel":                       # tous les jours du mois
+            borne_min = ref.replace(day=1)
+            borne_max = ref.replace(day=calendar.monthrange(ref.year, ref.month)[1])
+        else:                                            # période libre du/au
+            def _arg_date(nom, defaut):
+                for source in (request.args.get(nom, ""),
+                               (session.get("planning_periode") or {}).get(nom, "")):
+                    try:
+                        return datetime.strptime(source, "%Y-%m-%d").date()
+                    except (ValueError, TypeError):
+                        continue
+                return defaut
+            borne_min = _arg_date("du", _lundi(ref))
+            borne_max = _arg_date("au", borne_min + timedelta(days=13))
+            if borne_max < borne_min:
+                borne_min, borne_max = borne_max, borne_min
+            borne_max = min(borne_max, borne_min + timedelta(days=92))   # garde-fou
+            session["planning_periode"] = {"du": borne_min.isoformat(),
+                                           "au": borne_max.isoformat()}
+        if borne_min:
+            L, lundis = _lundi(borne_min), []
+            while L <= borne_max:
                 lundis.append(L)
                 L += timedelta(days=7)
+        periode_titre = (f"du {borne_min.strftime('%d/%m/%Y')} au {borne_max.strftime('%d/%m/%Y')}"
+                         if borne_min else "")
         # Barre de navigation (semaines cliquables en Hebdo, mois en Mensuel).
         nav = {"type": "semaine" if periode == "hebdo" else "mois", "boutons": [],
                "aujourdhui": url_for(".vue", onglet="planning", date=jour_courant().isoformat()) + "#auj"}
@@ -1093,6 +1116,10 @@ def vue():
                                      "label": L.strftime("%d/%m"),
                                      "sub": ("Sem. " + semaine_rotation(tr_l, L)) if tr_l else "",
                                      "actif": L == cur})
+        elif periode == "periode":
+            # Pas de pastilles : le sélecteur du/au (template) pilote la plage.
+            nav["type"] = "periode"
+            nav["du"], nav["au"] = borne_min.isoformat(), borne_max.isoformat()
         else:
             prem = ref.replace(day=1)
             for k in range(-3, 12):
@@ -1107,6 +1134,13 @@ def vue():
             act_l = trame_active_pour(data, lundi)
             if act_l:
                 rot = semaine_rotation(act_l, lundi)
+                # Jours de la semaine réellement rendus : rognés à la plage
+                # borne_min/borne_max (semaines de bord en mensuel/période).
+                jours_v = ([j for j in jours_aff
+                            if borne_min <= lundi + timedelta(days=j - 1) <= borne_max]
+                           if borne_min else jours_aff)
+                if not jours_v:
+                    continue
                 emp_sm = [emap[em] for em in membres_semaine(act_l, employes_tous, profils, lundi)
                           if em not in masques]
                 # Remplaçants : un collaborateur HORS trame qui a des horaires
@@ -1172,7 +1206,7 @@ def vue():
                      "conformite": alertes_conformite(data, emp_sm, lundi,
                                                       changements, absences)}
                 if mode == "grille":
-                    v["frise"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_aff), montrer_h,
+                    v["frise"] = _frise(act_l, rot, emp_sm, couleurs, set(jours_v), montrer_h,
                                         lundi, changements, absences,
                                         masquer_vides=opts.get("lignes_vides") == "masquer",
                                         masquer_fermes=True)
@@ -1181,7 +1215,7 @@ def vue():
                     # leurs horaires effectifs (ponctuels + absences appliqués).
                     v["titre"] = f"Semaine {lundi.isocalendar()[1]} ({rot})"
                     tj = []
-                    for j in jours_aff:
+                    for j in jours_v:
                         d = lundi + timedelta(days=j - 1)
                         fer = ferie_de(d)
                         lignes_j = []
@@ -1211,11 +1245,11 @@ def vue():
                                   "date": (lundi + timedelta(days=j - 1)).strftime("%d/%m/%Y"),
                                   "ferie": ferie_de(lundi + timedelta(days=j - 1)),
                                   "aujourdhui": lundi + timedelta(days=j - 1) == jour_courant()}
-                                 for j in jours_aff]
+                                 for j in jours_v]
                     lignes_t = []
                     for e in emp_sm:
                         cells, tot_eff, tot_trame = [], 0.0, 0.0
-                        for j in jours_aff:
+                        for j in jours_v:
                             d = lundi + timedelta(days=j - 1)
                             fer = ferie_de(d)
                             cr_tr = [c for c in _jours_sem(act_l, e["email"], rot).get(str(j), []) or []
@@ -1244,7 +1278,7 @@ def vue():
                                          "comptables": _fmt_hmin(tot_trame)})
                     # Jours de fermeture sans personne (ex. dimanche) : colonne retirée.
                     ho = act_l.get("horaires_ouverture", HORAIRES_DEFAUT)
-                    garder = [i for i, j in enumerate(jours_aff)
+                    garder = [i for i, j in enumerate(jours_v)
                               if ho.get(str(j)) or any(l["cells"][i]["creneaux"] for l in lignes_t)]
                     v["cols"] = [v["cols"][i] for i in garder]
                     for l in lignes_t:
@@ -1377,7 +1411,8 @@ def vue():
             avant_trame = min(debuts).strftime("%d/%m/%Y")
         ctx.update(trame=act, tid=act.get("id") if act else None, pas_active=act is None,
                    avant_trame=avant_trame,
-                   vues=vues, mode=mode, periode=periode, nav=nav, heures_reel=heures_reel,
+                   vues=vues, mode=mode, periode=periode, periode_titre=periode_titre,
+                   nav=nav, heures_reel=heures_reel,
                    motifs=MOTIFS, recap_chg=recap_chg, recap_collab=recap_collab,
                    ponctuel=ponctuel, saisie=saisie, ponctuel_jours=ponctuel_jours,
                    abs_view=abs_view, absences_list=absences_list, collabs_abs=collabs_abs,
