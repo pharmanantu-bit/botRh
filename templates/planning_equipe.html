@@ -148,6 +148,7 @@
   {% if msg == 'horaires_ok' %}<div class="msg">Horaires du collaborateur enregistrés.</div>{% endif %}
   {% if msg == 'equipe_ok' %}<div class="msg">Équipe (couleurs / fonctions) enregistrée.</div>{% endif %}
   {% if msg == 'trame_creee' %}<div class="msg">Nouvelle trame créée. Renseigne sa config et ses horaires, puis active-la.</div>{% endif %}
+  {% if msg == 'ordre_copie' %}<div class="msg">↕ Ordre des collaborateurs repris de la trame choisie.</div>{% endif %}
   {% if msg == 'activee' %}<div class="msg">Trame activée — c'est elle qui sert au planning.</div>{% endif %}
   {% if msg == 'desactivee' %}<div class="msg">Trame désactivée.</div>{% endif %}
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
@@ -762,6 +763,18 @@
     </details>
 
     <h2>👥 Collaborateurs <span class="meta" style="font-weight:normal;">— glisse ⠿ pour réordonner</span></h2>
+    {% set autres_trames = liste_trames | rejectattr('id', 'equalto', tid) | list %}
+    {% if autres_trames %}
+    <form method="POST" action="{{ url_for('.copier_ordre_trame') }}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+      <span class="meta">ou reprendre l'ordre de :</span>
+      <select name="source">
+        {% for lt in autres_trames %}<option value="{{ lt.id }}">{{ lt.label }}</option>{% endfor %}
+      </select>
+      <button class="btn-mini" type="submit">↕ Appliquer cet ordre</button>
+    </form>
+    {% endif %}
     <div id="collabList" data-tid="{{ tid }}" style="border:1px solid #dde3ed; border-radius:10px; overflow:hidden; max-width:660px; margin-bottom:20px;">
       {% for l in lignes %}
       <div class="collab-row" draggable="true" data-email="{{ l.email }}" style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:#fff;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">

@@ -1954,6 +1954,7 @@ def creer_trame():
         t["employes"] = copy.deepcopy(src.get("employes", {}))
         t["horaires_ouverture"] = copy.deepcopy(src.get("horaires_ouverture", HORAIRES_DEFAUT))
         t["semaine_demarrage"] = src.get("semaine_demarrage", "A")
+        t["membres"] = membres_ordonnes(src, charger_employes())   # même ordre d'affichage
     data.setdefault("trames", []).append(t)
     sauvegarder_trames(data)
     return redirect(url_for(".vue", onglet="trame", trame=t["id"], msg="trame_creee"))
@@ -2821,6 +2822,29 @@ def reordonner():
         trame["membres"] = neworder
         sauvegarder_trames(data)
     return current_app.response_class(_json.dumps({"status": "ok"}), mimetype="application/json")
+
+
+@bp.route("/admin/planning-equipe/ordre-trame", methods=["POST"])
+def copier_ordre_trame():
+    """Reprend l'ordre d'affichage des collaborateurs d'une AUTRE trame (ex. une
+    trame créée sans import : on récupère l'ordre de la précédente). Les membres
+    absents de la trame source restent en fin de liste, dans leur ordre actuel."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    tid = request.form.get("tid", "")
+    sem = request.form.get("sem", "A")
+    data = charger_trames()
+    trame = trame_par_id(data, tid)
+    src = trame_par_id(data, request.form.get("source", ""))
+    if trame and src and src is not trame:
+        emp = charger_employes()
+        memb = membres_ordonnes(trame, emp)
+        ordre_src = membres_ordonnes(src, emp)
+        trame["membres"] = ([em for em in ordre_src if em in memb]
+                            + [em for em in memb if em not in ordre_src])
+        sauvegarder_trames(data)
+        return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem, msg="ordre_copie"))
+    return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem))
 
 
 @bp.route("/admin/planning-equipe/trame-collab", methods=["POST"])
