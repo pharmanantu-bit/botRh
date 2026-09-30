@@ -34,6 +34,8 @@
     .btn-envoyer { background: #27ae60; color: #fff; border: none; cursor: pointer; padding: 13px 26px; border-radius: 8px; font-size: 1em; font-weight: bold; }
     .btn-envoyer:hover { background: #1f8b4c; }
     .btn-annuler { color: #888; font-size: 0.9em; text-decoration: none; margin-right: 14px; }
+    .btn-apercu-mail { background: #fff; color: #1F4E79; border: 2px solid #1F4E79; cursor: pointer; padding: 11px 20px; border-radius: 8px; font-size: 1em; font-weight: bold; margin-right: 10px; }
+    .btn-apercu-mail:hover { background: #eaf1f8; }
     @media (max-width: 820px) { table { display: block; overflow-x: auto; } }
   </style>
 </head>
@@ -54,7 +56,7 @@
     applique lui-même le barème (1,5 × point conventionnel × heures).</div>
 
   <form method="POST" action="/admin/comptable/envoyer"
-        onsubmit="return confirm('Envoyer le dossier paie de {{ mois_annee }} à l\'expert-comptable ?\nDestinataires : {{ destinataires }} (copie à vous).\n\nLes chiffres affichés (avec vos corrections) seront envoyés tels quels.');">
+        onsubmit="if (window._apercuMail) { window._apercuMail = 0; return true; } return confirm('Envoyer le dossier paie de {{ mois_annee }} à l\'expert-comptable ?\nDestinataires : {{ destinataires }} (copie à vous).\n\nLes chiffres affichés (avec vos corrections) seront envoyés tels quels.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     {% for it in resume if it.statut != 'manquant' %}
@@ -148,6 +150,9 @@
         récap Excel joint automatiquement</div>
       <div>
         <a href="/admin/mois" class="btn-annuler">Annuler</a>
+        <button type="submit" class="btn-apercu-mail" formaction="/admin/comptable/apercu-mail"
+                formtarget="_blank" onclick="window._apercuMail = 1;"
+                title="Ouvre dans un nouvel onglet le mail exactement tel que le recevra le comptable (corrections incluses) — rien n'est envoyé">👁 Aperçu du mail</button>
         <button type="submit" class="btn-envoyer">📤 Envoyer au comptable maintenant</button>
       </div>
     </div>

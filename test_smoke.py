@@ -900,6 +900,18 @@ print(("OK " if ok_ap and ok_aj else "KO ")
 if not (ok_ap and ok_aj):
     echecs.append("aperçu/ajustements comptable KO")
 
+# --- Aperçu du MAIL comptable (bouton 👁) : 200 avec bandeau si les gardes
+#     passent, sinon 302 vers /admin/mois (mêmes gardes que l'envoi) ---
+with client.session_transaction() as s:
+    s["_csrf_token"] = "tok"
+_cm = client.post("/admin/comptable/apercu-mail", data={"csrf_token": "tok"})
+ok_cm = _cm.status_code in (200, 302)
+if _cm.status_code == 200:
+    ok_cm = "APERÇU DU MAIL" in _cm.get_data(as_text=True)
+print(("OK " if ok_cm else "KO ") + f"[{_cm.status_code}] aperçu du mail comptable (rien n'est envoyé)")
+if not ok_cm:
+    echecs.append("aperçu du mail comptable KO")
+
 # --- Congés payés pris sur la période de paie (stores planning isolés) :
 #     plage 13-25/07 = 11 j ouvrables (dim 19 + férié 14 exclus), ponctuel CP
 #     06/07 = +1 j, ponctuel un férié (14/07) ignoré ; affichage mail (section

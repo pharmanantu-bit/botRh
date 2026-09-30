@@ -1987,6 +1987,31 @@ def admin_comptable_apercu():
                    if it.get("statut") == "manquant"])
 
 
+@app.route("/admin/comptable/apercu-mail", methods=["POST"])
+def admin_comptable_apercu_mail():
+    """Aperçu du MAIL tel que le recevra l'expert-comptable — construit par la
+    même fonction que le runner (comptable_sender.construire_mail_comptable),
+    corrections saisies sur l'aperçu incluses. RIEN n'est envoyé ni figé."""
+    if not session.get("admin"):
+        return redirect(url_for("admin"))
+    err, mois, annee, destinataires = _garde_envoi_comptable()
+    if err is not None:
+        return err
+    import html as html_mod
+    from comptable_sender import construire_mail_comptable  # pur, sans SMTP
+    resume = construire_resume_paie(mois, annee)
+    _appliquer_ajustements_comptable(resume, request.form)
+    sujet, _texte, corps_html = construire_mail_comptable(resume, f"{MOIS_FR[mois]} {annee}")
+    bandeau = (
+        "<div style=\"position:sticky;top:0;background:#1F4E79;color:#fff;"
+        "padding:12px 18px;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;\">"
+        "👁 APERÇU DU MAIL — rien n'a été envoyé.<br>"
+        "Objet : <strong>" + html_mod.escape(sujet) + "</strong> · "
+        "destinataires : " + html_mod.escape(destinataires) + " (copie à vous, récap Excel joint). "
+        "Fermez cet onglet pour revenir à l'aperçu et envoyer.</div>")
+    return bandeau + corps_html
+
+
 @app.route("/admin/comptable/envoyer", methods=["POST"])
 def admin_envoyer_comptable():
     """Envoi du dossier paie à l'expert-comptable — UNIQUEMENT depuis le
