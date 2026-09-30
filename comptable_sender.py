@@ -15,7 +15,7 @@ import html as html_mod
 import json
 import smtplib
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -58,13 +58,6 @@ def _h(v):
     return _fmt_h(v) if v else _ZERO
 
 
-def _semaine_lbl(lundi_iso):
-    """« 2026-06-29 » -> « du lun 29/06 au dim 05/07 »."""
-    lundi = date.fromisoformat(lundi_iso)
-    dim = lundi + timedelta(days=6)
-    return f"du lun {lundi.strftime('%d/%m')} au dim {dim.strftime('%d/%m')}"
-
-
 def _conges_txt(cg):
     """{"plages": [{debut, fin, jours}], "total": n} -> « du 13/07 au 25/07
     (11 j) · le 28/07 (1 j) — total 12 j ouvrables »."""
@@ -83,14 +76,34 @@ def _table(entetes, lignes_html):
             f"<tr>{tr}</tr>{''.join(lignes_html)}</table>")
 
 
-def _cellules_sup(s, temps_plein):
-    """Les 2 cellules 25/50 d'une ligne semaine (ou compl. fusionnée)."""
-    if temps_plein:
-        return (f'<td style="{_TD}">{_h(s["sup25"])}</td>'
-                f'<td style="{_TD}">{_h(s["sup50"])}</td>')
-    return (f'<td style="{_TD}" colspan="2">{_h(s["complementaires"])}'
-            + (' <span style="font-size:12px;color:#555">compl. 10/25 %</span>'
-               if s["complementaires"] else "") + "</td>")
+_TD_COMM = _TD + "text-align:left;font-size:12.5px;"
+
+
+def _cell_commentaires(it):
+    """Cellule « Commentaires » d'un collaborateur : commentaire du salarié +
+    marqueurs pharmacie (saisi/corrigé/ajusté) + jours de garde (sujétion) +
+    congés payés pris sur la période."""
+    esc = html_mod.escape
+    parts = []
+    if it.get("commentaire"):
+        parts.append("💬 " + esc(str(it["commentaire"])))
+    flags = []
+    if it.get("saisi_par_admin"):
+        flags.append("saisi par la pharmacie")
+    if it.get("corrige"):
+        flags.append("corrigé par la pharmacie")
+    if it.get("ajuste"):
+        flags.append("chiffres ajustés par la pharmacie")
+    if flags:
+        parts.append('<span style="color:#8a6d3b">' + esc(" ; ".join(flags)) + "</span>")
+    jours = [j for s in (it.get("semaines") or []) for j in (s.get("sujetion_jours") or [])]
+    if jours:
+        parts.append('<span style="color:#555">garde dim./férié : '
+                     + esc(", ".join(jours)) + "</span>")
+    if it.get("conges"):
+        parts.append('<span style="color:#1a7a6e">🏖 Congés payés pris sur la période : '
+                     + esc(_conges_txt(it["conges"])) + "</span>")
+    return "<br>".join(parts) or _ZERO
 
 
 def construire_mail_comptable(resume, mois_annee):
@@ -102,7 +115,7 @@ def construire_mail_comptable(resume, mois_annee):
     table « Total équipe ». Tous les relevés transmis sont réputés VALIDÉS
     (le serveur ne déclenche l'envoi qu'à cette condition)."""
     esc = html_mod.escape
-    sections, lignes_txt, lignes_equipe, sans_releve, a_faire = [], [], [], [], []
+    lignes_txt, lignes_equipe, sans_releve, a_faire = [], [], [], []
     tot = {"plus": 0.0, "sup25": 0.0, "sup50": 0.0, "comp": 0.0, "suj": 0.0}
 
     for it in resume:
@@ -145,82 +158,45 @@ def construire_mail_comptable(resume, mois_annee):
             ligne += f" · congés payés : {_conges_txt(it['conges'])}"
         lignes_txt.append(ligne + note_extras)
 
-        # --- section HTML ---
-        titre = (f'<h2 style="font-size:16px;color:#1c4e2e;border-bottom:2px solid #1c4e2e;'
-                 f'padding-bottom:4px;margin:28px 0 0">{esc(nom)}'
-                 + (f' <span style="font-weight:normal;font-size:13px;color:#555">— contrat '
-                    f"{_fmt_h(contrat)}/sem</span>" if contrat else "")
-                 + "</h2>")
-        if note_extras:
-            titre += f'<div style="font-size:12.5px;color:#8a6d3b">{esc(note_extras)}</div>'
-        bloc_conges = ""
-        if it.get("conges"):
-            bloc_conges = ('<p style="margin:4px 0 0;font-size:13px;color:#1a7a6e">'
-                           "🏖 Congés payés pris sur la période : "
-                           + esc(_conges_txt(it["conges"])) + "</p>")
+        # --- ligne HTML du tableau « Total équipe » (+ colonne Commentaires) ---
+        col_collab = (f'<td style="{_TD};text-align:left"><b>{esc(nom)}</b>'
+                      + (f'<br><span style="font-size:12px;color:#555;font-weight:normal">'
+                         f"contrat {_fmt_h(contrat)}/sem</span>" if contrat else "")
+                      + "</td>")
         if it["statut"] != "ok":
             motif = ("heures contractuelles non renseignées sur la fiche salarié"
                      if it["statut"] == "sans_contrat"
                      else "pas de détail jour par jour dans le relevé")
             a_faire.append(nom)
-            sections.append(
-                titre + f'<p style="margin:6px 0">Total du mois : +{_fmt_h(it["plus"])} / '
-                f"-{_fmt_h(it['moins'])} — <b>ventilation à faire</b> ({motif}).</p>"
-                + bloc_conges)
             tot["plus"] += it["plus"]
+            comm = _cell_commentaires(it)
+            comm = (f'<span style="color:#9C0006">ventilation à faire — {esc(motif)}</span>'
+                    + ("<br>" + comm if comm != _ZERO else ""))
             lignes_equipe.append(
-                f'<tr><td style="{_TD};text-align:left"><b>{esc(nom)}</b></td>'
-                f'<td style="{_TD_HP}">{_h(it["plus"])}</td>'
+                "<tr>" + col_collab
+                + f'<td style="{_TD_HP}">{_h(it["plus"])}</td>'
                 f'<td style="{_TD}" colspan="2">ventilation à faire</td>'
-                f'<td style="{_TD_SUJ}">{_ZERO}</td></tr>')
+                f'<td style="{_TD_SUJ}">{_ZERO}</td>'
+                f'<td style="{_TD_COMM}">{comm}</td></tr>')
             continue
 
         temps_plein = contrat >= 35
-        lignes_sem = []
-        for s in it.get("semaines") or []:
-            suj = _h(s["sujetion"])
-            if s["sujetion_jours"]:
-                suj += (' <span style="font-size:12px;color:#555">('
-                        + esc(", ".join(s["sujetion_jours"])) + ")</span>")
-            lignes_sem.append(
-                f'<tr><td style="{_TD};text-align:left">{_semaine_lbl(s["lundi"])}</td>'
-                f'<td style="{_TD_HP}">{_h(s["plus"])}</td>'
-                + _cellules_sup(s, temps_plein)
-                + f'<td style="{_TD_SUJ}">{suj}</td></tr>')
         comp = it.get("complementaires") or 0
-        lignes_sem.append(
-            f'<tr><td style="{_TD_TOT};text-align:left">Total du mois</td>'
-            f'<td style="{_TD_TOT}">{_h(it["plus"])}</td>'
-            + (f'<td style="{_TD_TOT}">{_h(it["sup25"])}</td>'
-               f'<td style="{_TD_TOT}">{_h(it["sup50"])}</td>' if temps_plein
-               else f'<td style="{_TD_TOT}" colspan="2">{_h(comp)}</td>')
-            + f'<td style="{_TD_TOT}">{_h(it["sujetion"])}</td></tr>')
-        entetes = [("Semaine", _TH + "width:30%"), ("Total H+<br>de la semaine", _TH_HP)]
-        if temps_plein:
-            entetes += [("H. sup<br>à 25&nbsp;%", _TH), ("H. sup<br>à 50&nbsp;%", _TH)]
-        else:
-            entetes += [('H. complémentaires<br><span style="font-weight:normal">'
-                         "(majoration 10/25&nbsp;%)</span>", _TH)]
-            # l'en-tête fusionné couvre les 2 colonnes du corps
-            entetes[-1] = (entetes[-1][0], entetes[-1][1] + '" colspan="2')
-        entetes.append(('H. indemnité de sujétion<br><span style="font-weight:normal">'
-                        "(garde dim./férié)</span>", _TH_SUJ))
-        sections.append(titre + _table(entetes, lignes_sem) + bloc_conges)
-
         tot["plus"] += it["plus"]
         tot["sup25"] += it["sup25"]
         tot["sup50"] += it["sup50"]
         tot["comp"] += comp
         tot["suj"] += it["sujetion"]
         lignes_equipe.append(
-            f'<tr><td style="{_TD};text-align:left"><b>{esc(nom)}</b></td>'
-            f'<td style="{_TD_HP}">{_h(it["plus"])}</td>'
+            "<tr>" + col_collab
+            + f'<td style="{_TD_HP}">{_h(it["plus"])}</td>'
             + (f'<td style="{_TD}">{_h(it["sup25"])}</td>'
                f'<td style="{_TD}">{_h(it["sup50"])}</td>' if temps_plein
                else f'<td style="{_TD}" colspan="2">{_h(comp)}'
                     + (' <span style="font-size:12px;color:#555">compl.</span>' if comp else "")
                     + "</td>")
-            + f'<td style="{_TD_SUJ}">{_h(it["sujetion"])}</td></tr>')
+            + f'<td style="{_TD_SUJ}">{_h(it["sujetion"])}</td>'
+            + f'<td style="{_TD_COMM}">{_cell_commentaires(it)}</td></tr>')
 
     sujet = f"Relevés d'heures validés — {mois_annee} — Pharmacie Apothical Nanterre Université"
 
@@ -251,37 +227,42 @@ def construire_mail_comptable(resume, mois_annee):
         f'<td style="{_TD_TOT}">{_h(tot["sup25"])}'
         + (f" + {_h(tot['comp'])} compl." if tot["comp"] else "") + "</td>"
         f'<td style="{_TD_TOT}">{_h(tot["sup50"])}</td>'
-        f'<td style="{_TD_TOT.replace("#eaf3ec", "#fdf1e3")}">{_h(tot["suj"])}</td></tr>')
+        f'<td style="{_TD_TOT.replace("#eaf3ec", "#fdf1e3")}">{_h(tot["suj"])}</td>'
+        f'<td style="{_TD_TOT}"></td></tr>')
     equipe = (f'<h2 style="font-size:16px;color:#1c4e2e;border-bottom:2px solid #1c4e2e;'
               f'padding-bottom:4px;margin:28px 0 0">Total équipe — {esc(mois_annee)}</h2>'
-              + _table([("Collaborateur", _TH + "width:30%"), ("Total H+<br>du mois", _TH_HP),
+              + _table([("Collaborateur", _TH + "width:18%"), ("Total H+<br>du mois", _TH_HP),
                         ("Total h. sup<br>25&nbsp;%", _TH), ("Total h. sup<br>50&nbsp;%", _TH),
-                        ("Total<br>h. sujétion", _TH_SUJ)], lignes_equipe))
+                        ('Total h. sujétion<br><span style="font-weight:normal">'
+                         "(garde dim./férié)</span>", _TH_SUJ),
+                        ("Commentaires", _TH + "width:28%")], lignes_equipe))
     notes = []
     if sans_releve:
         notes.append(f"Sans relevé ce mois ({len(sans_releve)}) : " + esc(", ".join(sans_releve)))
     if a_faire:
         notes.append("Ventilation à faire par vos soins pour : " + esc(", ".join(a_faire)))
     notes.append(
-        "« Total H+ de la semaine » = ensemble des heures déclarées en plus sur la semaine, "
-        "dont la part au-delà de 35&nbsp;h est ventilée en heures supplémentaires : +25&nbsp;% "
-        "de la 36<sup>e</sup> à la 43<sup>e</sup> heure hebdomadaire, +50&nbsp;% au-delà "
-        "(convention collective de la pharmacie d'officine, calcul par semaine civile ; heures "
-        "complémentaires des temps partiels majorées 10&nbsp;% / 25&nbsp;%). Les heures "
+        "« Total H+ du mois » = ensemble des heures déclarées en plus sur le mois, dont la "
+        "part au-delà de 35&nbsp;h hebdomadaires est ventilée par semaine civile en heures "
+        "supplémentaires : +25&nbsp;% de la 36<sup>e</sup> à la 43<sup>e</sup> heure "
+        "hebdomadaire, +50&nbsp;% au-delà (convention collective de la pharmacie d'officine ; "
+        "heures complémentaires des temps partiels majorées 10&nbsp;% / 25&nbsp;%). Les heures "
         "d'indemnité de sujétion correspondent aux heures effectuées un dimanche ou un jour "
         "férié (base : 1,5 × valeur du point conventionnel × nombre d'heures, calcul effectué "
-        "par vos soins). Les congés payés indiqués sont ceux pris sur la période du relevé, "
-        "comptés en jours ouvrables (lundi-samedi, hors jours fériés). Le détail jour par "
-        "jour figure dans le classeur Excel joint.")
+        "par vos soins) — les jours concernés sont listés dans la colonne Commentaires. Les "
+        "congés payés indiqués sont ceux pris sur la période du relevé, comptés en jours "
+        "ouvrables (lundi-samedi, hors jours fériés). Le détail par semaine et jour par jour "
+        "figure dans le classeur Excel joint.")
     html = (
         '<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:900px;'
         'line-height:1.5">'
         "<p>Bonjour,</p>"
-        f"<p>Veuillez trouver ci-dessous, collaborateur par collaborateur, la ventilation des "
-        f"heures supplémentaires et des heures de garde (indemnité de sujétion) de "
-        f"<b>{esc(mois_annee)}</b>, par semaine civile, ainsi que le récapitulatif Excel des "
-        f"relevés en pièce jointe, pour l'établissement des bulletins de paie.</p>"
-        + "".join(sections) + equipe
+        f"<p>Veuillez trouver ci-dessous le total du mois par collaborateur — heures "
+        f"supplémentaires et heures de garde (indemnité de sujétion) — de "
+        f"<b>{esc(mois_annee)}</b>, avec les commentaires des salariés, ainsi que le "
+        f"récapitulatif Excel des relevés en pièce jointe, pour l'établissement des "
+        f"bulletins de paie.</p>"
+        + equipe
         + "".join(f'<p style="font-size:12.5px;color:#555">{n}</p>' for n in notes)
         + "<p>Nous restons à votre disposition,</p>"
         + '<div style="font-size:13px;color:#333;border-top:1px solid #ccc;padding-top:12px">'

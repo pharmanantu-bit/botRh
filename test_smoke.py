@@ -854,7 +854,8 @@ _mj = A.calculer_majorations([{"label": "Mar 07/07", "plus": 10, "moins": 0},
 _mf = A.calculer_majorations([{"label": "Mar 14/07", "plus": 7, "moins": 7}], 35.0, 7, 2026)
 _res = [{"prenom": "Test", "nom": "Un", "contrat_hebdo": 35.0, "statut": "ok",
          "plus": 20.0, "moins": 0.0, "solde": 20.0, "valide": True,
-         "saisi_par_admin": False, "corrige": False, "commentaire": "", **_mj},
+         "saisi_par_admin": False, "corrige": False,
+         "commentaire": "garde du 12 juillet", **_mj},
         {"prenom": "Test", "nom": "Deux", "contrat_hebdo": 35.0, "statut": "manquant"}]
 _sj, _txt, _html = CS.construire_mail_comptable(_res, "Juillet 2026")
 ok_pv = (_mj["sup25"] == 8.0 and _mj["sup50"] == 12.0 and _mj["sujetion"] == 10.0
@@ -864,7 +865,8 @@ ok_pv = (_mj["sup25"] == 8.0 and _mj["sup50"] == 12.0 and _mj["sujetion"] == 10.
          and _mf["sup25"] == 0 and _mf["sujetion"] == 7.0
          and "férié 14/07 (Fête nationale)" in _mf["semaines"][0]["sujetion_jours"]
          and "Juillet 2026" in _sj and "sujétion 10h" in _txt
-         and "du lun 06/07 au dim 12/07" in _html and "dim. 12/07" in _html
+         and "Commentaires" in _html and "garde du 12 juillet" in _html
+         and "garde dim./férié : dim. 12/07" in _html
          and "Total équipe" in _html and "Test DEUX" in _html and SIGNATURE in _txt)
 print(("OK " if ok_pv else "KO ") + "[--] paie : semaines + sujétion + mail comptable HTML")
 if not ok_pv:
