@@ -1086,7 +1086,7 @@ def vue():
                "aujourdhui": url_for(".vue", onglet="planning", date=jour_courant().isoformat()) + "#auj"}
         if periode == "hebdo":
             cur = _lundi(ref)
-            for k in range(-2, 7):
+            for k in range(-6, 13):
                 L = cur + timedelta(days=7 * k)
                 tr_l = trame_active_pour(data, L)
                 nav["boutons"].append({"url": url_for(".vue", onglet="planning", date=L.isoformat()),
