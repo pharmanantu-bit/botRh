@@ -910,6 +910,25 @@ def to_iso(s):
 app.jinja_env.filters["date_fr"] = format_date_fr
 app.jinja_env.filters["iso_date"] = to_iso
 
+def anciennete_label(d_entree, auj=None):
+    """Libellé d'ancienneté lisible depuis la date d'entrée : « 3 ans », « 2 ans ½ »,
+    « 8 mois », « 15 jours »… None si pas de date ou date future."""
+    if not d_entree:
+        return None
+    auj = auj or datetime.now().date()
+    jours = (auj - d_entree).days
+    if jours < 0:
+        return f"arrive le {d_entree:%d/%m/%Y}"
+    if jours < 31:
+        return f"{jours} jour{'s' if jours > 1 else ''}"
+    mois = int(jours / 30.44)
+    if mois < 12:
+        return f"{mois} mois"
+    ans = jours // 365
+    reste_mois = int((jours - ans * 365) / 30.44)
+    return f"{ans} an{'s' if ans > 1 else ''}" + (" ½" if 5 <= reste_mois <= 7 else "")
+
+
 def alertes_employe(profil):
     """Liste d'alertes/échéances d'un employé, calculées depuis son profil.
     Chaque alerte : {niveau: 'rouge'|'orange'|'info', texte: ...}."""
@@ -1202,9 +1221,20 @@ def admin_employes():
     # Enrichit chaque employé (poste, nb docs, alertes, documents manquants, statut)
     profils = charger_profils()
     idx_docs = charger_docs_index()
+    auj = datetime.now().date()
     actifs, inactifs, archives = [], [], []
     for e in employes:
         profil = profils.get(e["email"], {})
+        d_entree = parse_date_fr(profil.get("date_entree"))
+        naiss = parse_date_fr(profil.get("naissance"))
+        # Échéance proche (sous 45 j) : fin d'essai ou fin de contrat
+        echeance = None
+        essai = parse_date_fr(profil.get("fin_essai"))
+        fin = parse_date_fr(profil.get("date_fin"))
+        if essai and 0 <= (essai - auj).days <= 45:
+            echeance = f"essai → {essai:%d/%m}"
+        elif fin and 0 <= (fin - auj).days <= 45:
+            echeance = f"contrat → {fin:%d/%m}"
         info = {
             **e,
             "poste": poste_de(profil),
@@ -1215,6 +1245,10 @@ def admin_employes():
             "statut": profil.get("statut", "actif"),
             "photo": profil.get("photo"),
             "releves_actif": bool(profil.get("releves_actif", True)),
+            "anciennete": anciennete_label(d_entree, auj),
+            "annees_anciennete": round((auj - d_entree).days / 365.25, 2) if d_entree else None,
+            "anniv_jour": naiss.day if naiss and naiss.month == auj.month else None,
+            "echeance": echeance,
         }
         if info["statut"] == "archive":
             archives.append(info)
@@ -1226,6 +1260,28 @@ def admin_employes():
     postes = sorted({i["poste"] for i in actifs if i["poste"]})
     contrats = sorted({i["contrat"] for i in actifs if i["contrat"]})
 
+    # Bandeau stats équipe (sur les actifs ; anniversaires : actifs + inactifs)
+    par_poste = {}
+    for i in actifs:
+        cle = i["poste"] or "Sans poste"
+        par_poste[cle] = par_poste.get(cle, 0) + 1
+    par_contrat = {}
+    for i in actifs:
+        cle = i["contrat"] or "Non renseigné"
+        par_contrat[cle] = par_contrat.get(cle, 0) + 1
+    annees = [i["annees_anciennete"] for i in actifs if i["annees_anciennete"] is not None]
+    annivs = sorted(
+        [(i["anniv_jour"], i["prenom"]) for i in actifs + inactifs if i["anniv_jour"]],
+    )
+    stats = {
+        "par_poste": sorted(par_poste.items(), key=lambda kv: (-kv[1], kv[0])),
+        "par_contrat": sorted(par_contrat.items(), key=lambda kv: (-kv[1], kv[0])),
+        "anciennete_moyenne": (sum(annees) / len(annees)) if annees else None,
+        "annivs": annivs,
+        "nb_echeances": sum(1 for i in actifs + inactifs if i["echeance"]),
+        "mois_label": f"{MOIS_FR[auj.month]} {auj.year}",
+    }
+
     # Synthèse RH : en poste OU inactifs (leur dossier se prépare avant l'arrivée)
     synthese = [i for i in actifs + inactifs if i["alertes"] or i["manquants"]]
     synthese.sort(key=lambda i: (any(a["niveau"] == "rouge" for a in i["alertes"]),
@@ -1236,7 +1292,8 @@ def admin_employes():
     return render_template("admin_employes.html", employes=actifs, inactifs=inactifs,
                            archives=archives,
                            message=message, postes=postes, contrats=contrats,
-                           synthese=synthese, nb_rouge=nb_rouge, nb_manquants=nb_manquants)
+                           synthese=synthese, nb_rouge=nb_rouge, nb_manquants=nb_manquants,
+                           stats=stats)
 
 
 @app.route("/admin/infos-equipe")

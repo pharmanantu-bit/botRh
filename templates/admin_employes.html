@@ -4,26 +4,43 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestion des employés</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
-    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 1000px; margin: 0 auto; }
-    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-    h1 { color: #1F4E79; font-size: 1.3em; }
-    .btn-retour { color: #888; font-size: 0.85em; text-decoration: none; }
-    .btn-infos { background: #2f7d4f; color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85em; font-weight: bold; }
+    body { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background: #f4f6fa; padding: 20px; color: #263242; }
+    .carte { background: white; border-radius: 16px; box-shadow: 0 1px 2px rgba(16,30,54,.05), 0 8px 28px rgba(16,30,54,.06); padding: 28px; max-width: 1080px; margin: 0 auto; }
+    .entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: #1F4E79; font-size: 1.22em; font-weight: 800; letter-spacing: -0.01em; }
+    h1 .h-sous { font-weight: 500; font-size: 0.72em; color: #7a8699; display: block; margin-top: 2px; }
+    .btn-retour { color: #8a94a6; font-size: 0.85em; text-decoration: none; }
+    .btn-retour:hover { color: #1F4E79; }
+    .btn-infos { background: #2f7d4f; color: white; text-decoration: none; padding: 9px 16px; border-radius: 10px; font-size: 0.84em; font-weight: 600; box-shadow: 0 1px 2px rgba(16,30,54,.12); }
     .btn-infos:hover { background: #245f3c; }
-    .message { background: #C6EFCE; color: #276221; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9em; }
+    .message { background: #e5f6ea; color: #1e6b37; border: 1px solid #c3e8cf; padding: 10px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 0.9em; }
+
+    /* Bandeau stats équipe */
+    .stats-bande { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat-tuile { background: #f8fafd; border: 1px solid #e5eaf2; border-radius: 12px; padding: 13px 15px; }
+    .stat-tuile .st-titre { font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #7a8699; margin-bottom: 7px; }
+    .stat-tuile .st-grand { font-size: 1.35em; font-weight: 800; color: #1F4E79; line-height: 1.1; }
+    .stat-tuile .st-grand small { font-size: 0.55em; font-weight: 600; color: #7a8699; }
+    .st-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .st-chip { background: #eaf1fb; color: #1F4E79; font-size: 0.74em; font-weight: 600; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+    .st-chip b { font-weight: 800; }
+    .st-chip.chip-anniv { background: #fdeef3; color: #ad2d55; }
+    .st-chip.chip-ech { background: #fff3d6; color: #9C6500; }
+    .st-vide { font-size: 0.8em; color: #9aa4b3; margin-top: 7px; font-style: italic; }
 
     /* Synthèse RH intégrée */
-    .synthese-bloc { border: 1px solid #f0d0d0; background: #fff8f8; border-radius: 10px; margin-bottom: 22px; }
-    .synthese-bloc summary { cursor: pointer; padding: 14px 18px; font-weight: bold; color: #9C0006; font-size: 0.95em; user-select: none; }
+    .synthese-bloc { border: 1px solid #f3d8d8; background: #fdf7f7; border-radius: 12px; margin-bottom: 20px; }
+    .synthese-bloc summary { cursor: pointer; padding: 13px 18px; font-weight: 700; color: #9C0006; font-size: 0.93em; user-select: none; }
     .sb-urgent-c { color: #9C0006; }
     .synthese-corps { padding: 4px 18px 16px; }
-    .sb-ligne { padding: 10px 0; border-bottom: 1px solid #f0e0e0; }
+    .sb-ligne { padding: 10px 0; border-bottom: 1px solid #f3e4e4; }
     .sb-ligne:last-child { border-bottom: none; }
     .sb-ligne.urgent { padding-left: 10px; border-left: 4px solid #9C0006; }
-    .sb-nom { font-weight: bold; color: #1F4E79; text-decoration: none; }
+    .sb-nom { font-weight: 700; color: #1F4E79; text-decoration: none; }
     .sb-nom:hover { text-decoration: underline; }
     .sb-alertes { margin-top: 4px; }
     .sb-a { display: inline-block; padding: 3px 9px; border-radius: 8px; font-size: 0.78em; font-weight: 500; margin: 3px 4px 0 0; }
@@ -33,81 +50,93 @@
     .sb-manque { background: #FFD6D6; color: #9C0006; }
 
     /* Formulaire ajout (repliable) */
-    details.form-ajout { background: #f5f8fc; border: 1px solid #dde3ed; border-radius: 10px; margin-bottom: 26px; }
-    details.form-ajout summary { cursor: pointer; padding: 14px 18px; font-weight: bold; color: #1F4E79; font-size: 0.95em; user-select: none; }
-    details.form-ajout summary:hover { background: #eef4fb; border-radius: 10px; }
+    details.form-ajout { background: #f8fafd; border: 1px solid #e5eaf2; border-radius: 12px; margin-bottom: 22px; }
+    details.form-ajout summary { cursor: pointer; padding: 13px 18px; font-weight: 700; color: #1F4E79; font-size: 0.93em; user-select: none; }
+    details.form-ajout summary:hover { background: #eef4fb; border-radius: 12px; }
     .form-row { display: flex; gap: 10px; flex-wrap: wrap; padding: 0 18px 18px; }
-    .form-row input { flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
-    .btn-ajouter { padding: 8px 20px; background: #1F4E79; color: white; border: none; border-radius: 6px; font-size: 0.9em; font-weight: bold; cursor: pointer; }
+    .form-row input { flex: 1; min-width: 140px; padding: 9px 12px; border: 1px solid #d5dce8; border-radius: 8px; font-size: 0.9em; font-family: inherit; }
+    .form-row input:focus { outline: 2px solid #bcd4ef; border-color: #2E75B6; }
+    .btn-ajouter { padding: 9px 20px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-size: 0.9em; font-weight: 700; cursor: pointer; font-family: inherit; }
     .btn-ajouter:hover { background: #163d60; }
 
     /* Recherche */
-    #recherche { width: 100%; padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95em; margin-bottom: 10px; }
+    #recherche { width: 100%; padding: 11px 14px; border: 1px solid #d5dce8; border-radius: 10px; font-size: 0.95em; margin-bottom: 10px; font-family: inherit; background: white; }
+    #recherche:focus { outline: 2px solid #bcd4ef; border-color: #2E75B6; }
     .filtres { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
-    .filtres select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85em; }
-    .f-check { font-size: 0.85em; color: #555; display: flex; align-items: center; gap: 4px; cursor: pointer; }
-    .f-compteur { margin-left: auto; font-size: 0.82em; color: #888; }
+    .filtres select { padding: 7px 10px; border: 1px solid #d5dce8; border-radius: 8px; font-size: 0.84em; font-family: inherit; background: white; color: #263242; }
+    .f-check { font-size: 0.84em; color: #5c6775; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .f-compteur { margin-left: auto; font-size: 0.8em; color: #8a94a6; }
 
     /* Grille de cartes */
-    .grille-emp { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+    .grille-emp { display: grid; grid-template-columns: repeat(auto-fill, minmax(235px, 1fr)); gap: 14px; }
     .carte-emp {
-      position: relative; background: white; border: 1px solid #e3e9f0; border-radius: 12px;
-      padding: 20px 16px 14px; text-align: center; cursor: pointer;
+      position: relative; background: white; border: 1px solid #e5eaf2; border-radius: 14px;
+      padding: 20px 16px 12px; text-align: center; cursor: pointer;
+      box-shadow: 0 1px 2px rgba(16,30,54,.04);
       transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
-    .carte-emp:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(31,78,121,0.16); border-color: #2E75B6; }
+    .carte-emp:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(31,78,121,0.14); border-color: #2E75B6; }
     .avatar {
-      width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 12px;
+      width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 10px;
       display: flex; align-items: center; justify-content: center;
-      color: white; font-size: 1.4em; font-weight: bold; letter-spacing: 1px;
+      color: white; font-size: 1.35em; font-weight: 700; letter-spacing: 1px;
     }
     .avatar-img { object-fit: cover; }
-    .carte-emp .nom { font-weight: bold; color: #1F4E79; font-size: 1.02em; }
-    .carte-emp .poste { color: #2E75B6; font-size: 0.85em; margin-top: 2px; min-height: 1em; }
-    .carte-emp .email { color: #888; font-size: 0.78em; margin-top: 6px; word-break: break-all; }
+    .carte-emp .nom { font-weight: 700; color: #1F4E79; font-size: 1.02em; letter-spacing: -0.01em; }
+    .carte-emp .poste { color: #2E75B6; font-size: 0.84em; font-weight: 500; margin-top: 2px; min-height: 1em; }
+    .carte-emp .infos-ligne { margin-top: 7px; font-size: 0.78em; color: #7a8699; display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 1.4em; }
+    .chip-contrat { background: #eef2f8; color: #45536a; font-weight: 700; font-size: 0.92em; padding: 1px 8px; border-radius: 20px; }
+    .chip-contrat.c-cdi { background: #e5f6ea; color: #1e6b37; }
+    .chip-contrat.c-precaire { background: #fff3d6; color: #9C6500; }
+    .carte-emp .email { color: #98a2b1; font-size: 0.76em; margin-top: 6px; word-break: break-all; }
     .carte-emp .email a { color: #2E75B6; text-decoration: none; }
     .carte-emp .email a:hover { text-decoration: underline; }
-    .carte-emp .docs { display: inline-block; margin-top: 10px; background: #eaf1fb; color: #1F4E79; font-size: 0.78em; font-weight: bold; padding: 3px 10px; border-radius: 12px; }
-    .carte-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
-    .btn-edit { background: #2E75B6; color: white; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+    .carte-emp .docs { display: inline-block; margin-top: 9px; background: #eaf1fb; color: #1F4E79; font-size: 0.76em; font-weight: 700; padding: 3px 10px; border-radius: 12px; }
+    .carte-actions { display: flex; gap: 8px; justify-content: center; margin-top: 12px; padding-top: 11px; border-top: 1px solid #f0f3f8; }
+    .btn-edit { background: #2E75B6; color: white; border: none; padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 0.78em; font-weight: 600; font-family: inherit; }
     .btn-edit:hover { background: #1F4E79; }
-    .btn-del { background: #fff; color: #c0392b; border: 1px solid #e3b3ad; padding: 5px 9px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
-    .btn-del:hover { background: #c0392b; color: white; }
-    .btn-arch { background: #fff; color: #9C6500; border: 1px solid #e0c080; padding: 5px 9px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
-    .btn-arch:hover { background: #9C6500; color: white; }
+    .btn-del { background: #fff; color: #c0392b; border: 1px solid #e8c2bc; padding: 5px 9px; border-radius: 7px; cursor: pointer; font-size: 0.78em; font-family: inherit; }
+    .btn-del:hover { background: #c0392b; color: white; border-color: #c0392b; }
+    .btn-arch { background: #fff; color: #9C6500; border: 1px solid #e6cf9a; padding: 5px 9px; border-radius: 7px; cursor: pointer; font-size: 0.78em; font-family: inherit; }
+    .btn-arch:hover { background: #9C6500; color: white; border-color: #9C6500; }
     .carte-badges { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
-    .cb { font-size: 0.72em; font-weight: bold; padding: 2px 8px; border-radius: 10px; cursor: help; }
+    .cb { font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 10px; cursor: help; }
     .cb-alerte { background: #FFF3D6; color: #9C6500; }
     .cb-manque { background: #FFD6D6; color: #9C0006; }
-    .archives-bloc { margin-top: 28px; border-top: 1px solid #e3e9f0; padding-top: 16px; }
-    .archives-bloc summary { cursor: pointer; font-weight: bold; color: #888; font-size: 0.95em; user-select: none; }
+    .cb-anniv { background: #fdeef3; color: #ad2d55; cursor: default; }
+    .cb-ech { background: #fff3d6; color: #9C6500; cursor: default; }
+    .archives-bloc { margin-top: 26px; border-top: 1px solid #e5eaf2; padding-top: 16px; }
+    .archives-bloc summary { cursor: pointer; font-weight: 700; color: #8a94a6; font-size: 0.93em; user-select: none; }
     .carte-inactive { background: #fffdf5; border: 1px dashed #e0c080; opacity: 0.92; }
     .carte-archive { opacity: 0.8; background: #fafbfc; }
     .carte-archive:hover { opacity: 1; }
-    .btn-releves { border: none; border-radius: 6px; padding: 5px 9px; font-size: 0.78em; font-weight: bold; cursor: pointer; }
-    .rel-on { background: #C6EFCE; color: #276221; }
-    .rel-on:hover { background: #b2e5bd; }
+    .btn-releves { border: none; border-radius: 7px; padding: 5px 9px; font-size: 0.78em; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .rel-on { background: #e5f6ea; color: #1e6b37; }
+    .rel-on:hover { background: #d2eedb; }
     .rel-off { background: #FFF3D6; color: #9C6500; }
     .rel-off:hover { background: #ffe9b8; }
-    .ouvrir-hint { position: absolute; top: 10px; right: 12px; color: #c3d2e6; font-size: 0.9em; }
-    .vide { text-align: center; color: #888; padding: 30px; font-style: italic; }
+    .ouvrir-hint { position: absolute; top: 10px; right: 12px; color: #cdd8e6; font-size: 0.9em; }
+    .vide { text-align: center; color: #8a94a6; padding: 30px; font-style: italic; }
 
     /* Modal modification */
-    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:2000; align-items:center; justify-content:center; }
+    .modal { display:none; position:fixed; inset:0; background:rgba(16,30,54,0.45); z-index:2000; align-items:center; justify-content:center; }
     .modal.actif { display:flex; }
-    .modal-box { background:white; border-radius:12px; padding:28px; max-width:420px; width:90%; }
-    .modal-box h2 { color:#1F4E79; font-size:1em; margin-bottom:16px; }
-    .modal-box input { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:0.9em; margin-bottom:10px; }
+    .modal-box { background:white; border-radius:14px; padding:28px; max-width:420px; width:90%; box-shadow: 0 20px 60px rgba(16,30,54,.25); }
+    .modal-box h2 { color:#1F4E79; font-size:1em; font-weight: 800; margin-bottom:16px; }
+    .modal-box input { width:100%; padding:9px 12px; border:1px solid #d5dce8; border-radius:8px; font-size:0.9em; margin-bottom:10px; font-family: inherit; }
+    .modal-box input:focus { outline: 2px solid #bcd4ef; border-color: #2E75B6; }
     .modal-actions { display:flex; gap:10px; margin-top:8px; }
-    .btn-save { flex:1; padding:10px; background:#1F4E79; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; }
-    .btn-cancel { flex:1; padding:10px; background:#888; color:white; border:none; border-radius:6px; cursor:pointer; }
+    .btn-save { flex:1; padding:10px; background:#1F4E79; color:white; border:none; border-radius:8px; font-weight:700; cursor:pointer; font-family: inherit; }
+    .btn-cancel { flex:1; padding:10px; background:#eef2f8; color:#45536a; border:none; border-radius:8px; cursor:pointer; font-family: inherit; font-weight: 600; }
   </style>
 </head>
 <body>
 {% include '_admin_nav.html' %}
 <div class="carte">
   <div class="entete">
-    <h1>Équipe &amp; RH ({{ employes|length }} actif{{ 's' if employes|length > 1 else '' }}{% if inactifs %} · {{ inactifs|length }} inactif{{ 's' if inactifs|length > 1 else '' }}{% endif %}{% if archives %} · {{ archives|length }} archivé{{ 's' if archives|length > 1 else '' }}{% endif %})</h1>
+    <h1>Équipe &amp; RH
+      <span class="h-sous">{{ employes|length }} actif{{ 's' if employes|length > 1 else '' }}{% if inactifs %} · {{ inactifs|length }} inactif{{ 's' if inactifs|length > 1 else '' }}{% endif %}{% if archives %} · {{ archives|length }} archivé{{ 's' if archives|length > 1 else '' }}{% endif %}</span>
+    </h1>
     <div style="display:flex; gap:10px; align-items:center;">
       <form method="POST" action="/admin/documents/analyser_tout" style="margin:0;"
             onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='⏳ Analyse en cours…';">
@@ -130,6 +159,44 @@
     {{ request.args.get('analyse_props') }} suggestion(s) créée(s).
     {% if request.args.get('analyse_props')|int > 0 %}Elles sont à valider (Appliquer / Ignorer) sur la fiche de chaque collaborateur concerné.
     {% else %}Rien de nouveau : documents déjà analysés, ou texte illisible (PDF scannés sans OCR).{% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Bandeau stats équipe -->
+  {% if stats %}
+  <div class="stats-bande">
+    <div class="stat-tuile">
+      <div class="st-titre">👥 Effectif par poste</div>
+      <div class="st-grand">{{ employes|length }} <small>actif{{ 's' if employes|length > 1 else '' }}</small></div>
+      <div class="st-chips">
+        {% for p, n in stats.par_poste %}<span class="st-chip">{{ p }} <b>×{{ n }}</b></span>{% endfor %}
+      </div>
+    </div>
+    <div class="stat-tuile">
+      <div class="st-titre">📜 Contrats</div>
+      <div class="st-chips" style="margin-top:2px;">
+        {% for c, n in stats.par_contrat %}<span class="st-chip">{{ c }} <b>×{{ n }}</b></span>{% endfor %}
+      </div>
+      {% if stats.anciennete_moyenne is not none %}
+      <div style="margin-top:9px; font-size:0.8em; color:#7a8699;">Ancienneté moyenne :
+        <b style="color:#1F4E79;">{{ '%.1f'|format(stats.anciennete_moyenne) }} an{{ 's' if stats.anciennete_moyenne >= 2 else '' }}</b></div>
+      {% endif %}
+    </div>
+    <div class="stat-tuile">
+      <div class="st-titre">🎂 Anniversaires — {{ stats.mois_label }}</div>
+      {% if stats.annivs %}
+      <div class="st-chips" style="margin-top:2px;">
+        {% for jour, prenom in stats.annivs %}<span class="st-chip chip-anniv">{{ prenom }} · le {{ jour }}</span>{% endfor %}
+      </div>
+      {% else %}
+      <div class="st-vide">Aucun ce mois-ci</div>
+      {% endif %}
+    </div>
+    <div class="stat-tuile">
+      <div class="st-titre">⏳ Échéances sous 45 j</div>
+      <div class="st-grand">{{ stats.nb_echeances }} <small>essai / fin de contrat</small></div>
+      {% if stats.nb_echeances %}<div style="margin-top:7px; font-size:0.78em; color:#9C6500;">Voir le badge ⏳ sur les cartes concernées</div>{% endif %}
+    </div>
   </div>
   {% endif %}
 
@@ -180,6 +247,7 @@
     <select id="f-tri" onchange="trier()" title="Ordre d'affichage">
       <option value="nom">Tri : nom A→Z</option>
       <option value="poste">Tri : poste</option>
+      <option value="anciennete">Tri : ancienneté</option>
       <option value="alertes">Tri : alertes d'abord</option>
       <option value="manquants">Tri : docs manquants d'abord</option>
     </select>
@@ -195,6 +263,7 @@
          data-email="{{ emp.email }}"
          data-poste="{{ emp.poste }}" data-contrat="{{ emp.contrat }}"
          data-alertes="{{ emp.alertes|length }}" data-manquants="{{ emp.manquants|length }}"
+         data-anciennete="{{ emp.annees_anciennete if emp.annees_anciennete is not none else -1 }}"
          onclick="window.location='/admin/employe?email={{ emp.email|urlencode }}'">
       <span class="ouvrir-hint">›</span>
       {% if emp.photo %}
@@ -206,12 +275,22 @@
       {% endif %}
       <div class="nom">{{ emp.prenom }} {{ emp.nom }}</div>
       <div class="poste">{{ emp.poste or '—' }}</div>
+      <div class="infos-ligne">
+        {% if emp.contrat %}
+        {% set cc = 'c-cdi' if emp.contrat == 'CDI' else ('c-precaire' if emp.contrat in ('CDD','Intérim','Stage') else '') %}
+        <span class="chip-contrat {{ cc }}">{{ emp.contrat }}</span>
+        {% endif %}
+        {% if emp.anciennete %}<span title="Date d'entrée renseignée sur la fiche">{{ 'depuis ' if not emp.anciennete.startswith('arrive') else '' }}{{ emp.anciennete }}</span>{% endif %}
+        {% if not emp.contrat and not emp.anciennete %}<span style="color:#c3ccd8;">contrat / entrée à renseigner</span>{% endif %}
+      </div>
       <div class="email"><a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ emp.email|urlencode }}"
            target="_blank" rel="noopener" title="Écrire un e-mail (Gmail)"
            onclick="event.stopPropagation();">{{ emp.email }}</a></div>
       <div class="docs">📎 {{ emp.nb_docs }} document{{ 's' if emp.nb_docs != 1 else '' }}</div>
-      {% if emp.alertes or emp.manquants %}
+      {% if emp.alertes or emp.manquants or emp.anniv_jour or emp.echeance %}
       <div class="carte-badges">
+        {% if emp.anniv_jour %}<span class="cb cb-anniv" title="Anniversaire ce mois-ci">🎂 le {{ emp.anniv_jour }}</span>{% endif %}
+        {% if emp.echeance %}<span class="cb cb-ech" title="Échéance dans moins de 45 jours">⏳ {{ emp.echeance }}</span>{% endif %}
         {% if emp.alertes %}<span class="cb cb-alerte" title="{{ emp.alertes|map(attribute='texte')|join(' · ') }}">⚠️ {{ emp.alertes|length }}</span>{% endif %}
         {% if emp.manquants %}<span class="cb cb-manque" title="Manque : {{ emp.manquants|join(', ') }}">📋 {{ emp.manquants|length }} manquant{{ 's' if emp.manquants|length > 1 else '' }}</span>{% endif %}
       </div>
@@ -354,6 +433,9 @@ function trier() {
     } else if (mode === 'manquants') {
       var d2 = parseInt(b.dataset.manquants) - parseInt(a.dataset.manquants);
       if (d2) return d2;
+    } else if (mode === 'anciennete') {
+      var d3 = parseFloat(b.dataset.anciennete) - parseFloat(a.dataset.anciennete);
+      if (d3) return d3;
     } else if (mode === 'poste') {
       var p = (a.dataset.poste || 'zzz').localeCompare(b.dataset.poste || 'zzz', 'fr');
       if (p) return p;
