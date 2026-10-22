@@ -46,6 +46,8 @@ routes_publiques = [
     (f"/healthcheck?cle={cle}", 200),
     (f"/export_reponses?cle={cle}&mois={mois}&annee={annee}", 200),
     (f"/export_employes?cle={cle}", 200),
+    (f"/export_envois?cle={cle}&mois={mois}&annee={annee}", 200),
+    ("/export_envois?cle=mauvaise", 403),
     (f"/export_recap?cle={cle}&mois={mois}&annee={annee}", 200),
     (f"/export_backup?cle={cle}", 200),
     ("/export_reponses?cle=mauvaise", 403),
@@ -1128,6 +1130,41 @@ try:
         echecs.append("newsletter KO")
 finally:
     NL.NEWSLETTERS_FILE, NL.PHOTOS_NL_DIR = _nl_file, _nl_photos
+
+# --- Marqueurs d'envoi mensuel (rattrapage des relevés si le site était éteint) ---
+import run_send as RS
+_envois_file = A.ENVOIS_FILE
+A.ENVOIS_FILE = os.path.join(tempfile.mkdtemp(), "envois_mensuels.json")
+try:
+    ok_403 = client.post("/marquer_envoi?cle=mauvaise&type=releves").status_code == 403
+    ok_400 = client.post(f"/marquer_envoi?cle={cle}&type=inconnu").status_code == 400
+    ok_vide = client.get(f"/export_envois?cle={cle}&mois=1&annee=2000").get_json() == {}
+    _r = client.post(f"/marquer_envoi?cle={cle}&type=releves&mois=1&annee=2000")
+    ok_pose = _r.status_code == 200 and "releves" in _r.get_json()
+    _e = client.get(f"/export_envois?cle={cle}&mois=1&annee=2000").get_json()
+    ok_lu = bool(_e.get("releves")) and "relances" not in _e
+    ok_autre_mois = client.get(f"/export_envois?cle={cle}&mois=2&annee=2000").get_json() == {}
+    # Octobre 2026 : relevés envoyés à la main avant les marqueurs -> amorcé dans le code
+    ok_init = bool(client.get(f"/export_envois?cle={cle}&mois=10&annee=2026").get_json().get("releves"))
+    # Table de décision du mode auto (jour du mois, marqueurs) -> action
+    _cas = [(19, {}, "rien"), (20, {}, "releves"), (20, None, "serveur_injoignable"),
+            (24, {}, "releves"), (25, {}, "rappel_validation"), (26, {}, "recap"),
+            (21, {"releves": "2026-10-20 06:01"}, "rien"),
+            (22, {"releves": "2026-10-20 06:01"}, "relances"),
+            (22, {"releves": "2026-10-21 06:01"}, "rien"),
+            (23, {"releves": "2026-10-20 06:01", "relances": "2026-10-22 06:01"}, "rien"),
+            (24, {"releves": "2026-10-23 06:01"}, "rien")]
+    _ko = [(j, e, RS.choisir_mode_auto(j, e), att) for j, e, att in _cas if RS.choisir_mode_auto(j, e) != att]
+    ok_auto = not _ko
+    ok_env = ok_403 and ok_400 and ok_vide and ok_pose and ok_lu and ok_autre_mois and ok_init and ok_auto
+    print(("OK " if ok_env else "KO ")
+          + f"[--] marqueurs d'envoi (403={ok_403} 400={ok_400} vide={ok_vide} pose={ok_pose} "
+            f"lu={ok_lu} autre_mois={ok_autre_mois} init_oct26={ok_init} mode_auto={ok_auto} {_ko or ''})")
+    if not ok_env:
+        echecs.append("marqueurs d'envoi KO")
+finally:
+    _shutil.rmtree(os.path.dirname(A.ENVOIS_FILE), ignore_errors=True)
+    A.ENVOIS_FILE = _envois_file
 
 if cree_temp and os.path.exists(fichier_temp):
     os.remove(fichier_temp)

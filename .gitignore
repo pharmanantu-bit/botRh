@@ -43,3 +43,6 @@ newsletter_photos/
 
 # Performance collaborateurs (dont remunerations chiffrees)
 performance.json
+
+# Marqueurs d'envoi mensuel (relevés / relances déjà envoyés)
+envois_mensuels.json

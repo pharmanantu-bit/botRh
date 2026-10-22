@@ -50,6 +50,7 @@ app.permanent_session_lifetime = timedelta(hours=48)
 #   - /assistant_push, /document_push : POST machine protégés par la clé API (runner)
 #   - routes à clé API (/trigger, /export_*, /deploy) : en GET, non concernées
 CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push", "/agent_ronde",
+               "/marquer_envoi",  # runner GitHub (clé API), pose le marqueur d'envoi mensuel
                # Formulaires employés authentifiés par jeton signé (pas de session).
                "/mon-espace/conges/demander", "/mon-espace/conges/annuler",
                "/mon-espace/demandes/repondre"}
@@ -3381,6 +3382,75 @@ def export_reponses():
         with open(f, encoding="utf-8") as fp:
             data = json.load(fp)
     return app.response_class(json.dumps(data, ensure_ascii=False),
+                              mimetype="application/json")
+
+
+# --- Marqueurs d'envoi mensuel (relevés / relances) ---------------------------
+# Le site PythonAnywhere gratuit s'éteint s'il n'est pas réactivé à la main ;
+# quand il est éteint le 20, l'envoi des relevés échoue. Le runner GitHub
+# réessaie donc chaque matin du 20 au 24 et s'appuie sur ce marqueur, posé
+# après chaque envoi réussi, pour ne JAMAIS envoyer deux fois le même mois.
+ENVOIS_FILE = os.path.join(BASE_DIR, "envois_mensuels.json")
+TYPES_ENVOI = ("releves", "relances")
+# Envois faits AVANT la mise en place des marqueurs (sinon le mode auto les
+# referait) : relevés d'octobre 2026 envoyés à la main le 22/10 (run n°21).
+ENVOIS_INITIAUX = {"2026-10": {"releves": "2026-10-22 10:55"}}
+
+
+def cle_envois(mois, annee):
+    return f"{int(annee)}-{int(mois):02d}"
+
+
+def _charger_tous_envois():
+    data = _lire_json(ENVOIS_FILE)
+    for k, marqueurs in ENVOIS_INITIAUX.items():
+        for type_envoi, quand in marqueurs.items():
+            data.setdefault(k, {}).setdefault(type_envoi, quand)
+    return data
+
+
+def charger_envois(mois, annee):
+    """Marqueurs du mois : {"releves": "AAAA-MM-JJ HH:MM", "relances": ...}
+    (clés absentes = pas encore envoyé)."""
+    return _charger_tous_envois().get(cle_envois(mois, annee), {})
+
+
+def marquer_envoi_mensuel(type_envoi, mois, annee, quand=None):
+    if type_envoi not in TYPES_ENVOI:
+        raise ValueError(type_envoi)
+    data = _charger_tous_envois()
+    data.setdefault(cle_envois(mois, annee), {})[type_envoi] = (
+        quand or datetime.now().strftime("%Y-%m-%d %H:%M"))
+    _ecrire_json(ENVOIS_FILE, data)
+    return data[cle_envois(mois, annee)]
+
+
+@app.route("/export_envois")
+def export_envois():
+    """Marqueurs d'envoi du mois (lecture, runner GitHub). Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
+    return app.response_class(json.dumps(charger_envois(mois, annee), ensure_ascii=False),
+                              mimetype="application/json")
+
+
+@app.route("/marquer_envoi", methods=["POST"])
+def marquer_envoi():
+    """Pose le marqueur « envoyé » (type=releves|relances) pour le mois donné.
+    Appelé par le runner GitHub juste après un envoi réussi. Clé requise."""
+    cle = request.args.get("cle", "")
+    if cle != API_CLE:
+        abort(403)
+    type_envoi = request.args.get("type", "")
+    if type_envoi not in TYPES_ENVOI:
+        abort(400)
+    mois = int(request.args.get("mois", datetime.now().month))
+    annee = int(request.args.get("annee", datetime.now().year))
+    etat = marquer_envoi_mensuel(type_envoi, mois, annee)
+    return app.response_class(json.dumps(etat, ensure_ascii=False),
                               mimetype="application/json")
 
 

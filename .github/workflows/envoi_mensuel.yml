@@ -7,8 +7,11 @@ name: Envoi mensuel botRh
 on:
   schedule:
     # Heures en UTC. 06:00 UTC = 08:00 Paris (été) / 07:00 (hiver).
-    - cron: '0 6 20 * *'   # le 20 : relevés
-    - cron: '0 6 22 * *'   # le 22 : relances
+    # 20→24 chaque matin : relevés le 1er jour où le serveur répond (rattrapage
+    # automatique si le site PythonAnywhere était éteint le 20), puis relances
+    # 2 jours plus tard. run_send.py décide d'après les marqueurs d'envoi tenus
+    # par le serveur (/export_envois) : jamais deux envois du même type.
+    - cron: '0 6 20-24 * *'
     - cron: '0 17 25 * *'  # le 25 à 18h/19h Paris : rappel de validation à l'admin (clôture le soir même)
     - cron: '0 7 26 * *'   # le 26 : récap paie (saisie clôturée le 25 -> récap complet)
   workflow_dispatch:

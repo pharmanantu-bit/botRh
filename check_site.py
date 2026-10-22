@@ -48,7 +48,9 @@ corps = (
     f"pharmacie92000) → onglet Web → bouton « Run until 1 month from today » "
     f"pour réactiver le site.\n\n"
     f"Tant que le site est hors-ligne, les employés ne peuvent pas remplir "
-    f"leur relevé et les relances/récap échouent.\n\n"
+    f"leur relevé et les relances/récap échouent.\n"
+    f"Pas besoin de relancer l'envoi des relevés à la main : du 20 au 24, il "
+    f"repart automatiquement le lendemain matin de la réactivation du site.\n\n"
     f"(Vérification automatique quotidienne — botRh)"
 )
 msg = MIMEText(corps, "plain", "utf-8")
