@@ -452,13 +452,20 @@
     </div>
     {% endif %}
     {% if periode != 'hebdo' and vues %}
-    {# Mensuel / Période : un seul titre global, les jours défilent en continu
-       sans entêtes de semaine intercalées. #}
+    {# Mensuel / Période : un titre global, puis un séparateur par semaine
+       (n° ISO, lettre de rotation, trame en vigueur) intercalé dans le flux. #}
     <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
       <h2 style="margin:0; font-size:0.98em;">{{ periode_titre }}</h2>
     </div>
     {% endif %}
     {% for v in vues %}
+      {% if periode != 'hebdo' %}
+      <div style="display:flex; align-items:center; gap:10px; margin:{{ '8px' if loop.first else '20px' }} 0 6px;">
+        <h3 style="margin:0; font-size:0.9em; color:#1F4E79; white-space:nowrap;">Semaine {{ v.sem_iso }} ({{ v.sem }})</h3>
+        {% if v.trame_du %}<span class="meta" style="font-size:0.78em; white-space:nowrap;">[trame du {{ v.trame_du }}]</span>{% endif %}
+        <div style="flex:1; height:1px; background:#d5dce5;"></div>
+      </div>
+      {% endif %}
       {% if periode == 'hebdo' %}
       <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin:0; font-size:0.98em;">{{ v.titre }}</h2>

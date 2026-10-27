@@ -1201,7 +1201,15 @@ def vue():
                         cp["cycle"] = (f"cycle {'+'.join(SEMAINES[:nb_rot])} : "
                                        f"{_fmt_h(eff_cycle)} / {_fmt_h(contrat * nb_rot)}")
                     compteurs.append(cp)
+                # Entête de semaine en Mensuel/Période : n° ISO, lettre et trame
+                # en vigueur (sa date de démarrage rend visibles les jonctions).
+                try:
+                    trame_du = datetime.strptime(act_l.get("date_demarrage", ""),
+                                                 "%Y-%m-%d").date().strftime("%d/%m/%y")
+                except (ValueError, TypeError):
+                    trame_du = ""
                 v = {"sem": rot, "titre": titre, "lundi": lundi.isoformat(),
+                     "sem_iso": lundi.isocalendar()[1], "trame_du": trame_du,
                      "compteurs": compteurs,
                      "conformite": alertes_conformite(data, emp_sm, lundi,
                                                       changements, absences)}
