@@ -90,9 +90,10 @@ def sauvegarder_options(o):
 
 # --- Changements ponctuels (surcharge de la trame pour une date réelle) ------
 CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
+MOTIF_ECOLE = "École fermée (heures en entreprise)"
 MOTIFS = ["Non catégorisé", "Échange de jours", "Heures sup/récup/échanges", "Contrat ponctuel",
           "Repos compensatoire", "Garde", "Fermeture exceptionnelle",
-          "Rattrapage d'heures", "Congés payés", "Arrêt maladie",
+          "Rattrapage d'heures", MOTIF_ECOLE, "Congés payés", "Arrêt maladie",
           "Accident du travail", "Congé maternité", "Congé parental",
           "Formation", "Congé sans solde", "Absence non justifiée", "Autre"]
 
@@ -895,7 +896,8 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                         # Rattrapage (suite à fermeture) : les heures ajoutées
                         # s'affichent en couleur NORMALE, pas en « heures en plus ».
                         "couleur": (couleur if s["typ"] == "normal"
-                                    or (s["typ"] == "ajout" and motif == "Rattrapage d'heures")
+                                    or (s["typ"] == "ajout"
+                                        and motif in ("Rattrapage d'heures", MOTIF_ECOLE))
                                     else _assombrir(couleur, 0.55) if s["typ"] == "ajout"
                                     else _eclaircir(couleur)),
                         "bordure": couleur if s["typ"] == "retrait" else ""})
@@ -921,6 +923,10 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                     # Heures replacées après une fermeture exceptionnelle :
                     # ce ne sont PAS des heures en plus, losange dédié.
                     marque, marque_titre = "vert", "Rattrapage d'heures (fermeture exceptionnelle)"
+                elif a_eff and motif == MOTIF_ECOLE:
+                    # Apprentie dont l'école ferme : ses heures d'école faites en
+                    # entreprise — un dû qui change de lieu, PAS des heures en plus.
+                    marque, marque_titre = "vert", "École fermée : heures d'école faites en entreprise"
                 elif a_eff and a_tr:
                     marque, marque_titre = "orange", "Présent avec des heures différentes de la trame"
                 elif a_eff:
@@ -1870,6 +1876,27 @@ def vue():
             e = emap[em]
             h_trame = h_ajuste = 0.0
             j_ponctuels = j_absents = 0
+            # APPRENTIE : si sa trame dépasse ses heures contractuelles (ex.
+            # 23,5 h de trame pour 19 h de contrat), la part au-delà du contrat
+            # est des HEURES SUP STRUCTURELLES — le « dû » de chaque jour est
+            # ht × (contrat ÷ moyenne de trame), pas la trame pleine. Les heures
+            # au motif « École fermée » s'ajoutent au dû (jamais des sup).
+            prof_t = profils.get(em, {})
+            apprenti = "apprent" in poste_de(prof_t).lower()
+            contrat_h = (_heures_hebdo(prof_t.get("heures_contractuelles_hebdo", ""))
+                         if apprenti else 0.0)
+            _ratios = {}
+
+            def _ratio_du(tr_j):
+                if not apprenti or contrat_h <= 0 or not tr_j:
+                    return 1.0
+                cle = id(tr_j)
+                if cle not in _ratios:
+                    moy = (sum(total_semaine(_jours_sem(tr_j, em, s)) for s in SEMAINES)
+                           / max(len(SEMAINES), 1))
+                    _ratios[cle] = contrat_h / moy if moy > contrat_h else 1.0
+                return _ratios[cle]
+            h_du = h_ecole = 0.0
             # Détail des écarts à la trame pour le panneau dépliable : ponctuels
             # listés jour par jour, absences regroupées en plages consécutives.
             detail_plan = []
@@ -1877,13 +1904,19 @@ def vue():
             for k in range((p2 - p1).days + 1):
                 d = p1 + timedelta(days=k)
                 lbl = f"{JOURS_ABBR[d.isoweekday()]} {d.strftime('%d/%m')}"
-                cr_tr = creneaux_trame_jour(trame_active_pour(data, d), em, d)
+                tr_j = trame_active_pour(data, d)
+                cr_tr = creneaux_trame_jour(tr_j, em, d)
                 ht = total_jour(cr_tr)
+                h_du += ht * _ratio_du(tr_j)
                 chg = changement_de(changements, d.isoformat(), em)
                 a = absence_active(absences, em, d) if chg is None else None
                 if chg is not None:
                     crs = chg.get("creneaux", []) or []
                     ha = total_jour(crs)
+                    if chg.get("motif") == MOTIF_ECOLE:
+                        # Heures d'école faites en entreprise : un dû déplacé.
+                        h_du += ha
+                        h_ecole += ha
                     if not meme_que_trame(crs, cr_tr):
                         j_ponctuels += 1
                         if abs_en_cours:
@@ -1916,7 +1949,9 @@ def vue():
             if abs_en_cours:
                 detail_plan.append(abs_en_cours)
             h_trame, h_ajuste = round(h_trame, 2), round(h_ajuste, 2)
-            solde_plan = round(h_ajuste - h_trame, 2)
+            h_du = round(h_du, 2)
+            solde_plan = round(h_ajuste - h_du, 2)
+            sup_struct = round(h_trame + h_ecole - h_du, 2)   # part structurelle du solde
             r = reponse_de(reps, e["prenom"], em)
             if r:
                 plus = float(r.get("heures_plus", 0) or 0)
@@ -1938,6 +1973,9 @@ def vue():
                            "freelance": e.get("freelance", False),
                            "trame": h_trame, "ajuste": h_ajuste,
                            "solde_plan": solde_plan,
+                           "apprenti": apprenti and (sup_struct != 0 or h_ecole > 0),
+                           "du": h_du, "sup_struct": sup_struct,
+                           "ecole_h": round(h_ecole, 2), "contrat_h": contrat_h,
                            "j_ponctuels": j_ponctuels, "j_absents": j_absents,
                            "plus": plus, "moins": moins, "solde": solde,
                            "ecart": ecart,

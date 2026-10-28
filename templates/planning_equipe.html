@@ -1516,6 +1516,11 @@
             <div style="display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start;">
 
               <div style="min-width:250px; flex:1;">
+                {% if l.apprenti %}
+                <div style="border:1px solid #cfe0cf; background:#f4faf4; border-radius:8px; padding:8px 11px; margin-bottom:10px; font-size:0.82em; color:#2a5c2a;">
+                  🎓 <strong>Apprentie</strong> : dû contractuel <strong>{{ "%g"|format(l.du) }} h</strong> sur la période (contrat {{ "%g"|format(l.contrat_h) }} h/sem, trame {{ "%g"|format(l.trame) }} h{% if l.sup_struct %} → <strong>+{{ "%g"|format(l.sup_struct) }} h sup structurelles</strong> incluses dans le solde{% endif %}{% if l.ecole_h %} ; {{ "%g"|format(l.ecole_h) }} h « École fermée » faites en entreprise, neutralisées{% endif %}).
+                </div>
+                {% endif %}
                 <div style="color:#1F4E79; font-weight:bold; font-size:0.85em; margin-bottom:6px;">🗓️ Planning — écarts à la trame</div>
                 {% if l.detail_plan %}
                 <table style="border-collapse:collapse; font-size:0.82em; width:100%;">
