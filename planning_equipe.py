@@ -1915,8 +1915,11 @@ def vue():
                     ha = total_jour(crs)
                     if chg.get("motif") == MOTIF_ECOLE:
                         # Heures d'école faites en entreprise : un dû déplacé.
-                        h_du += ha
-                        h_ecole += ha
+                        # Seules les heures AJOUTÉES au-delà de la trame du jour
+                        # sont neutralisées — un jour de trame prolongé garde sa
+                        # part structurelle (ht × ratio) comptée normalement.
+                        h_du += max(ha - ht, 0.0)
+                        h_ecole += max(ha - ht, 0.0)
                     if not meme_que_trame(crs, cr_tr):
                         j_ponctuels += 1
                         if abs_en_cours:
