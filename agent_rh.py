@@ -22,7 +22,7 @@ import unicodedata
 
 from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
-    definir_echeance, GEMINI_OPENAI_URL, MODELE_GEMINI_DEFAUT,
+    definir_echeance, gemini_url, gemini_entetes, gemini_texte,
 )
 
 BUDGET_SECONDES = 240   # temps total max par question (cron : curl --max-time 300)
@@ -954,14 +954,43 @@ def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None
                           {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"})
 
 
+def _tools_gemini(specs=None):
+    return [{"functionDeclarations": [
+        {"name": s["nom"], "description": s["description"],
+         "parameters": {"type": "object", "properties": _schema_props(s),
+                        "required": s["requis"]}}
+        for s in (specs if specs is not None else OUTILS_SPECS)]}]
+
+
 def _boucle_gemini(systeme, msgs, annuaire, table, executer, modele, specs=None):
-    cle = os.getenv("GEMINI_API_KEY")
-    if not cle:
-        raise RuntimeError("GEMINI_API_KEY manquante.")
-    return _boucle_openai(systeme, msgs, annuaire, table, executer,
-                          modele or MODELE_GEMINI_DEFAUT, specs,
-                          GEMINI_OPENAI_URL,
-                          {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"})
+    """Boucle d'outils au format NATIF Gemini (functionDeclarations / functionCall /
+    functionResponse) : les clés « AQ. » émises par AI Studio depuis mi-2026
+    n'acceptent que cet endpoint (pas la route compatible OpenAI)."""
+    url, headers = gemini_url(modele), gemini_entetes()
+    base = {"systemInstruction": {"parts": [{"text": systeme}]},
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1500}}
+    contents = [{"role": "model" if m["role"] == "assistant" else "user",
+                 "parts": [{"text": m["content"]}]} for m in msgs]
+    outils, actions = [], []
+    for _ in range(MAX_TOURS):
+        rep = _post_json(url, headers, dict(base, contents=contents,
+                                            tools=_tools_gemini(specs)))
+        cands = rep.get("candidates") or []
+        parts = ((cands[0].get("content") or {}).get("parts") or []) if cands else []
+        fcs = [p["functionCall"] for p in parts if p.get("functionCall")]
+        if not fcs:
+            return gemini_texte(rep), outils, actions
+        contents.append({"role": "model", "parts": parts})
+        reponses = []
+        for fc in fcs:
+            res = _exec_outil(fc.get("name", ""), fc.get("args") or {}, annuaire, table,
+                              executer, outils, actions)
+            reponses.append({"functionResponse": {"name": fc.get("name", ""),
+                                                  "response": {"resultat": res}}})
+        contents.append({"role": "user", "parts": reponses})
+    # Garde-fou : un dernier appel SANS outils pour forcer une réponse rédigée.
+    rep = _post_json(url, headers, dict(base, contents=contents))
+    return gemini_texte(rep) or "(pas de réponse)", outils, actions
 
 
 def _boucle_claude(systeme, msgs, annuaire, table, executer, modele, specs=None):

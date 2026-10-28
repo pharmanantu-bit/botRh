@@ -10,7 +10,7 @@ transport `_post_json`/`_extraire_json`.
 """
 import os
 
-from assistant_rh import _post_json, _extraire_json, GEMINI_OPENAI_URL, MODELE_GEMINI_DEFAUT
+from assistant_rh import _post_json, _extraire_json, gemini_url, gemini_entetes, gemini_texte
 
 SYSTEM_CV = (
     "Tu es un recruteur RH expérimenté en pharmacie d'officine en France. On te donne "
@@ -71,17 +71,12 @@ def _claude(texte, poste, modele):
 
 
 def _gemini(texte, poste, modele):
-    cle = os.getenv("GEMINI_API_KEY")
-    if not cle:
-        raise RuntimeError("GEMINI_API_KEY manquante.")
-    rep = _post_json(GEMINI_OPENAI_URL,
-                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
-                     {"model": modele or MODELE_GEMINI_DEFAUT,
-                      "messages": [{"role": "system", "content": SYSTEM_CV},
-                                   {"role": "user", "content": _prompt(texte, poste)}],
-                      "response_format": {"type": "json_object"},
-                      "temperature": 0.2, "max_tokens": 1200})
-    return _extraire_json(rep["choices"][0]["message"]["content"])
+    rep = _post_json(gemini_url(modele), gemini_entetes(),
+                     {"systemInstruction": {"parts": [{"text": SYSTEM_CV}]},
+                      "contents": [{"role": "user", "parts": [{"text": _prompt(texte, poste)}]}],
+                      "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200,
+                                           "responseMimeType": "application/json"}})
+    return _extraire_json(gemini_texte(rep))
 
 
 def analyser_cv(texte, poste, moteur="mistral", modele=None):

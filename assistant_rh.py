@@ -216,11 +216,32 @@ def _post_json(url, headers, charge, timeout=60, essais=4):
 
 # --- Moteurs interchangeables ---
 
-# Endpoint Gemini COMPATIBLE OpenAI : mêmes formats messages/tools/tool_calls que
-# Mistral -> tout le transport (_post_json, 429/Retry-After, budget) est partagé.
+# Endpoint NATIF Gemini (generateContent). Les clés « AQ. » émises par AI Studio
+# depuis mi-2026 ne fonctionnent QUE sur lui (la route compatible OpenAI les
+# refuse) ; le header x-goog-api-key accepte aussi les anciennes clés AIza.
 # generativelanguage.googleapis.com est sur la liste blanche PythonAnywhere gratuit.
-GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-MODELE_GEMINI_DEFAUT = "gemini-2.5-flash"
+# 3.5 : stable et rapide (constaté 2026-10-28 : 3.8-flash et flash-latest
+# saturés, 503/timeouts). Surcharger via ASSISTANT_MODELE sans toucher au code.
+MODELE_GEMINI_DEFAUT = "gemini-3.5-flash"
+
+
+def gemini_url(modele=None):
+    return ("https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{modele or MODELE_GEMINI_DEFAUT}:generateContent")
+
+
+def gemini_entetes():
+    cle = os.getenv("GEMINI_API_KEY")
+    if not cle:
+        raise RuntimeError("GEMINI_API_KEY manquante.")
+    return {"x-goog-api-key": cle.strip(), "Content-Type": "application/json"}
+
+
+def gemini_texte(rep):
+    """Concatène les parties texte de la 1re candidate d'une réponse native Gemini."""
+    cands = rep.get("candidates") or []
+    parts = ((cands[0].get("content") or {}).get("parts") or []) if cands else []
+    return "".join(p.get("text", "") for p in parts)
 
 
 def _moteur_fake(system, prompt, modele):
@@ -256,17 +277,12 @@ def _moteur_claude(system, prompt, modele):
 
 
 def _moteur_gemini(system, prompt, modele):
-    cle = os.getenv("GEMINI_API_KEY")
-    if not cle:
-        raise RuntimeError("GEMINI_API_KEY manquante.")
-    rep = _post_json(GEMINI_OPENAI_URL,
-                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
-                     {"model": modele or MODELE_GEMINI_DEFAUT,
-                      "messages": [{"role": "system", "content": system},
-                                   {"role": "user", "content": prompt}],
-                      "response_format": {"type": "json_object"},
-                      "temperature": 0.2, "max_tokens": 2000})
-    return _extraire_json(rep["choices"][0]["message"]["content"])
+    rep = _post_json(gemini_url(modele), gemini_entetes(),
+                     {"systemInstruction": {"parts": [{"text": system}]},
+                      "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2000,
+                                           "responseMimeType": "application/json"}})
+    return _extraire_json(gemini_texte(rep))
 
 
 def _avec_secours(principal, secours):
@@ -332,14 +348,15 @@ def _chat_claude(messages, modele):
 
 
 def _chat_gemini(messages, modele):
-    cle = os.getenv("GEMINI_API_KEY")
-    if not cle:
-        raise RuntimeError("GEMINI_API_KEY manquante.")
-    rep = _post_json(GEMINI_OPENAI_URL,
-                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
-                     {"model": modele or MODELE_GEMINI_DEFAUT, "messages": messages,
-                      "temperature": 0.3, "max_tokens": 1200})
-    return rep["choices"][0]["message"]["content"].strip()
+    sys_txt = next((m["content"] for m in messages if m["role"] == "system"), SYSTEM_CHAT)
+    contents = [{"role": "model" if m["role"] == "assistant" else "user",
+                 "parts": [{"text": m["content"]}]}
+                for m in messages if m["role"] != "system"]
+    rep = _post_json(gemini_url(modele), gemini_entetes(),
+                     {"systemInstruction": {"parts": [{"text": sys_txt}]},
+                      "contents": contents,
+                      "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1200}})
+    return gemini_texte(rep).strip()
 
 
 def chat(messages, moteur="mistral", modele=None):

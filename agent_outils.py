@@ -2666,7 +2666,7 @@ def confirmer_action(outil, args, origine="carte"):
 # --- Boucle de conversation ------------------------------------------------------
 
 MODELE_AGENT_DEFAUT = {"mistral": "mistral-medium-latest", "claude": "claude-sonnet-4-5",
-                       "gemini": "gemini-2.5-flash"}
+                       "gemini": "gemini-3.5-flash"}
 
 
 def _moteur():
