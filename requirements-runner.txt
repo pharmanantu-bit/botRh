@@ -8,3 +8,5 @@ python-docx
 pytesseract
 pdf2image
 pillow
+# Envoi des notifications push mises en file par le serveur (push_admin.yml)
+pywebpush

@@ -8,3 +8,7 @@ python-docx
 cryptography
 pyotp
 qrcode
+# Notifications push (Web Push/VAPID) : py-vapid dérive la clé publique côté
+# serveur ; pywebpush tente l'envoi direct (sinon le runner push_admin envoie).
+py-vapid
+pywebpush

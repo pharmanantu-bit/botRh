@@ -2227,6 +2227,20 @@ def demander_conges():
                      "demande_le": datetime.now().strftime("%d/%m/%Y %H:%M")})
     sauvegarder_demandes_cp(demandes)
     _notifier_demande_cp("deposee", demandes[-1], emp["prenom"])
+    # Notification push de l'admin (en plus de l'e-mail) — jamais bloquant.
+    # Import tardif : agent_outils importe planning_equipe, pas l'inverse.
+    try:
+        import push_rh
+        if push_rh.actif() and push_rh.charger_abonnements():
+            res = push_rh.notifier_admin(
+                "Demande de congés",
+                f"{emp['prenom']} demande du {d1.strftime('%d/%m')} au {d2.strftime('%d/%m/%Y')}.",
+                url="/admin/planning-equipe?onglet=demandes", tag="botrh-conges")
+            if not ((res or {}).get("envoi") or {}).get("envoyees"):
+                from app import declencher_workflow
+                declencher_workflow("push_admin", {"origine": "conges"})
+    except Exception:
+        current_app.logger.exception("Notification push demande de congés (non bloquant)")
     return redirect(retour + "&cp=ok#conges")
 
 
