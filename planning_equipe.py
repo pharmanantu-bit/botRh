@@ -91,7 +91,7 @@ def sauvegarder_options(o):
 # --- Changements ponctuels (surcharge de la trame pour une date réelle) ------
 CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
 MOTIF_ECOLE = "École fermée (heures en entreprise)"
-MOTIFS = ["Non catégorisé", "Échange de jours", "Heures sup/récup/échanges", "Contrat ponctuel",
+MOTIFS = ["Non catégorisé", "Retard", "Échange de jours", "Heures sup/récup/échanges", "Contrat ponctuel",
           "Repos compensatoire", "Garde", "Fermeture exceptionnelle",
           "Rattrapage d'heures", MOTIF_ECOLE, "Congés payés", "Arrêt maladie",
           "Accident du travail", "Congé maternité", "Congé parental",
