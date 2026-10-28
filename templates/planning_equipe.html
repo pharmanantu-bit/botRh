@@ -72,13 +72,13 @@
     .fr-jour.fr-auj .fr-jour-tt { background: #fdecea; border-bottom-color: #C0392B; }
     .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #7e94b0; }
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
-    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #a9b7c9; min-height: 26px; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #6e7f94; min-height: 26px; }
     .fr-jour-tt + .fr-row { border-top: none; }
     /* Rangée d'heures (8h, 9h…) répétée en tête de CHAQUE jour, en plus du bandeau global */
-    .fr-jour-axe { display: flex; align-items: flex-end; height: 17px; background: #eef3f9; border-bottom: 1px solid #a9b7c9; }
+    .fr-jour-axe { display: flex; align-items: flex-end; height: 20px; background: #eef3f9; border-bottom: 1px solid #a9b7c9; }
     .fr-jour-axe .sp { width: 140px; flex: none; }
     .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #a9b7c9; }
-    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.7em; font-weight: 600; color: #4a6280; white-space: nowrap; }
+    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.82em; font-weight: 600; color: #4a6280; white-space: nowrap; }
     /* Dernier repère (ex. 20h) : calé vers l'intérieur pour ne pas être coupé */
     .fr-jour-axe .tick-fin { transform: translateX(-100%); padding-right: 2px; }
     .fr-jour-axe + .fr-row { border-top: none; }
@@ -94,8 +94,8 @@
     .fr-grid-min { position: absolute; top: 0; bottom: 0; width: 1px;
                    background: rgba(31,78,121,.10); z-index: 2; pointer-events: none; }
     .fr-grid-demi { background: rgba(31,78,121,.18); }
-    .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
-    .fr-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; color: white; font-size: 0.8em; font-weight: 600; line-height: 1; display: flex; align-items: center; justify-content: flex-start; padding-left: 5px; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 0 1px rgba(15,30,50,.28); }
+    .fr-ouv { position: absolute; top: 0; bottom: 0; background: none; }
+    .fr-bar { position: absolute; top: 0; bottom: 0; border-radius: 0; color: white; font-size: 0.8em; font-weight: 600; line-height: 1; display: flex; align-items: center; justify-content: flex-start; padding-left: 5px; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(15,30,50,.35); }
     .fr-tot { width: 56px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.82em; font-weight: 600; color: #556; }
 
     /* ===== Saisie trame ===== */
@@ -461,8 +461,8 @@
     {% for v in vues %}
       {% if periode != 'hebdo' %}
       <div style="display:flex; align-items:center; gap:10px; margin:{{ '8px' if loop.first else '20px' }} 0 6px;">
-        <h3 style="margin:0; font-size:0.9em; color:#1F4E79; white-space:nowrap;">Semaine {{ v.sem_iso }} ({{ v.sem }})</h3>
-        {% if v.trame_du %}<span class="meta" style="font-size:0.78em; white-space:nowrap;">[trame du {{ v.trame_du }}]</span>{% endif %}
+        <h3 style="margin:0; font-size:1.05em; color:#1F4E79; white-space:nowrap;">Semaine {{ v.sem_iso }} ({{ v.sem }})</h3>
+        {% if v.trame_du %}<span class="meta" style="font-size:0.88em; white-space:nowrap;">[trame du {{ v.trame_du }}]</span>{% endif %}
         <div style="flex:1; height:1px; background:#d5dce5;"></div>
       </div>
       {% endif %}

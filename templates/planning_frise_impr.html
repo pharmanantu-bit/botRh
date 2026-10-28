@@ -16,13 +16,13 @@
     .fr-jour.fr-auj { border: 2px solid #C0392B; }
     .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.78em; padding: 3px 10px; border-bottom: 1px solid #aab6c8; }
     .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
-    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #ccd5e2; min-height: 22px; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #9aa8ba; min-height: 22px; }
     .fr-jour-tt + .fr-row { border-top: none; }
     /* Rangée d'heures répétée en tête de chaque jour */
-    .fr-jour-axe { display: flex; align-items: flex-end; height: 15px; background: #eef3f9; border-bottom: 1px solid #ccd5e2; }
+    .fr-jour-axe { display: flex; align-items: flex-end; height: 17px; background: #eef3f9; border-bottom: 1px solid #ccd5e2; }
     .fr-jour-axe .sp { width: 130px; flex: none; }
     .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #ccd5e2; }
-    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.62em; color: #556; white-space: nowrap; }
+    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.72em; color: #556; white-space: nowrap; }
     .fr-jour-axe .tick-fin { transform: translateX(-100%); padding-right: 2px; }
     .fr-jour-axe + .fr-row { border-top: none; }
     .fr-label { width: 130px; flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.76em; }
@@ -31,8 +31,8 @@
     .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #b8c4d4; z-index: 2; }
     .fr-grid-min { position: absolute; top: 0; bottom: 0; width: 1px; background: #eef1f6; z-index: 2; }
     .fr-grid-demi { background: #dfe6ee; }
-    .fr-ouv { position: absolute; top: 0; bottom: 0; background: #fbfde7; }
-    .fr-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; color: white; font-size: 0.64em; display: flex; align-items: center; justify-content: flex-start; padding-left: 4px; overflow: hidden; white-space: nowrap; }
+    .fr-ouv { position: absolute; top: 0; bottom: 0; background: none; }
+    .fr-bar { position: absolute; top: 0; bottom: 0; border-radius: 0; color: white; font-size: 0.64em; display: flex; align-items: center; justify-content: flex-start; padding-left: 4px; overflow: hidden; white-space: nowrap; }
     .fr-tot { width: 46px; flex: none; text-align: right; padding: 2px 8px; font-size: 0.7em; color: #667; }
     .legende { border: 1px solid #dde3ed; border-radius: 6px; padding: 7px 11px; margin-top: 6px; font-size: 0.72em; color: #445; line-height: 1.7; }
     @media print {

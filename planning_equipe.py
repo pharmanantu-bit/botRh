@@ -895,7 +895,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
             lignes = [l for l in lignes if l["barres"]]
         nom = JOURS_NOMS[j]
         if lundi_date:
-            nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m")
+            nom += " " + (lundi_date + timedelta(days=j - 1)).strftime("%d/%m/%y")
         # Jour où des présents sont notés motif « Garde » : libellé dédié
         # (remplace « fermé » — dimanche/férié de garde).
         garde = any(l.get("motif") == "Garde" and l["barres"] for l in lignes)
