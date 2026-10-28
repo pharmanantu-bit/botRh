@@ -912,6 +912,32 @@ def to_iso(s):
 app.jinja_env.filters["date_fr"] = format_date_fr
 app.jinja_env.filters["iso_date"] = to_iso
 
+
+def format_hmin(h):
+    """Heures décimales → lisible : 36.25 → « 36h15 », 7 → « 7h », −2.5 → « −2h30 »."""
+    if h is None or h == "":
+        return "—"
+    try:
+        h = float(h)
+    except (TypeError, ValueError):
+        return h
+    signe = "−" if h < 0 else ""
+    m = round(abs(h) * 60)
+    return f"{signe}{m // 60}h{m % 60:02d}" if m % 60 else f"{signe}{m // 60}h"
+
+
+def format_hmin_signe(h):
+    """Comme hmin mais signé : +4.5 → « +4h30 », 0 → « 0h » (pour les soldes/écarts)."""
+    s = format_hmin(h)
+    try:
+        return f"+{s}" if float(h) > 0 else s
+    except (TypeError, ValueError):
+        return s
+
+
+app.jinja_env.filters["hmin"] = format_hmin
+app.jinja_env.filters["hmin_signe"] = format_hmin_signe
+
 def anciennete_label(d_entree, auj=None):
     """Libellé d'ancienneté lisible depuis la date d'entrée : « 3 ans », « 2 ans ½ »,
     « 8 mois », « 15 jours »… None si pas de date ou date future."""

@@ -563,9 +563,9 @@
         <tbody>
           {% for r in heures_reel.lignes %}
           <tr><td class="collab"><span class="dot" style="background:{{ r.couleur }};"></span>{{ r.prenom }}</td>
-            <td style="color:#276221;">+{{ "%g"|format(r.plus) }}</td>
-            <td style="color:#9C0006;">−{{ "%g"|format(r.moins) }}</td>
-            <td><strong>{{ "%+g"|format(r.solde) }}h</strong></td></tr>
+            <td style="color:#276221;">+{{ r.plus|hmin }}</td>
+            <td style="color:#9C0006;">−{{ r.moins|hmin }}</td>
+            <td><strong>{{ r.solde|hmin_signe }}</strong></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -814,7 +814,7 @@
       <div class="collab-row" draggable="true" data-email="{{ l.email }}" style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:#fff;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">
         <span class="drag-handle" title="Glisser pour déplacer" style="cursor:grab; color:#aeb6c2; font-size:1.15em; line-height:1; user-select:none;">⠿</span>
         <span style="display:inline-block; width:15px; height:15px; border-radius:50%; background:{{ l.couleur }}; flex:none;"></span>
-        <span style="flex:1; font-size:0.9em;">{% if l.freelance %}<strong>{{ l.prenom }} {{ l.nom }}</strong> <span class="meta" title="Freelance / prestataire externe — se règle dans le bloc 🧳 ci-dessous">🧳 {{ l.role or 'freelance' }}</span>{% else %}<a href="{{ url_for('.vue', onglet='equipe') }}#eq-{{ l.email|replace('@','-')|replace('.','-') }}" title="Voir / régler dans Équipe" style="color:#1F4E79; text-decoration:none;"><strong>{{ l.prenom }} {{ l.nom }}</strong></a>{% endif %} <span class="meta">[{{ "%g"|format(l.moyenne) }}h/sem · moyenne {% for s in semaines %}{{ s }}{% if not loop.last %}/{% endif %}{% endfor %}]</span></span>
+        <span style="flex:1; font-size:0.9em;">{% if l.freelance %}<strong>{{ l.prenom }} {{ l.nom }}</strong> <span class="meta" title="Freelance / prestataire externe — se règle dans le bloc 🧳 ci-dessous">🧳 {{ l.role or 'freelance' }}</span>{% else %}<a href="{{ url_for('.vue', onglet='equipe') }}#eq-{{ l.email|replace('@','-')|replace('.','-') }}" title="Voir / régler dans Équipe" style="color:#1F4E79; text-decoration:none;"><strong>{{ l.prenom }} {{ l.nom }}</strong></a>{% endif %} <span class="meta">[{{ l.moyenne|hmin }}/sem · moyenne {% for s in semaines %}{{ s }}{% if not loop.last %}/{% endif %}{% endfor %}]</span></span>
         <span style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
           <a href="{{ url_for('.vue', onglet='trame', trame=tid, horaires=l.email) }}" class="btn-mini">Horaires</a>
           <a href="{{ url_for('.imprimer_collaborateur', tid=tid, email=l.email) }}" target="_blank" rel="noopener" class="btn-mini">Imprimer</a>
@@ -1496,15 +1496,15 @@
         {% for l in tot_lignes %}
         <tr>
           <td class="collab"><button type="button" onclick="basculerTotDetail('totdet-{{ loop.index }}', this)" title="Voir le détail du calcul" style="border:1px solid #d4deeb; background:#eef2f8; color:#1F4E79; border-radius:6px; cursor:pointer; padding:2px 7px; font-size:0.85em; margin-right:7px;">🔍</button><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}{% if l.freelance %} <span title="Freelance / prestataire externe — jamais de relevé d'heures">🧳</span>{% endif %}</td>
-          <td>{{ "%g"|format(l.trame) }}</td>
-          <td>{{ "%g"|format(l.ajuste) }}</td>
-          <td style="{% if l.solde_plan > 0 %}color:#1F7A3D;{% elif l.solde_plan < 0 %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }}</td>
+          <td>{{ l.trame|hmin }}</td>
+          <td>{{ l.ajuste|hmin }}</td>
+          <td style="{% if l.solde_plan > 0 %}color:#1F7A3D;{% elif l.solde_plan < 0 %}color:#C0392B;{% endif %}">{{ l.solde_plan|hmin_signe }}</td>
           <td class="meta">{% if l.j_ponctuels %}{{ l.j_ponctuels }} ponctuel{{ 's' if l.j_ponctuels > 1 else '' }}{% endif %}{% if l.j_ponctuels and l.j_absents %} · {% endif %}{% if l.j_absents %}{{ l.j_absents }} absence{{ 's' if l.j_absents > 1 else '' }}{% endif %}{% if not l.j_ponctuels and not l.j_absents %}—{% endif %}</td>
           {% if l.solde is not none %}
-          <td>{{ "%g"|format(l.plus) }}</td>
-          <td>{{ "%g"|format(l.moins) }}</td>
-          <td>{{ "%+g"|format(l.solde) if l.solde else "0" }}</td>
-          <td style="font-weight:bold; {% if l.coherent %}color:#1F7A3D;{% else %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.ecart) if l.ecart else "0" }}</td>
+          <td>{{ l.plus|hmin }}</td>
+          <td>{{ l.moins|hmin }}</td>
+          <td>{{ l.solde|hmin_signe }}</td>
+          <td style="font-weight:bold; {% if l.coherent %}color:#1F7A3D;{% else %}color:#C0392B;{% endif %}">{{ l.ecart|hmin_signe }}</td>
           <td>{% if l.coherent %}<span style="color:#1F7A3D;">✅ Cohérent</span>{% else %}<span style="color:#C0392B;">⚠️ À vérifier</span>{% endif %}</td>
           {% else %}
           <td class="meta">—</td><td class="meta">—</td><td class="meta">—</td><td class="meta">—</td>
@@ -1518,7 +1518,7 @@
               <div style="min-width:250px; flex:1;">
                 {% if l.apprenti %}
                 <div style="border:1px solid #cfe0cf; background:#f4faf4; border-radius:8px; padding:8px 11px; margin-bottom:10px; font-size:0.82em; color:#2a5c2a;">
-                  🎓 <strong>Apprentie</strong> : dû contractuel <strong>{{ "%g"|format(l.du) }} h</strong> sur la période (contrat {{ "%g"|format(l.contrat_h) }} h/sem, trame {{ "%g"|format(l.trame) }} h{% if l.sup_struct %} → <strong>+{{ "%g"|format(l.sup_struct) }} h sup structurelles</strong> incluses dans le solde{% endif %}{% if l.ecole_h %} ; {{ "%g"|format(l.ecole_h) }} h « École fermée » faites en entreprise, neutralisées{% endif %}).
+                  🎓 <strong>Apprentie</strong> : dû contractuel <strong>{{ l.du|hmin }}</strong> sur la période (contrat {{ l.contrat_h|hmin }}/sem, trame {{ l.trame|hmin }}{% if l.sup_struct %} → <strong>+{{ l.sup_struct|hmin }} sup structurelles</strong> incluses dans le solde{% endif %}{% if l.ecole_h %} ; {{ l.ecole_h|hmin }} « École fermée » faites en entreprise, neutralisées{% endif %}).
                 </div>
                 {% endif %}
                 <div style="color:#1F4E79; font-weight:bold; font-size:0.85em; margin-bottom:6px;">🗓️ Planning — écarts à la trame</div>
@@ -1529,11 +1529,11 @@
                     {% if dp.type == 'absence' %}
                     <td style="padding:3px 8px 3px 0; white-space:nowrap;">{{ dp.label }}{% if dp.au != dp.label %} → {{ dp.au }}{% endif %}</td>
                     <td style="padding:3px 8px; color:#556;">{{ dp.motif }} ({{ dp.jours }} jour{{ 's' if dp.jours > 1 else '' }} prévu{{ 's' if dp.jours > 1 else '' }} non travaillé{{ 's' if dp.jours > 1 else '' }})</td>
-                    <td style="padding:3px 0; font-weight:bold; color:#C0392B; white-space:nowrap;">{{ "%+g"|format(dp.delta) }} h</td>
+                    <td style="padding:3px 0; font-weight:bold; color:#C0392B; white-space:nowrap;">{{ dp.delta|hmin_signe }}</td>
                     {% else %}
                     <td style="padding:3px 8px 3px 0; white-space:nowrap;">{{ dp.label }}</td>
-                    <td style="padding:3px 8px; color:#556;">{{ dp.motif }} · {{ "%g"|format(dp.avant) }} h prévues → {{ "%g"|format(dp.apres) }} h</td>
-                    <td style="padding:3px 0; font-weight:bold; color:{{ '#1F7A3D' if dp.delta > 0 else '#C0392B' if dp.delta < 0 else '#556' }}; white-space:nowrap;">{{ "%+g"|format(dp.delta) if dp.delta else "0" }} h</td>
+                    <td style="padding:3px 8px; color:#556;">{{ dp.motif }} · {{ dp.avant|hmin }} prévues → {{ dp.apres|hmin }}</td>
+                    <td style="padding:3px 0; font-weight:bold; color:{{ '#1F7A3D' if dp.delta > 0 else '#C0392B' if dp.delta < 0 else '#556' }}; white-space:nowrap;">{{ dp.delta|hmin_signe }}</td>
                     {% endif %}
                   </tr>
                   {% endfor %}
@@ -1550,29 +1550,29 @@
                   {% for jr in l.detail_releve %}
                   <tr>
                     <td style="padding:3px 10px 3px 0; white-space:nowrap;">{{ jr.label }}</td>
-                    <td style="padding:3px 0; white-space:nowrap;">{% if jr.plus %}<span style="color:#1F7A3D; font-weight:bold;">+{{ "%g"|format(jr.plus) }} h</span>{% endif %}{% if jr.plus and jr.moins %} / {% endif %}{% if jr.moins %}<span style="color:#C0392B; font-weight:bold;">−{{ "%g"|format(jr.moins) }} h</span>{% endif %}</td>
+                    <td style="padding:3px 0; white-space:nowrap;">{% if jr.plus %}<span style="color:#1F7A3D; font-weight:bold;">+{{ jr.plus|hmin }}</span>{% endif %}{% if jr.plus and jr.moins %} / {% endif %}{% if jr.moins %}<span style="color:#C0392B; font-weight:bold;">−{{ jr.moins|hmin }}</span>{% endif %}</td>
                   </tr>
                   {% endfor %}
                 </table>
                 {% elif l.solde is none %}
                 <div class="meta" style="font-size:0.82em;">Pas de relevé reçu ce mois-ci.</div>
                 {% else %}
-                <div class="meta" style="font-size:0.82em;">Relevé reçu sans détail jour par jour (totaux seuls : +{{ "%g"|format(l.plus) }} h / −{{ "%g"|format(l.moins) }} h).</div>
+                <div class="meta" style="font-size:0.82em;">Relevé reçu sans détail jour par jour (totaux seuls : +{{ l.plus|hmin }} / −{{ l.moins|hmin }}).</div>
                 {% endif %}
               </div>
 
               <div style="min-width:240px; flex:1; background:#fff; border:1px solid #dde3ed; border-radius:8px; padding:10px 14px; font-size:0.82em;">
                 <div style="color:#1F4E79; font-weight:bold; margin-bottom:6px;">🧮 Le calcul</div>
-                <div style="margin-bottom:3px;">Solde planning = Ajusté − Trame = {{ "%g"|format(l.ajuste) }} − {{ "%g"|format(l.trame) }} = <strong>{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }} h</strong></div>
+                <div style="margin-bottom:3px;">Solde planning = Ajusté − Trame = {{ l.ajuste|hmin }} − {{ l.trame|hmin }} = <strong>{{ l.solde_plan|hmin_signe }}</strong></div>
                 {% if l.solde is not none %}
-                <div style="margin-bottom:3px;">Solde relevé = H+ − H− = {{ "%g"|format(l.plus) }} − {{ "%g"|format(l.moins) }} = <strong>{{ "%+g"|format(l.solde) if l.solde else "0" }} h</strong></div>
-                <div style="margin-bottom:6px;">Écart = Solde relevé − Solde planning = <strong style="color:{{ '#1F7A3D' if l.coherent else '#C0392B' }};">{{ "%+g"|format(l.ecart) if l.ecart else "0" }} h</strong></div>
+                <div style="margin-bottom:3px;">Solde relevé = H+ − H− = {{ l.plus|hmin }} − {{ l.moins|hmin }} = <strong>{{ l.solde|hmin_signe }}</strong></div>
+                <div style="margin-bottom:6px;">Écart = Solde relevé − Solde planning = <strong style="color:{{ '#1F7A3D' if l.coherent else '#C0392B' }};">{{ l.ecart|hmin_signe }}</strong></div>
                 {% if l.coherent %}
                 <div style="color:#1F7A3D;">✅ Le collaborateur a déclaré exactement ce que le planning prévoit.</div>
                 {% elif l.ecart > 0 %}
-                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ "%g"|format(l.ecart|abs) }} h de plus</strong> que ce que le planning explique — comparer les deux colonnes ci-contre pour repérer le(s) jour(s) en cause.</div>
+                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ l.ecart|abs|hmin }} de plus</strong> que ce que le planning explique — comparer les deux colonnes ci-contre pour repérer le(s) jour(s) en cause.</div>
                 {% else %}
-                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ "%g"|format(l.ecart|abs) }} h de moins</strong> que ce que le planning prévoit — un changement du planning n'a peut-être pas été reporté dans son relevé (ou l'inverse).</div>
+                <div style="color:#C0392B;">⚠️ Le collaborateur déclare <strong>{{ l.ecart|abs|hmin }} de moins</strong> que ce que le planning prévoit — un changement du planning n'a peut-être pas été reporté dans son relevé (ou l'inverse).</div>
                 {% endif %}
                 {% else %}
                 <div class="meta">L'écart se calculera à la réception du relevé.</div>
@@ -1585,14 +1585,14 @@
         {% endfor %}
         <tr style="background:#f5f8fc; font-weight:bold;">
           <td class="collab">Total</td>
-          <td>{{ "%g"|format(tot_totaux.trame) }}</td>
-          <td>{{ "%g"|format(tot_totaux.ajuste) }}</td>
-          <td>{{ "%+g"|format(tot_totaux.solde_plan) if tot_totaux.solde_plan else "0" }}</td>
+          <td>{{ tot_totaux.trame|hmin }}</td>
+          <td>{{ tot_totaux.ajuste|hmin }}</td>
+          <td>{{ tot_totaux.solde_plan|hmin_signe }}</td>
           <td></td>
-          <td>{{ "%g"|format(tot_totaux.plus) }}</td>
-          <td>{{ "%g"|format(tot_totaux.moins) }}</td>
-          <td>{{ "%+g"|format(tot_totaux.solde) if tot_totaux.solde else "0" }}</td>
-          <td>{{ "%+g"|format(tot_totaux.ecart) if tot_totaux.ecart else "0" }}</td>
+          <td>{{ tot_totaux.plus|hmin }}</td>
+          <td>{{ tot_totaux.moins|hmin }}</td>
+          <td>{{ tot_totaux.solde|hmin_signe }}</td>
+          <td>{{ tot_totaux.ecart|hmin_signe }}</td>
           <td class="meta" style="font-weight:normal;">sur relevés reçus</td>
         </tr>
       </table>
