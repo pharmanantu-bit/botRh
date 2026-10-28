@@ -144,7 +144,7 @@
       « <em>Qui travaille samedi ?</em> » · « <em>Accepte les congés de Léa</em> » ·
       « <em>Envoie une relance à ceux qui n'ont pas rendu leur relevé</em> » ·
       « <em>Solde de congés de Karim ?</em> »<br>
-      🔒 Les salariés sont masqués avant l'IA (pseudonymisation RGPD) ; les candidats au recrutement sont transmis nominativement (moteur configuré : Gemini/Google, secours Mistral/UE).
+      🔒 Les salariés sont masqués avant l'IA (pseudonymisation RGPD) ; les candidats au recrutement sont transmis nominativement (moteur configuré : {{ moteur_libelle }}).
     </div>
     {% endif %}
     {% set ns = namespace(jour='') %}
@@ -249,13 +249,21 @@
   function bas() { fil.scrollTop = fil.scrollHeight; }
   function heure() { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
   // Markdown LÉGER des bulles de l'agent : **gras**, *italique*, `code`, URL
-  // cliquables. Tout est échappé AVANT la mise en forme (aucune injection HTML).
+  // cliquables. Tout est échappé AVANT la mise en forme — guillemets compris :
+  // un lien forgé (mail/CV recraché par l'agent) ne peut pas sortir du href.
   function mdHtml(s) {
-    s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/gm, '$1<em>$2</em>');
     s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    s = s.replace(/(https?:\/\/[^\s&]+[^\s&.,;:)!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    // URL : seuls &amp; (le vrai « & » échappé) peuvent contenir un & — les
+    // entités &quot;/&#39;/&lt; arrêtent donc le lien ; ponctuation finale exclue.
+    s = s.replace(/https?:\/\/(?:&amp;|[^\s&])+/g, function (u) {
+      var fin = (u.match(/[.,;:)!?]+$/) || [''])[0];
+      if (fin) u = u.slice(0, -fin.length);
+      return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>' + fin;
+    });
     return s;
   }
   function bulle(cls, texte, ts) {

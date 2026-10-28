@@ -21,6 +21,7 @@ from app import (_lire_json, _ecrire_json, BASE_DIR, EXT_DOCS_OK, humaniser_tail
 import extraction_pj
 import recrutement_ia
 import crypto_rh          # chiffrement au repos du cv_texte (même traitement que l'IBAN)
+from assistant_rh import libelle_moteur   # mention RGPD : moteur IA réellement configuré
 import rgpd_recrutement   # durée de conservation, anonymisation, mention d'information
 import promesse_embauche  # courrier « promesse d'embauche » : défauts + PDF
 from signature_mail import SIGNATURE
@@ -306,7 +307,8 @@ def candidat():
                            cv_texte=_cv_clair(c), disclaimer_ia=rgpd_recrutement.DISCLAIMER_IA,
                            duree_conservation=rgpd_recrutement.DUREE_CONSERVATION_LIBELLE,
                            criteres=CRITERES_EVALUATION, grille=c.get("grille") or {},
-                           moyenne=_moyenne_grille(c.get("grille")))
+                           moyenne=_moyenne_grille(c.get("grille")),
+                           moteur_ia=libelle_moteur())
 
 
 @bp.route("/admin/recrutement/fiche", methods=["POST"])
@@ -821,10 +823,15 @@ def candidat_push():
             sauvegarder_candidats_docs_index(idx)
     # Analyse IA AUTOMATIQUE du CV entrant (non bloquante : en cas d'échec le
     # candidat est créé sans analyse, le bouton « Analyser » de la fiche reste là).
+    # Budget de temps COURT : le runner appelle avec un timeout de 60 s, et
+    # l'accusé RGPD n'est envoyé que si ce POST répond « ajoute » — un moteur
+    # throttlé ne doit donc jamais retenir la requête plusieurs minutes.
     analyse_faite = False
     texte_cv = (data.get("cv_texte") or "").strip()
     if texte_cv:
+        from assistant_rh import definir_echeance, annuler_echeance
         try:
+            definir_echeance(25)
             analyse = recrutement_ia.analyser_cv(
                 texte_cv[:20000], "", moteur=os.getenv("ASSISTANT_MOTEUR", "mistral"),
                 modele=os.getenv("ASSISTANT_MODELE") or None)
@@ -836,6 +843,8 @@ def candidat_push():
                 analyse_faite = True
         except Exception:
             current_app.logger.exception("Analyse IA auto du CV entrant échouée (non bloquant)")
+        finally:
+            annuler_echeance()
     return current_app.response_class(json.dumps({"status": "ajoute", "id": cid,
                                                   "analyse": analyse_faite}),
                                       mimetype="application/json")

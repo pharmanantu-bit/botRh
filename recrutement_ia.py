@@ -89,9 +89,11 @@ def analyser_cv(texte, poste, moteur="mistral", modele=None):
     elif moteur == "gemini":
         try:
             brut = _gemini(texte, poste, modele)
-        except Exception:
+        except Exception as e:
             if not os.getenv("MISTRAL_API_KEY"):
                 raise
+            from assistant_rh import avertir_secours
+            avertir_secours(e, "(analyse CV)")
             brut = _mistral(texte, poste, None)
     else:
         brut = _mistral(texte, poste, modele)

@@ -248,11 +248,19 @@ def envoyer_en_attente(abonnements=None, notifications=None, cle=None, sub_conta
                     perimes.add(s["endpoint"])
                 else:
                     res["erreurs"] += 1
-            except Exception:
+                    # Code conservé pour le diagnostic : 401/403 sur tous les
+                    # envois = clés VAPID divergentes serveur/runner.
+                    res.setdefault("codes", []).append(code or "WebPushException")
+            except Exception as e:
                 res["erreurs"] += 1
+                res.setdefault("codes", []).append(type(e).__name__)
         if reussi:
             res["envoyees"].append(n["id"])
     res["perimes"] = sorted(perimes)
+    if res.get("codes") and all(c in (401, 403) for c in res["codes"]):
+        res["indisponible"] = ("envois refusés (401/403) : VAPID_PRIVATE_KEY probablement "
+                               "différente entre le serveur et le secret GitHub — les "
+                               "abonnements sont liés à la clé publique dérivée")
     if marquer and (res["envoyees"] or res["perimes"]):
         marquer_envoyees(res["envoyees"], res["perimes"])
     return res

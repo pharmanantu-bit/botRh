@@ -52,7 +52,9 @@ def main():
     res = push_rh.envoyer_en_attente(abonnements, notifications, cle=cle_privee,
                                      sub_contact=push_rh.contact(), marquer=False)
     print(f"envoyées : {len(res['envoyees'])} · abonnements périmés : {len(res['perimes'])} "
-          f"· erreurs : {res['erreurs']}" + (f" · {res['indisponible']}" if res.get("indisponible") else ""))
+          f"· erreurs : {res['erreurs']}"
+          + (f" · codes : {res['codes']}" if res.get("codes") else "")
+          + (f" · {res['indisponible']}" if res.get("indisponible") else ""))
     if res["envoyees"] or res["perimes"]:
         rep = _post(f"/push_envoyees?cle={CLE}", {"ids": res["envoyees"], "perimes": res["perimes"]})
         print(f"serveur : {rep.get('marquees')} marquée(s), {rep.get('abonnements')} abonnement(s) restant(s)")

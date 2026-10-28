@@ -773,7 +773,13 @@ try:
     n1 = _AO3.executer_outil("noter_entretien_candidat",
                              {"candidat": "Marie", "note": "Bon contact téléphonique."}, {}, "validation")
     v1 = _AO3.executer_outil("analyser_cv_candidat", {"candidat": "Marie"}, {}, "validation")
+    # Garantie en dur : pendant la RONDE, une écriture candidat ne s'exécute
+    # jamais, même en mode autonome -> carte PROPOSITION.
+    g1 = _AO3.executer_outil("noter_entretien_candidat",
+                             {"candidat": "Marie", "note": "Relance à prévoir."},
+                             {}, "autonome", origine="ronde")
     ok_p3 = ("Marie" in d1
+             and isinstance(g1, dict) and "PROPOSITION" in g1.get("resultat", "")
              and isinstance(p1, dict) and (p1.get("action") or {}).get("type") == "lien"
              and "/admin/recrutement/promesse?id=cTEST" in (p1.get("action") or {}).get("url", "")
              and isinstance(a1, dict) and "PROPOSITION" in a1.get("resultat", "")

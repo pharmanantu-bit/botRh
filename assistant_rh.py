@@ -175,6 +175,13 @@ def definir_echeance(secondes):
     _ECHEANCE.t = time.time() + secondes
 
 
+def annuler_echeance():
+    """Efface le budget du thread courant. À appeler en fin de traitement quand
+    le budget a été posé dans une requête web : les threads des serveurs WSGI
+    sont réutilisés, un budget expiré polluerait la requête suivante."""
+    _ECHEANCE.t = None
+
+
 def _reste():
     import time
     t = getattr(_ECHEANCE, "t", None)
@@ -285,6 +292,15 @@ def _moteur_gemini(system, prompt, modele):
     return _extraire_json(gemini_texte(rep))
 
 
+def avertir_secours(erreur, ou=""):
+    """Trace (stderr, sans donnée nominative) chaque bascule vers le moteur de
+    secours : sans ça, une GEMINI_API_KEY cassée dégraderait en silence pour
+    toujours. Visible dans le log du serveur et la sortie du runner."""
+    import sys
+    print(f"[secours IA] moteur principal en échec ({type(erreur).__name__}: "
+          f"{str(erreur)[:120]}) -> bascule Mistral {ou}".strip(), file=sys.stderr)
+
+
 def _avec_secours(principal, secours):
     """Moteur de secours : si le principal échoue (clé absente, quota, panne) et
     que MISTRAL_API_KEY est disponible, on retente en Mistral au lieu d'échouer.
@@ -293,15 +309,28 @@ def _avec_secours(principal, secours):
     def wrapper(system, prompt, modele):
         try:
             return principal(system, prompt, modele)
-        except Exception:
+        except Exception as e:
             if not os.getenv("MISTRAL_API_KEY"):
                 raise
+            avertir_secours(e, "(analyse)")
             return secours(system, prompt, None)
     return wrapper
 
 
 MOTEURS = {"fake": _moteur_fake, "mistral": _moteur_mistral, "claude": _moteur_claude,
            "gemini": _avec_secours(_moteur_gemini, _moteur_mistral)}
+
+# Libellés pour les mentions de transparence RGPD affichées dans l'UI : toujours
+# dérivés du moteur réellement configuré, jamais écrits en dur dans un template.
+LIBELLES_MOTEURS = {"fake": "mode test — aucun envoi réel à une IA",
+                    "mistral": "Mistral, hébergé UE",
+                    "claude": "Claude — Anthropic",
+                    "gemini": "Gemini — Google, secours Mistral/UE"}
+
+
+def libelle_moteur(moteur=None):
+    m = (moteur or os.getenv("ASSISTANT_MOTEUR", "fake")).strip()
+    return LIBELLES_MOTEURS.get(m, m)
 
 
 # --- Agent conversationnel RH / juridique ---
@@ -370,9 +399,10 @@ def chat(messages, moteur="mistral", modele=None):
     if moteur == "gemini":
         try:
             return _chat_gemini(full, modele)
-        except Exception:
+        except Exception as e:
             if not os.getenv("MISTRAL_API_KEY"):
                 raise
+            avertir_secours(e, "(chat)")
             return _chat_mistral(full, None)
     if moteur == "fake":
         return "(mode fake) Réponse simulée — configure un moteur (Mistral) pour de vraies réponses."

@@ -955,11 +955,16 @@ def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None
 
 
 def _tools_gemini(specs=None):
-    return [{"functionDeclarations": [
-        {"name": s["nom"], "description": s["description"],
-         "parameters": {"type": "object", "properties": _schema_props(s),
-                        "required": s["requis"]}}
-        for s in (specs if specs is not None else OUTILS_SPECS)]}]
+    decls = []
+    for s in (specs if specs is not None else OUTILS_SPECS):
+        d = {"name": s["nom"], "description": s["description"]}
+        # Gemini natif refuse un schéma OBJECT aux properties vides : pour un
+        # outil sans paramètre, on omet simplement "parameters".
+        if s["params"]:
+            d["parameters"] = {"type": "object", "properties": _schema_props(s),
+                               "required": s["requis"]}
+        decls.append(d)
+    return [{"functionDeclarations": decls}]
 
 
 def _boucle_gemini(systeme, msgs, annuaire, table, executer, modele, specs=None):
@@ -988,8 +993,11 @@ def _boucle_gemini(systeme, msgs, annuaire, table, executer, modele, specs=None)
             reponses.append({"functionResponse": {"name": fc.get("name", ""),
                                                   "response": {"resultat": res}}})
         contents.append({"role": "user", "parts": reponses})
-    # Garde-fou : un dernier appel SANS outils pour forcer une réponse rédigée.
-    rep = _post_json(url, headers, dict(base, contents=contents))
+    # Garde-fou : un dernier appel pour forcer une réponse rédigée. Les outils
+    # restent déclarés (l'historique contient des functionCall/functionResponse,
+    # que l'API refuse sans déclaration) mais leur usage est interdit (mode NONE).
+    rep = _post_json(url, headers, dict(base, contents=contents, tools=_tools_gemini(specs),
+                                        toolConfig={"functionCallingConfig": {"mode": "NONE"}}))
     return gemini_texte(rep) or "(pas de réponse)", outils, actions
 
 
@@ -1163,9 +1171,11 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
         try:
             texte, outils, actions = _boucle_gemini(systeme, msgs, annuaire, table,
                                                     _executer_compte, modele, specs)
-        except Exception:
+        except Exception as e:
             if compteur["n"] or not os.getenv("MISTRAL_API_KEY"):
                 raise
+            from assistant_rh import avertir_secours
+            avertir_secours(e, "(agent)")
             texte, outils, actions = _boucle_mistral(systeme, msgs, annuaire, table,
                                                      executer, "mistral-medium-latest", specs)
             texte = (texte or "") + "\n\n⚠️ Gemini indisponible — réponse du moteur de secours Mistral."

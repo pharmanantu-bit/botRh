@@ -51,7 +51,8 @@ from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION
 from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 import recrutement as REC
 import recrutement_ia
-from assistant_rh import annuaire_pseudo, construire_table, pseudonymiser_texte, reidentifier
+from assistant_rh import (annuaire_pseudo, construire_table, pseudonymiser_texte,
+                          reidentifier, libelle_moteur)
 from tokens import tokens_valides, reponse_de, generer_token
 
 bp = Blueprint("agent", __name__)
@@ -147,6 +148,11 @@ def marquer_annulee(annulation_id):
 
 OUTILS_IRREVERSIBLES = {"envoyer_mail", "envoyer_relance", "envoyer_recap_comptable",
                         "envoyer_attestation", "actualiser_mails", "envoyer_mail_candidat"}
+# Pendant la RONDE (personne ne regarde l'écran), ces écritures candidats ne
+# s'exécutent JAMAIS directement, même en mode autonome : carte à confirmer.
+# Garantie en dur — le brief (« sans rien écrire ») n'est qu'une consigne au modèle.
+ECRITURES_RONDE_PROPOSEES = {"ajouter_candidat", "noter_entretien_candidat",
+                             "analyser_cv_candidat", "envoyer_mail_candidat"}
 OUTILS_MAIL_PARTIEL = {"traiter_demande_conges", "envoyer_demande_collaborateur",
                        "ajouter_absence"}   # écrivent ET peuvent prévenir par mail
 
@@ -2622,7 +2628,9 @@ def executer_outil(nom, args, annuaire, mode, origine="chat"):
     if nom in OUTILS_ECRITURE_IMPL:
         fn = OUTILS_ECRITURE_IMPL[nom]
         # PAIE et DÉCISIONS RH : jamais d'exécution directe, même en mode autonome.
-        if mode == "autonome" and nom not in OUTILS_PAIE and nom not in OUTILS_DECISION:
+        # Idem pour les écritures candidats pendant la ronde (ECRITURES_RONDE_PROPOSEES).
+        if (mode == "autonome" and nom not in OUTILS_PAIE and nom not in OUTILS_DECISION
+                and not (origine == "ronde" and nom in ECRITURES_RONDE_PROPOSEES)):
             args = _stabiliser_args(args, annuaire)
             avant = _instantane(args)
             texte, ok = _executer_protege(nom, fn, args, annuaire, avant)
@@ -2823,6 +2831,7 @@ def page():
     moteur, modele = _moteur()
     return render_template("admin_agent.html", conversation=conv, journal=journal,
                            mode=mode_agent(), moteur=moteur,
+                           moteur_libelle=libelle_moteur(moteur),
                            outils_libelles=LIBELLES_OUTILS,
                            suggestions=suggestions_proactives(), memoire=charger_memoire(),
                            msg=request.args.get("msg", ""))
