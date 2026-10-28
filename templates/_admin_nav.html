@@ -15,9 +15,9 @@
   <a href="/admin/mois">🏠 <span>Relevés du mois</span></a>
   <a href="/admin/employes">👥 <span>Équipe & RH</span></a>
   <a href="/admin/planning-equipe">🗓️ <span>Planning</span></a>
-  <a href="/admin/recrutement">🧲 <span>Recrutement</span></a>
-  <a href="/admin/assistant">🤖 <span>Assistant RH</span></a>
-  <a href="/admin/agent">💬 <span>Agent RH</span></a>
+  <!-- Hub RH IA : une seule entrée, la navigation interne Assistant/Agent/
+       Recrutement se fait par le bandeau d'onglets (_hub_nav.html). -->
+  <a href="/admin/agent" data-alias="/admin/assistant /admin/recrutement">🤖 <span>RH IA</span></a>
   <a href="/admin/newsletter">📰 <span>Newsletter</span></a>
   <a href="/admin/performance">📈 <span>Performance</span></a>
   <a href="/admin/sauvegarde" class="nav-bas">💾 <span>Sauvegarde</span></a>
@@ -115,13 +115,16 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && navMobile.matches && !document.body.classList.contains('nav-collapse')) toggleNav();
     });
-    // Surligne le lien de la page courante
+    // Surligne le lien de la page courante (data-alias : autres chemins couverts
+    // par la même entrée, ex. le hub RH IA qui regroupe 3 pages).
     var path = window.location.pathname.replace(/\/+$/, '') || '/admin';
-    var best = null;
+    var best = null, bestLen = 0;
     document.querySelectorAll('.nav-drawer a').forEach(function (a) {
-      var h = a.getAttribute('href');
-      if (path === h) best = a;
-      else if (h !== '/admin' && path.indexOf(h) === 0 && (!best || h.length > best.getAttribute('href').length)) best = a;
+      var hrefs = [a.getAttribute('href')].concat((a.getAttribute('data-alias') || '').split(' '));
+      hrefs.forEach(function (h) {
+        if (!h || h === '/admin') return;
+        if ((path === h || path.indexOf(h) === 0) && h.length > bestLen) { best = a; bestLen = h.length; }
+      });
     });
     if (best) best.classList.add('actif');
   })();

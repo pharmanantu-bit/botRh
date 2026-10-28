@@ -99,6 +99,7 @@
 <body>
 {% include '_admin_nav.html' %}
 <div class="chat-app">
+  {% include '_hub_nav.html' %}
   <div class="tete">
     <div class="avatar">🤖</div>
     <div class="infos">
@@ -135,7 +136,7 @@
       « <em>Qui travaille samedi ?</em> » · « <em>Accepte les congés de Léa</em> » ·
       « <em>Envoie une relance à ceux qui n'ont pas rendu leur relevé</em> » ·
       « <em>Solde de congés de Karim ?</em> »<br>
-      🔒 Les salariés sont masqués avant l'IA (pseudonymisation RGPD) ; les candidats au recrutement sont transmis nominativement (Mistral, hébergé UE).
+      🔒 Les salariés sont masqués avant l'IA (pseudonymisation RGPD) ; les candidats au recrutement sont transmis nominativement (moteur configuré : Gemini/Google, secours Mistral/UE).
     </div>
     {% endif %}
     {% set ns = namespace(jour='') %}

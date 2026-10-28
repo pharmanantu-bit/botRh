@@ -1,0 +1,33 @@
+<!-- Bandeau d'onglets commun du hub RH IA : Assistant (synthèse mails) /
+     Agent RH (chat qui agit) / Recrutement (candidats). Inclus en tête des
+     3 pages ; l'onglet actif est détecté côté client par le chemin (préfixe
+     le plus long), même mécanique que le menu latéral (_admin_nav.html). -->
+<nav class="hub-nav" aria-label="Modules RH IA">
+  <a href="/admin/assistant">🤖 <span>Assistant</span></a>
+  <a href="/admin/agent">💬 <span>Agent RH</span></a>
+  <a href="/admin/recrutement">🧲 <span>Recrutement</span></a>
+</nav>
+<style>
+  .hub-nav { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+             padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #e3e9f2; }
+  .hub-nav a { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+               padding: 7px 14px; border-radius: 18px; background: #f0f4f8; color: #1F4E79;
+               text-decoration: none; font-size: 0.86em; font-weight: 600;
+               border: 1px solid #e3e9f2; }
+  .hub-nav a:hover { background: #e3ecf5; }
+  .hub-nav a.actif { background: #1F4E79; color: #fff; border-color: #1F4E79; }
+  /* Variante page agent (plein écran) : bande fine au-dessus de l'en-tête bleu. */
+  .chat-app .hub-nav { padding: 8px 10px; margin: 0; background: #f7f9fc;
+                       border-bottom: 1px solid #e3e9f2; z-index: 2; }
+</style>
+<script>
+  (function () {
+    var p = window.location.pathname.replace(/\/+$/, '');
+    var best = null, bestLen = 0;
+    document.querySelectorAll('.hub-nav a').forEach(function (a) {
+      var h = a.getAttribute('href');
+      if ((p === h || p.indexOf(h) === 0) && h.length > bestLen) { best = a; bestLen = h.length; }
+    });
+    if (best) best.classList.add('actif');
+  })();
+</script>

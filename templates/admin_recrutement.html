@@ -31,15 +31,12 @@
     .candidat-c .meta { font-size: 0.74em; color: #9aa7b5; margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
     .col-vide { color: #aab4c0; font-size: 0.8em; font-style: italic; padding: 6px; }
     .badge-ia { background: #eaf3ff; color: #1F4E79; border-radius: 8px; padding: 0 6px; }
-
-    .chat-wrap { margin-top: 26px; border-top: 2px solid #eef2f7; padding-top: 18px; }
-    .chat-wrap h2 { color: #1F4E79; font-size: 1.05em; }
-    .chat-sub { color: #888; font-size: 0.82em; margin: 4px 0 8px; }
   </style>
 </head>
 <body>
 {% include '_admin_nav.html' %}
 <div class="carte">
+  {% include '_hub_nav.html' %}
   <div class="entete">
     <h1>🧲 Recrutement <span class="compteur">· {{ total }} candidat(s)</span></h1>
   </div>
@@ -79,12 +76,6 @@
     {% endfor %}
   </div>
 
-  <!-- Le chat recrutement a rejoint l'agent RH (page dédiée) -->
-  <div class="chat-wrap">
-    <h2>💬 Discuter de tes candidats avec l'agent RH</h2>
-    <div class="chat-sub">Classer, comparer, chercher une compétence, préparer une convocation ou un refus, changer un statut : tout se fait dans le chat de l'agent RH. ⚠️ Les questions envoient les données candidats à l'IA (Mistral, hébergé UE).</div>
-    <a href="/admin/agent" class="btn" style="display:inline-block;text-decoration:none;margin-top:8px;">💬 Ouvrir l'agent RH</a>
-  </div>
 </div>
 
 

@@ -48,20 +48,12 @@
     .vide .ico { font-size: 2.4em; }
     .vide p { margin-top: 10px; font-size: 0.95em; }
 
-    /* Chat RH */
-    .chat-wrap { margin-top: 30px; border-top: 2px solid #eef2f7; padding-top: 20px; }
-    .chat-wrap h2 { color: #1F4E79; font-size: 1.05em; }
-    .chat-sub { color: #888; font-size: 0.8em; margin: 4px 0 10px; }
-    .outils-meta { font-size: 0.74em; color: #6b8aa3; margin: -6px 0 12px 4px; }
-    .actions-bloc { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: -2px 0 14px 4px; }
-    .action-btn { background: #1F7A3D; color: #fff; border: none; border-radius: 7px; padding: 7px 13px; font-size: 0.84em; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; }
-    .action-btn:hover { background: #176030; }
-    .action-btn.done { background: #9aa7b5; cursor: default; }
   </style>
 </head>
 <body>
 {% include '_admin_nav.html' %}
 <div class="carte">
+  {% include '_hub_nav.html' %}
   <div class="entete">
     <h1>🤖 Assistant RH</h1>
     <a href="/admin/dashboard" class="btn-retour" onclick="if(history.length>1){history.back();return false;}">← Retour</a>
@@ -157,12 +149,6 @@
 
   {% endif %}
 
-  <!-- Le chat conversationnel a déménagé : page dédiée façon WhatsApp -->
-  <div class="chat-wrap">
-    <h2>💬 Discuter avec l'agent RH</h2>
-    <div class="chat-sub">Pose tes questions et <strong>demande des changements</strong> (absences, horaires, congés, relances…) dans le chat dédié : l'agent lit tes données, agit (après ta validation ou en autonomie) et fait sa ronde quotidienne.</div>
-    <a href="/admin/agent" class="btn-refresh" style="display:inline-block;text-decoration:none;margin-top:8px;">💬 Ouvrir le chat de l'agent RH</a>
-  </div>
 </div>
 
 
