@@ -258,8 +258,9 @@
     s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/gm, '$1<em>$2</em>');
     s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     // URL : seuls &amp; (le vrai « & » échappé) peuvent contenir un & — les
-    // entités &quot;/&#39;/&lt; arrêtent donc le lien ; ponctuation finale exclue.
-    s = s.replace(/https?:\/\/(?:&amp;|[^\s&])+/g, function (u) {
+    // entités &quot;/&#39;/&lt; arrêtent donc le lien ; « < » est exclu pour ne
+    // pas avaler les balises déjà insérées (</strong>…) ; ponctuation finale exclue.
+    s = s.replace(/https?:\/\/(?:&amp;|[^\s&<])+/g, function (u) {
       var fin = (u.match(/[.,;:)!?]+$/) || [''])[0];
       if (fin) u = u.slice(0, -fin.length);
       return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>' + fin;
