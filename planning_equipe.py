@@ -1864,12 +1864,19 @@ def vue():
         # Membres du mois : semaine passée → tous (historique), sinon actifs ;
         # + les remplaçants hors trame ayant des horaires ponctuels dans la période.
         membres_mois = membres_semaine(act, employes_tous, profils, _lundi(p2))
+        # ARCHIVÉS (partis) : exclus de Fin de mois, même sur les mois passés —
+        # un archivé sort de toutes les vues (règle maison). Consulter/exporter
+        # son dernier mois AVANT de l'archiver si besoin.
+        def _archive(em_):
+            return (profils.get(em_, {}) or {}).get("statut", "actif") == "archive"
+        membres_mois = [em for em in membres_mois if not _archive(em)]
         vus_mois = set(membres_mois)
         for diso, parem in changements.items():
             if not (p1.isoformat() <= diso <= p2.isoformat()):
                 continue
             for em2, ch in (parem or {}).items():
-                if em2 not in vus_mois and em2 in emap and (ch.get("creneaux") or []):
+                if (em2 not in vus_mois and em2 in emap and not _archive(em2)
+                        and (ch.get("creneaux") or [])):
                     membres_mois.append(em2)
                     vus_mois.add(em2)
         for em in membres_mois:
@@ -1912,7 +1919,12 @@ def vue():
                 a = absence_active(absences, em, d) if chg is None else None
                 if chg is not None:
                     crs = chg.get("creneaux", []) or []
-                    ha = total_jour(crs)
+                    ha = ha_aff = total_jour(crs)
+                    if chg.get("motif") == "Congés payés" and not crs and ht > 0:
+                        # Jour de CP ponctuel (vidé) : jour PAYÉ, comme un férié
+                        # chômé — les heures de trame restent comptées, solde
+                        # neutre (le collaborateur ne déclare pas d'heures en moins).
+                        ha = ht
                     if chg.get("motif") == MOTIF_ECOLE:
                         # Heures d'école faites en entreprise : un dû déplacé.
                         # Seules les heures AJOUTÉES au-delà de la trame du jour
@@ -1928,23 +1940,29 @@ def vue():
                         detail_plan.append({
                             "type": "ponctuel", "label": lbl,
                             "motif": chg.get("motif", "Non catégorisé"),
-                            "avant": round(ht, 2), "apres": round(ha, 2),
+                            "avant": round(ht, 2), "apres": round(ha_aff, 2),
                             "delta": round(ha - ht, 2)})
                 elif a is not None:
-                    ha = 0.0
+                    # CONGÉS PAYÉS = jours PAYÉS (même règle que les fériés
+                    # chômés) : les heures de trame restent comptées, solde
+                    # neutre. Les autres absences (maladie, sans solde, non
+                    # justifiée…) comptent en heures en moins, comme avant.
+                    cp_paye = a.get("motif") == "Congés payés"
+                    ha = ht if cp_paye else 0.0
                     if ht > 0:
                         j_absents += 1
                         motif_a = a.get("motif", "Absence")
+                        d_abs = 0.0 if cp_paye else -ht
                         if abs_en_cours and abs_en_cours["motif"] == motif_a:
                             abs_en_cours["au"] = lbl
                             abs_en_cours["jours"] += 1
-                            abs_en_cours["delta"] = round(abs_en_cours["delta"] - ht, 2)
+                            abs_en_cours["delta"] = round(abs_en_cours["delta"] + d_abs, 2)
                         else:
                             if abs_en_cours:
                                 detail_plan.append(abs_en_cours)
                             abs_en_cours = {"type": "absence", "label": lbl,
                                             "au": lbl, "motif": motif_a,
-                                            "jours": 1, "delta": round(-ht, 2)}
+                                            "jours": 1, "delta": round(d_abs, 2)}
                 else:
                     ha = ht
                 h_trame += ht
