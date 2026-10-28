@@ -176,6 +176,8 @@ def alertes_conformite(data, emp_sm, lundi, changements, absences):
     semaines, repos dimanche→lundi). Renvoie [{prenom, texte}]."""
     alertes = []
     for e in emp_sm:
+        if e.get("freelance"):
+            continue   # prestataire externe : la durée du travail relève de sa société
         em, prenom = e["email"], e["prenom"]
         jours = {}
         for k in range(-6, 7):
@@ -483,8 +485,10 @@ def trame_active_pour(data, jour):
 
 
 def couleurs_map(employes_base, profils):
-    """{email: couleur} stable (index sur l'ordre d'origine, pas l'ordre d'affichage)."""
-    return {e["email"]: couleur_collaborateur(profils.get(e["email"], {}), i)
+    """{email: couleur} stable (index sur l'ordre d'origine, pas l'ordre d'affichage).
+    Un freelance porte sa couleur sur sa fiche du carnet (pas de profil RH)."""
+    return {e["email"]: (e.get("couleur")
+                         or couleur_collaborateur(profils.get(e["email"], {}), i))
             for i, e in enumerate(employes_base)}
 
 
@@ -497,8 +501,7 @@ def membres_semaine(trame, employes_tous, profils, lundi):
     if lundi is not None and lundi < _lundi(date.today()):
         base = employes_tous
     else:
-        base = [e for e in employes_tous
-                if collaborateur_actif(profils.get(e["email"], {}))]
+        base = [e for e in employes_tous if actif_planning(e, profils)]
     return membres_ordonnes(trame, base)
 
 
@@ -516,6 +519,55 @@ def membres_ordonnes(trame, employes_base):
              if any(_jours_sem(trame, em, s).get(str(j))
                     for s in SEMAINES for j in range(1, 8))]
     return [em for em in m if em in base]
+
+
+# --- Freelances / prestataires externes (vigile, intérim…) --------------------
+# Carnet PROPRE AU PLANNING (géré depuis l'onglet Trame) : un freelance n'est
+# jamais dans employees_live.csv, donc jamais dans les relevés d'heures, les
+# relances, Équipe & RH, les congés ou le dashboard. Il sert à poser ses heures
+# (trame, frise, totaux) — ex. contrôler la facture de la société de sécurité.
+FREELANCES_FILE = os.path.join(BASE_DIR, "planning_freelances.json")
+
+
+def charger_freelances():
+    d = _lire_json(FREELANCES_FILE)
+    return list(d.get("freelances", [])) if isinstance(d, dict) else []
+
+
+def sauvegarder_freelances(lst):
+    _ecrire_json(FREELANCES_FILE, {"freelances": lst})
+
+
+def employes_planning():
+    """Employés + freelances (marqués freelance=True) : liste de référence du
+    MODULE PLANNING uniquement. Partout ailleurs, charger_employes() reste la
+    source — les freelances n'y apparaissent jamais."""
+    emp = charger_employes()
+    vus = {e["email"] for e in emp}
+    for f in charger_freelances():
+        em = f.get("email")
+        if em and em not in vus:
+            emp.append({"prenom": f.get("prenom", ""), "nom": f.get("nom", ""),
+                        "email": em, "freelance": True,
+                        "role": f.get("role", ""), "couleur": f.get("couleur", ""),
+                        "effectifs": bool(f.get("effectifs")),
+                        "actif": f.get("actif", True)})
+            vus.add(em)
+    return emp
+
+
+def actif_planning(e, profils):
+    """Statut actif côté planning : profil RH pour un salarié, drapeau du carnet
+    pour un freelance (retiré = conservé pour l'historique, plus proposé)."""
+    if e.get("freelance"):
+        return bool(e.get("actif", True))
+    return collaborateur_actif(profils.get(e["email"], {}))
+
+
+def _couleur_valide(c):
+    c = (c or "").strip()
+    return c if (len(c) == 7 and c[0] == "#"
+                 and all(x in "0123456789abcdefABCDEF" for x in c[1:])) else ""
 
 
 # --- Calcul des heures ------------------------------------------------------
@@ -880,6 +932,7 @@ def _frise(trame, sem, employes, couleurs, jours_affiches=None, montrer_horaires
                 if motif and marque != "vert":
                     marque_titre += f" — {motif}"
             lignes.append({"prenom": e["prenom"], "email": e["email"], "couleur": couleur,
+                           "freelance": e.get("freelance", False),
                            "barres": barres, "total": total_jour(cr_eff),
                            "modifie": modifie, "motif": motif,
                            "marque": marque, "marque_titre": marque_titre,
@@ -969,13 +1022,12 @@ def vue():
     if onglet == "trame" and tid:
         session["trame_sel"] = tid
     profils = charger_profils()
-    employes_tous = charger_employes()
+    employes_tous = employes_planning()                    # salariés + freelances
     couleurs = couleurs_map(employes_tous, profils)        # couleurs stables (liste complète)
     # Seuls les collaborateurs ACTIFS sont PROPOSÉS (trames, semaines courantes).
     # Les archivés/inactifs restent affichés sur les semaines PASSÉES (historique),
     # cf. membres_semaine(). Leurs heures de trame sont conservées.
-    employes_base = [e for e in employes_tous
-                     if collaborateur_actif(profils.get(e["email"], {}))]
+    employes_base = [e for e in employes_tous if actif_planning(e, profils)]
     emap = {e["email"]: e for e in employes_tous}          # noms résolus, même archivés
 
     liste_trames = [{"id": t.get("id"), "label": _label_trame(t), "activee": t.get("activee")}
@@ -1025,11 +1077,13 @@ def vue():
                             for s in SEMAINES) / len(SEMAINES), 1)
             lignes.append({"email": em, "prenom": e["prenom"], "nom": e["nom"],
                            "couleur": couleurs[em], "jours": jours,
+                           "freelance": e.get("freelance", False), "role": e.get("role", ""),
                            "total": total_semaine(_jours_sem(trame, em, sem)), "moyenne": moy})
         # Candidats à ajouter : ont une fiche mais ne sont pas (encore) sur la trame.
         membset = set(memb)
         hors = [{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"],
-                 "couleur": couleurs[e["email"]]}
+                 "couleur": couleurs[e["email"]],
+                 "freelance": e.get("freelance", False), "role": e.get("role", "")}
                 for e in employes_base if e["email"] not in membset]
         # Horaires d'ouverture : 2 plages paddées par jour pour l'édition.
         ouverture = {}
@@ -1042,7 +1096,10 @@ def vue():
         # Aperçu en frise (collaborateurs sur la trame uniquement).
         emp_inclus = [emap[em] for em in memb]
         ctx["frise"] = _frise(trame, sem, emp_inclus, couleurs) if (trame and memb) else None
-        ctx.update(lignes=lignes, jours_noms=JOURS_NOMS, ouverture=ouverture, hors_trame=hors)
+        carnet = charger_freelances()
+        ctx.update(lignes=lignes, jours_noms=JOURS_NOMS, ouverture=ouverture, hors_trame=hors,
+                   freelances=[f for f in carnet if f.get("actif", True)],
+                   freelances_retires=[f for f in carnet if not f.get("actif", True)])
         return render_template("planning_equipe.html", **ctx)
 
     if onglet == "planning":
@@ -1431,6 +1488,8 @@ def vue():
     if onglet == "equipe":
         membres = []
         for e in employes_base:
+            if e.get("freelance"):
+                continue   # les freelances se gèrent dans l'onglet Trame
             prof = profils.get(e["email"], {})
             membres.append({
                 "email": e["email"], "prenom": e["prenom"], "nom": e["nom"],
@@ -1594,7 +1653,12 @@ def vue():
                 # Semaine passée : population complète (archivés inclus, historique).
                 pop = employes_tous if lundi < _lundi(date.today()) else employes_base
                 for e in pop:
-                    est_ph = "pharmacien" in (poste_de(profils.get(e["email"], {})) or "").lower()
+                    # Freelance (vigile…) : ne compte pas dans les minimums de
+                    # couverture, sauf si sa fiche du carnet coche « effectifs ».
+                    if e.get("freelance") and not e.get("effectifs"):
+                        continue
+                    est_ph = "pharmacien" in ((poste_de(profils.get(e["email"], {}))
+                                               or e.get("role", "")) or "").lower()
                     for c in creneaux_effectifs_jour(act, e["email"], dj, changements, absences):
                         pres.append((_minutes(c["debut"]), _minutes(c["fin"]), est_ph))
                 # Découpage aux bornes (ouverture + présences) puis contrôle par segment.
@@ -1651,6 +1715,8 @@ def vue():
             p1, p2 = periode_conges()
         cp_lignes = []
         for e in employes_base:
+            if e.get("freelance"):
+                continue   # pas de droit CP pour un freelance / prestataire
             em = e["email"]
             b = bilan_cp(em, absences, changements, conges, p1, p2)
             cp_lignes.append({**b, "email": em, "prenom": e["prenom"], "nom": e["nom"],
@@ -1707,6 +1773,8 @@ def vue():
         mois_annuel = [_ajoute_mois(p1, k) for k in range(12)]
         annuel_lignes = []
         for e in employes_base:
+            if e.get("freelance"):
+                continue
             em, cellules = e["email"], []
             for m0 in mois_annuel:
                 m_fin = m0.replace(day=calendar.monthrange(m0.year, m0.month)[1])
@@ -1757,7 +1825,7 @@ def vue():
             (dem_attente if dm.get("statut") == "en_attente" else dem_historique).append(info)
         ctx.update(dem_attente=dem_attente, dem_historique=dem_historique[:12],
                    dem_collabs=[{"email": e["email"], "prenom": e["prenom"], "nom": e["nom"]}
-                                for e in employes_base],
+                                for e in employes_base if not e.get("freelance")],
                    dem_auj=date.today().isoformat())
         return render_template("planning_equipe.html", **ctx)
 
@@ -1867,6 +1935,7 @@ def vue():
             tot["solde_plan"] += solde_plan
             lignes.append({"prenom": e["prenom"], "nom": e["nom"],
                            "couleur": couleurs.get(em, "#888"),
+                           "freelance": e.get("freelance", False),
                            "trame": h_trame, "ajuste": h_ajuste,
                            "solde_plan": solde_plan,
                            "j_ponctuels": j_ponctuels, "j_absents": j_absents,
@@ -1997,7 +2066,7 @@ def creer_trame():
         t["employes"] = copy.deepcopy(src.get("employes", {}))
         t["horaires_ouverture"] = copy.deepcopy(src.get("horaires_ouverture", HORAIRES_DEFAUT))
         t["semaine_demarrage"] = src.get("semaine_demarrage", "A")
-        t["membres"] = membres_ordonnes(src, charger_employes())   # même ordre d'affichage
+        t["membres"] = membres_ordonnes(src, employes_planning())   # même ordre d'affichage
     data.setdefault("trames", []).append(t)
     sauvegarder_trames(data)
     return redirect(url_for(".vue", onglet="trame", trame=t["id"], msg="trame_creee"))
@@ -2053,7 +2122,7 @@ def enregistrer_trame():
     if not trame:
         return redirect(url_for(".vue", onglet="trame", msg="no_trame"))
     emps = trame.setdefault("employes", {})
-    for e in charger_employes():
+    for e in employes_planning():
         jours = {}
         for j in range(1, 8):
             creneaux = []
@@ -2079,7 +2148,7 @@ def enregistrer_options():
     """Enregistre les options d'affichage du planning."""
     if not _admin():
         return redirect(url_for("admin"))
-    base = [e["email"] for e in charger_employes()]
+    base = [e["email"] for e in employes_planning()]
     affiches = request.form.getlist("collab")
     jours = [d for d in request.form.getlist("jour") if d in ("1", "2", "3", "4", "5", "6", "7")]
     o = charger_options()
@@ -2474,7 +2543,7 @@ def ajouter_garde():
         return redirect(url_for(".vue", onglet="garde", msg="garde_incomplet"))
     data = charger_changements()
     absences = charger_absences()
-    valides = {e["email"] for e in charger_employes()}
+    valides = {e["email"] for e in employes_planning()}
     n = saut = 0
     for em in emails:
         if em not in valides:
@@ -2528,9 +2597,9 @@ def ajouter_fermeture():
     absences = charger_absences()
     profils_f = charger_profils()
     n = saut = 0
-    for e in charger_employes():
+    for e in employes_planning():
         em = e["email"]
-        if not collaborateur_actif(profils_f.get(em, {})):
+        if not actif_planning(e, profils_f):
             continue   # archivé (parti) ou inactif : rien à vider ni à rattraper
         if not creneaux_trame_jour(trame, em, d_obj):
             continue   # pas prévu ce jour-là : rien à vider
@@ -2845,7 +2914,7 @@ def deplacer_collaborateur():
     data = charger_trames()
     trame = trame_par_id(data, tid)
     if trame:
-        memb = membres_ordonnes(trame, charger_employes())
+        memb = membres_ordonnes(trame, employes_planning())
         if email in memb:
             i = memb.index(email)
             j = i - 1 if sens == "up" else i + 1
@@ -2870,7 +2939,7 @@ def reordonner():
     data = charger_trames()
     trame = trame_par_id(data, tid)
     if trame:
-        current = membres_ordonnes(trame, charger_employes())
+        current = membres_ordonnes(trame, employes_planning())
         cur = set(current)
         neworder = [em for em in emails if em in cur]      # seulement des membres valides
         for em in current:                                  # complète si oubli
@@ -2894,7 +2963,7 @@ def copier_ordre_trame():
     trame = trame_par_id(data, tid)
     src = trame_par_id(data, request.form.get("source", ""))
     if trame and src and src is not trame:
-        emp = charger_employes()
+        emp = employes_planning()
         memb = membres_ordonnes(trame, emp)
         ordre_src = membres_ordonnes(src, emp)
         trame["membres"] = ([em for em in ordre_src if em in memb]
@@ -2916,7 +2985,7 @@ def toggle_collab_trame():
     data = charger_trames()
     trame = trame_par_id(data, tid)
     if trame:
-        memb = membres_ordonnes(trame, charger_employes())
+        memb = membres_ordonnes(trame, employes_planning())
         if action == "retirer":
             memb = [m for m in memb if m != email]
         elif action == "ajouter" and email not in memb:
@@ -2924,6 +2993,72 @@ def toggle_collab_trame():
         trame["membres"] = memb
         sauvegarder_trames(data)
     return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem))
+
+
+@bp.route("/admin/planning-equipe/freelance", methods=["POST"])
+def ajouter_freelance():
+    """Crée un freelance dans le carnet du planning et l'inclut d'office à la
+    trame courante. Identifiant interne « prenom-nom@freelance » (jamais un
+    vrai e-mail : aucun envoi possible)."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    tid, sem = request.form.get("tid", ""), request.form.get("sem", "A")
+    prenom = (request.form.get("prenom") or "").strip()[:60]
+    if not prenom:
+        return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem,
+                                msg="freelance_invalide"))
+    nom = (request.form.get("nom") or "").strip()[:60].upper()
+    lst = charger_freelances()
+    slug = "".join(c if c.isalnum() else "-" for c in f"{prenom}-{nom}".lower()).strip("-")
+    em, i = f"{slug or 'freelance'}@freelance", 2
+    pris = {f.get("email") for f in lst} | {e["email"] for e in charger_employes()}
+    while em in pris:
+        em, i = f"{slug or 'freelance'}-{i}@freelance", i + 1
+    lst.append({"email": em, "prenom": prenom, "nom": nom,
+                "role": (request.form.get("role") or "").strip()[:80],
+                "couleur": _couleur_valide(request.form.get("couleur")),
+                "effectifs": request.form.get("effectifs") == "1", "actif": True})
+    sauvegarder_freelances(lst)
+    data = charger_trames()
+    trame = trame_par_id(data, tid)
+    if trame:
+        memb = membres_ordonnes(trame, employes_planning())
+        if em not in memb:
+            memb.append(em)
+        trame["membres"] = memb
+        sauvegarder_trames(data)
+    return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem, msg="freelance_ok"))
+
+
+@bp.route("/admin/planning-equipe/freelance/maj", methods=["POST"])
+def maj_freelance():
+    """Modifie un freelance du carnet (nom, rôle, couleur, effectifs), le retire
+    ou le réactive. Retiré = conservé dans le store pour l'historique des
+    semaines passées, mais plus proposé nulle part."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    tid, sem = request.form.get("tid", ""), request.form.get("sem", "A")
+    em = request.form.get("email", "")
+    action = request.form.get("action", "enregistrer")
+    lst = charger_freelances()
+    f = next((x for x in lst if x.get("email") == em), None)
+    if not f:
+        return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem,
+                                msg="freelance_invalide"))
+    if action == "retirer":
+        f["actif"] = False
+    elif action == "reactiver":
+        f["actif"] = True
+    else:
+        prenom = (request.form.get("prenom") or "").strip()[:60]
+        if prenom:
+            f["prenom"] = prenom
+        f["nom"] = (request.form.get("nom") or "").strip()[:60].upper()
+        f["role"] = (request.form.get("role") or "").strip()[:80]
+        f["couleur"] = _couleur_valide(request.form.get("couleur")) or f.get("couleur", "")
+        f["effectifs"] = request.form.get("effectifs") == "1"
+    sauvegarder_freelances(lst)
+    return redirect(url_for(".vue", onglet="trame", trame=tid, sem=sem, msg="freelance_ok"))
 
 
 def _parse_horaires_form(form):
@@ -3007,7 +3142,7 @@ def imprimer_frise():
         return redirect(url_for("admin"))
     data = charger_trames()
     profils = charger_profils()
-    employes_tous = charger_employes()
+    employes_tous = employes_planning()
     couleurs = couleurs_map(employes_tous, profils)
     emap = {e["email"]: e for e in employes_tous}
     try:
@@ -3062,10 +3197,10 @@ def imprimer_collaborateur():
     if not trame:
         abort(404)
     email = request.args.get("email", "")
-    emp = next((e for e in charger_employes() if e["email"] == email), None)
+    emp = next((e for e in employes_planning() if e["email"] == email), None)
     if not emp:
         abort(404)
-    couleur = couleurs_map(charger_employes(), charger_profils()).get(email, "#888")
+    couleur = couleurs_map(employes_planning(), charger_profils()).get(email, "#888")
     fmt = "texte" if request.args.get("format") == "texte" else "grille"
     semaines = []
     for s in SEMAINES:

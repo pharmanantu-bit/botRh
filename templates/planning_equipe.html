@@ -154,6 +154,8 @@
   {% if msg == 'desactivee' %}<div class="msg">Trame désactivée.</div>{% endif %}
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
   {% if msg == 'effectifs_ok' %}<div class="msg">Effectifs minimums enregistrés.</div>{% endif %}
+  {% if msg == 'freelance_ok' %}<div class="msg">🧳 Carnet des freelances mis à jour.</div>{% endif %}
+  {% if msg == 'freelance_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Freelance invalide — le prénom est obligatoire.</div>{% endif %}
   {% if msg == 'conges_ok' %}<div class="msg">Droits de congés enregistrés.</div>{% endif %}
   {% if msg == 'cp_acceptee' %}<div class="msg">Demande acceptée — l'absence « Congés payés » est au planning, les compteurs sont à jour.</div>{% endif %}
   {% if msg == 'cp_refusee' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">Demande refusée.</div>{% endif %}
@@ -808,7 +810,7 @@
       <div class="collab-row" draggable="true" data-email="{{ l.email }}" style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:#fff;{% if not loop.first %} border-top:1px solid #f0f3f8;{% endif %}">
         <span class="drag-handle" title="Glisser pour déplacer" style="cursor:grab; color:#aeb6c2; font-size:1.15em; line-height:1; user-select:none;">⠿</span>
         <span style="display:inline-block; width:15px; height:15px; border-radius:50%; background:{{ l.couleur }}; flex:none;"></span>
-        <span style="flex:1; font-size:0.9em;"><a href="{{ url_for('.vue', onglet='equipe') }}#eq-{{ l.email|replace('@','-')|replace('.','-') }}" title="Voir / régler dans Équipe" style="color:#1F4E79; text-decoration:none;"><strong>{{ l.prenom }} {{ l.nom }}</strong></a> <span class="meta">[{{ "%g"|format(l.moyenne) }}h/sem · moyenne {% for s in semaines %}{{ s }}{% if not loop.last %}/{% endif %}{% endfor %}]</span></span>
+        <span style="flex:1; font-size:0.9em;">{% if l.freelance %}<strong>{{ l.prenom }} {{ l.nom }}</strong> <span class="meta" title="Freelance / prestataire externe — se règle dans le bloc 🧳 ci-dessous">🧳 {{ l.role or 'freelance' }}</span>{% else %}<a href="{{ url_for('.vue', onglet='equipe') }}#eq-{{ l.email|replace('@','-')|replace('.','-') }}" title="Voir / régler dans Équipe" style="color:#1F4E79; text-decoration:none;"><strong>{{ l.prenom }} {{ l.nom }}</strong></a>{% endif %} <span class="meta">[{{ "%g"|format(l.moyenne) }}h/sem · moyenne {% for s in semaines %}{{ s }}{% if not loop.last %}/{% endif %}{% endfor %}]</span></span>
         <span style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
           <a href="{{ url_for('.vue', onglet='trame', trame=tid, horaires=l.email) }}" class="btn-mini">Horaires</a>
           <a href="{{ url_for('.imprimer_collaborateur', tid=tid, email=l.email) }}" target="_blank" rel="noopener" class="btn-mini">Imprimer</a>
@@ -855,7 +857,7 @@
       {% for h in hors_trame %}
       <div style="display:flex; align-items:center; gap:10px; padding:7px 12px;{% if not loop.first %} border-top:1px solid #e8f1e8;{% endif %}">
         <span style="display:inline-block; width:13px; height:13px; border-radius:50%; background:{{ h.couleur }}; opacity:.5; flex:none;"></span>
-        <span style="flex:1; font-size:0.9em; color:#667;">{{ h.prenom }} {{ h.nom }}</span>
+        <span style="flex:1; font-size:0.9em; color:#667;">{{ h.prenom }} {{ h.nom }}{% if h.freelance %} <span class="meta">🧳 {{ h.role or 'freelance' }}</span>{% endif %}</span>
         <form method="POST" action="{{ url_for('.toggle_collab_trame') }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
@@ -866,6 +868,47 @@
       {% endfor %}
     </div>
     {% endif %}
+
+    <h2 style="font-size:0.95em;">🧳 Freelances / prestataires externes <span class="meta" style="font-weight:normal;">— au planning pour compter leurs heures (vigile, intérim…), jamais dans l'équipe ni dans les relevés</span></h2>
+    <div style="border:1px solid #e3d9c8; border-radius:10px; max-width:660px; margin-bottom:20px; padding:10px 12px; background:#fffdf9;">
+      {% for f in freelances %}
+      <form method="POST" action="{{ url_for('.maj_freelance') }}" style="display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:0 0 8px; padding-bottom:8px;{% if not loop.last %} border-bottom:1px solid #f0ead9;{% endif %}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+        <input type="hidden" name="email" value="{{ f.email }}">
+        <input type="color" name="couleur" value="{{ f.couleur or '#95A5A6' }}" title="Couleur au planning" style="width:32px; height:28px; border:1px solid #ccd4e0; border-radius:6px; padding:1px; cursor:pointer;">
+        <input type="text" name="prenom" value="{{ f.prenom }}" placeholder="Prénom" style="width:100px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <input type="text" name="nom" value="{{ f.nom }}" placeholder="NOM" style="width:100px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <input type="text" name="role" value="{{ f.role }}" placeholder="Rôle (ex. Vigile — société X)" style="flex:1; min-width:140px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <label class="meta" title="Décoché : il ne compte pas dans les minimums d'effectifs (min 2 présents…)" style="display:flex; align-items:center; gap:4px; white-space:nowrap;"><input type="checkbox" name="effectifs" value="1" {% if f.effectifs %}checked{% endif %}> effectifs</label>
+        <button class="btn-mini" type="submit">Enregistrer</button>
+        <button class="btn-mini rouge" type="submit" name="action" value="retirer" onclick="return confirm('Retirer {{ f.prenom }} du carnet des freelances ?\nSon historique sur les semaines passées est conservé.');">Retirer</button>
+      </form>
+      {% endfor %}
+      <form method="POST" action="{{ url_for('.ajouter_freelance') }}" style="display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:0;{% if freelances %} border-top:1px dashed #e0d7c6; padding-top:10px;{% endif %}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+        <input type="color" name="couleur" value="#95A5A6" title="Couleur au planning" style="width:32px; height:28px; border:1px solid #ccd4e0; border-radius:6px; padding:1px; cursor:pointer;">
+        <input type="text" name="prenom" placeholder="Prénom" required style="width:100px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <input type="text" name="nom" placeholder="NOM" style="width:100px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <input type="text" name="role" placeholder="Rôle (ex. Vigile — société X)" style="flex:1; min-width:140px; padding:5px; border:1px solid #ccd4e0; border-radius:6px;">
+        <label class="meta" title="Coché : il compte dans les minimums d'effectifs" style="display:flex; align-items:center; gap:4px; white-space:nowrap;"><input type="checkbox" name="effectifs" value="1"> effectifs</label>
+        <button class="btn-mini vert" type="submit">➕ Ajouter à la trame</button>
+      </form>
+      {% if freelances_retires %}
+      <div class="meta" style="margin-top:10px; padding-top:8px; border-top:1px solid #f0ead9; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        Retirés (historique conservé) :
+        {% for f in freelances_retires %}
+        <form method="POST" action="{{ url_for('.maj_freelance') }}" style="display:inline-flex; gap:4px; align-items:center; margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="tid" value="{{ tid }}"><input type="hidden" name="sem" value="{{ sem }}">
+          <input type="hidden" name="email" value="{{ f.email }}"><input type="hidden" name="action" value="reactiver">
+          <span>{{ f.prenom }} {{ f.nom }}</span><button class="btn-mini" type="submit">Réactiver</button>
+        </form>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
 
     <h2 id="apercu" style="margin-bottom:8px; scroll-margin-top:14px;">👁️ Aperçu de la trame</h2>
     <div class="semsel" style="margin-bottom:12px;">
@@ -1448,7 +1491,7 @@
         </tr>
         {% for l in tot_lignes %}
         <tr>
-          <td class="collab"><button type="button" onclick="basculerTotDetail('totdet-{{ loop.index }}', this)" title="Voir le détail du calcul" style="border:1px solid #d4deeb; background:#eef2f8; color:#1F4E79; border-radius:6px; cursor:pointer; padding:2px 7px; font-size:0.85em; margin-right:7px;">🔍</button><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}</td>
+          <td class="collab"><button type="button" onclick="basculerTotDetail('totdet-{{ loop.index }}', this)" title="Voir le détail du calcul" style="border:1px solid #d4deeb; background:#eef2f8; color:#1F4E79; border-radius:6px; cursor:pointer; padding:2px 7px; font-size:0.85em; margin-right:7px;">🔍</button><span style="display:inline-block; width:11px; height:11px; border-radius:50%; background:{{ l.couleur }}; margin-right:6px; vertical-align:middle;"></span><strong>{{ l.prenom }}</strong> {{ l.nom|upper }}{% if l.freelance %} <span title="Freelance / prestataire externe — jamais de relevé d'heures">🧳</span>{% endif %}</td>
           <td>{{ "%g"|format(l.trame) }}</td>
           <td>{{ "%g"|format(l.ajuste) }}</td>
           <td style="{% if l.solde_plan > 0 %}color:#1F7A3D;{% elif l.solde_plan < 0 %}color:#C0392B;{% endif %}">{{ "%+g"|format(l.solde_plan) if l.solde_plan else "0" }}</td>
@@ -1461,7 +1504,7 @@
           <td>{% if l.coherent %}<span style="color:#1F7A3D;">✅ Cohérent</span>{% else %}<span style="color:#C0392B;">⚠️ À vérifier</span>{% endif %}</td>
           {% else %}
           <td class="meta">—</td><td class="meta">—</td><td class="meta">—</td><td class="meta">—</td>
-          <td><span class="meta">⏳ Relevé en attente</span></td>
+          <td><span class="meta">{% if l.freelance %}🧳 Freelance (pas de relevé){% else %}⏳ Relevé en attente{% endif %}</span></td>
           {% endif %}
         </tr>
         <tr id="totdet-{{ loop.index }}" style="display:none;">
