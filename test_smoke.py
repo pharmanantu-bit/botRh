@@ -625,9 +625,11 @@ if employes:
     ok_r1 = (_d1 == {"planning"} and "ajouter_absence" in _n(_d1)
              and "lister_candidats" not in _n(_d1) and "chercher_salarie" in _n(_d1))
     _d2 = agent_rh.selectionner_domaines([{"role": "user", "content": AOx.BRIEF_RONDE}])
+    # Depuis l'étape 7 (candidats_dormants), la ronde embarque aussi le domaine
+    # recrutement ; les pièces jointes restent hors du brief.
     ok_r2 = ({"mails_rh_du_jour", "releves_manquants", "traiter_demande_conges",
-              "envoyer_relance", "documents_manquants_equipe"} <= _n(_d2)
-             and "lister_candidats" not in _n(_d2))
+              "envoyer_relance", "documents_manquants_equipe", "candidats_dormants"} <= _n(_d2)
+             and "ranger_piece_jointe" not in _n(_d2))
     _d3 = agent_rh.selectionner_domaines([{"role": "user", "content": "bonjour, merci !"}])
     ok_r3 = _d3 is None and len(agent_rh.specs_pour(None)) == len(agent_rh.OUTILS_SPECS)
     # tout outil du catalogue est classé (un nouvel outil non classé reste servi)
@@ -761,6 +763,28 @@ try:
     print(("OK " if ok_g else "KO ") + "[--] grille d'entretien (enregistrement)")
     if not ok_g:
         echecs.append("grille d'entretien KO")
+    # Phase 3 : nouveaux outils recrutement de l'agent (hors-ligne, fichier isolé).
+    # candidats_dormants (lecture), preparer_promesse (carte lien), et 3 écritures
+    # en mode validation = PROPOSITION seulement (zéro écriture sur disque).
+    import agent_outils as _AO3
+    d1 = recrutement.executer_outil_recrutement("candidats_dormants", {})
+    p1 = recrutement.executer_outil_recrutement("preparer_promesse", {"candidat": "Marie"})
+    a1 = _AO3.executer_outil("ajouter_candidat", {"prenom": "Zoé", "nom": "Nouvelle"}, {}, "validation")
+    n1 = _AO3.executer_outil("noter_entretien_candidat",
+                             {"candidat": "Marie", "note": "Bon contact téléphonique."}, {}, "validation")
+    v1 = _AO3.executer_outil("analyser_cv_candidat", {"candidat": "Marie"}, {}, "validation")
+    ok_p3 = ("Marie" in d1
+             and isinstance(p1, dict) and (p1.get("action") or {}).get("type") == "lien"
+             and "/admin/recrutement/promesse?id=cTEST" in (p1.get("action") or {}).get("url", "")
+             and isinstance(a1, dict) and "PROPOSITION" in a1.get("resultat", "")
+             and isinstance(n1, dict) and "PROPOSITION" in n1.get("resultat", "")
+             and isinstance(v1, dict) and "PROPOSITION" in v1.get("resultat", "")
+             and len(recrutement.charger_candidats()) == 1)
+    print(("OK " if ok_p3 else "KO ") + "[--] outils recrutement agent "
+          "(dormants + promesse lien + 3 propositions sans écriture)")
+    if not ok_p3:
+        echecs.append(f"outils recrutement phase 3 KO (dormants={'Marie' in d1}, "
+                      f"promesse={p1!r:.120}, ajout={a1!r:.120})")
 finally:
     recrutement.CANDIDATS_FILE = _orig_cf
     A._JSON_CACHE.pop(_tmp_cf, None)
@@ -819,20 +843,30 @@ _td2 = tempfile.mkdtemp()
 recrutement.CANDIDATS_FILE = os.path.join(_td2, "c.json")
 recrutement.CANDIDATS_DOCS_DIR = os.path.join(_td2, "cd")
 recrutement.CANDIDATS_DOCS_INDEX = os.path.join(recrutement.CANDIDATS_DOCS_DIR, "index.json")
+_mot_sauve = os.environ.get("ASSISTANT_MOTEUR")
+os.environ["ASSISTANT_MOTEUR"] = "fake"   # analyse IA auto du CV entrant, hors-ligne
 try:
     import base64 as _b64
     payload = {"prenom": "Léa", "nom": "Postulante", "email": "lea.p@ex.fr",
                "sujet": "Candidature préparateur", "filename": "cv.pdf",
                "content_b64": _b64.b64encode(b"%PDF cv test").decode(), "cv_texte": "CV de test"}
-    st1 = json.loads(client.post(f"/candidat_push?cle={A.API_CLE}", json=payload).data).get("status")
+    rep1 = json.loads(client.post(f"/candidat_push?cle={A.API_CLE}", json=payload).data)
+    st1 = rep1.get("status")
     st2 = json.loads(client.post(f"/candidat_push?cle={A.API_CLE}", json=payload).data).get("status")
     r403 = client.post("/candidat_push?cle=mauvaise", json=payload).status_code
-    nb = len(recrutement.charger_candidats())
-    ok_b = st1 == "ajoute" and st2 == "doublon" and nb == 1 and r403 == 403
-    print(("OK " if ok_b else "KO ") + f"[--] candidat_push (ajout={st1}, doublon={st2}, clé KO={r403})")
+    cands_b = recrutement.charger_candidats()
+    nb = len(cands_b)
+    an_auto = rep1.get("analyse") is True and all(c.get("analyse_ia") for c in cands_b.values())
+    ok_b = st1 == "ajoute" and st2 == "doublon" and nb == 1 and r403 == 403 and an_auto
+    print(("OK " if ok_b else "KO ") + f"[--] candidat_push (ajout={st1}, doublon={st2}, "
+          f"clé KO={r403}, analyse auto={an_auto})")
     if not ok_b:
         echecs.append("candidat_push KO")
 finally:
+    if _mot_sauve is None:
+        os.environ.pop("ASSISTANT_MOTEUR", None)
+    else:
+        os.environ["ASSISTANT_MOTEUR"] = _mot_sauve
     recrutement.CANDIDATS_FILE, recrutement.CANDIDATS_DOCS_DIR, recrutement.CANDIDATS_DOCS_INDEX = _cf2, _cdd2, _cdi2
     for _p in [k for k in A._JSON_CACHE if _td2.replace("\\", "/") in k.replace("\\", "/")]:
         A._JSON_CACHE.pop(_p, None)

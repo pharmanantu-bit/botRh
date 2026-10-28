@@ -49,6 +49,7 @@ import planning_equipe as PE
 from agent_rh import OUTILS_ECRITURE, OUTILS_SPECS, OUTILS_PAIE, OUTILS_DECISION, run_agent
 from agent_recrutement import OUTILS_SPECS as OUTILS_SPECS_RECRUTEMENT
 import recrutement as REC
+import recrutement_ia
 from assistant_rh import annuaire_pseudo, construire_table, pseudonymiser_texte, reidentifier
 from tokens import tokens_valides, reponse_de, generer_token
 
@@ -2078,6 +2079,86 @@ def _w_envoyer_mail_candidat(args, annuaire, executer):
         REC.sauvegarder_candidats(cands)
     return resume + f"\n→ {etat}", True
 
+
+def _w_ajouter_candidat(args, annuaire, executer):
+    prenom = (args.get("prenom") or "").strip()
+    nom = (args.get("nom") or "").strip()
+    if not prenom or not nom:
+        return "Prénom et nom obligatoires.", False
+    email = (args.get("email") or "").strip()
+    if email and "@" not in email:
+        return f"E-mail invalide : {email}", False
+    cands = REC.charger_candidats()
+    if email and any((c.get("email") or "").lower() == email.lower() for c in cands.values()):
+        return f"Un candidat a déjà l'e-mail {email} — pas de doublon créé.", False
+    complet = f"{prenom} {nom}".lower()
+    if any(f"{c.get('prenom', '')} {c.get('nom', '')}".strip().lower() == complet
+           and not c.get("anonymise") for c in cands.values()):
+        return f"Un candidat s'appelle déjà {prenom} {nom} — pas de doublon créé.", False
+    poste = (args.get("poste") or "").strip()
+    resume = (f"Nouveau candidat : {prenom} {nom}"
+              + (f" — {poste}" if poste else "") + (f" ({email})" if email else ""))
+    if executer:
+        cands[uuid.uuid4().hex[:10]] = {
+            "prenom": prenom, "nom": nom, "email": email,
+            "telephone": (args.get("telephone") or "").strip(),
+            "poste_vise": poste,
+            "source": (args.get("source") or "").strip() or "Agent RH",
+            "statut": "Reçu",
+            "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "notes_libres": "", "journal": [], "cv_texte": "", "analyse_ia": None,
+        }
+        REC.sauvegarder_candidats(cands)
+        resume += " — fiche créée (statut « Reçu »)"
+    return resume, True
+
+
+def _w_noter_entretien_candidat(args, annuaire, executer):
+    cid, c, err = _candidat(args.get("candidat"))
+    if err:
+        return err, False
+    note = (args.get("note") or "").strip()
+    if not note:
+        return "Note vide.", False
+    typ = _correspondance(args.get("type_note"), REC.TYPES_NOTE_ENTRETIEN) or "Autre"
+    nom = f"{c.get('prenom', '')} {c.get('nom', '')}".strip()
+    resume = f"Note « {typ} » au journal de {nom} : {note[:300]}"
+    if executer:
+        cands = REC.charger_candidats()
+        cands[cid].setdefault("journal", []).append({
+            "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"),
+            "type": typ, "note": note})
+        REC.sauvegarder_candidats(cands)
+    return resume, True
+
+
+def _w_analyser_cv_candidat(args, annuaire, executer):
+    cid, c, err = _candidat(args.get("candidat"))
+    if err:
+        return err, False
+    nom = f"{c.get('prenom', '')} {c.get('nom', '')}".strip()
+    if not REC._cv_clair(c).strip():
+        return (f"{nom} n'a pas de texte de CV exploitable — dépose d'abord un document "
+                "de type « CV » sur sa fiche.", False)
+    if not executer:
+        return f"Analyse IA du CV de {nom} (poste : {c.get('poste_vise') or 'non précisé'})", True
+    moteur, modele = _moteur()
+    try:
+        analyse = recrutement_ia.analyser_cv(REC._cv_clair(c), c.get("poste_vise", ""),
+                                             moteur=moteur, modele=modele)
+    except Exception as ex:
+        return f"Analyse IA indisponible ({type(ex).__name__}) — réessaie plus tard.", False
+    analyse["genere_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    cands = REC.charger_candidats()
+    if cid not in cands:
+        return "Candidat disparu pendant l'analyse.", False
+    cands[cid]["analyse_ia"] = analyse
+    REC.sauvegarder_candidats(cands)
+    pf = " · ".join(analyse.get("points_forts") or [])
+    return (f"CV de {nom} analysé : {analyse.get('score')}/100 — {analyse.get('adequation', '')}"
+            + (f"\nPoints forts : {pf}" if pf else "")
+            + "\n(aide à la décision, consultative — AI Act)"), True
+
 # --- Mémoire persistante --------------------------------------------------------------
 # Faits durables donnés par l'utilisateur, stockés EN CLAIR (prénoms réels) sur le
 # serveur ; pseudonymisés au moment d'être injectés dans le contexte du modèle.
@@ -2457,6 +2538,9 @@ OUTILS_ECRITURE_IMPL = {
     "actualiser_mails": _w_actualiser_mails,
     "changer_statut_candidat": _w_changer_statut_candidat,
     "envoyer_mail_candidat": _w_envoyer_mail_candidat,
+    "ajouter_candidat": _w_ajouter_candidat,
+    "noter_entretien_candidat": _w_noter_entretien_candidat,
+    "analyser_cv_candidat": _w_analyser_cv_candidat,
     "memoriser": _w_memoriser,
     "oublier": _w_oublier,
     "ranger_piece_jointe": _w_ranger_piece_jointe,
@@ -2478,6 +2562,8 @@ LIBELLES_OUTILS = {
     "retyper_document": "📄 Document", "generer_attestation": "📄 Attestation",
     "envoyer_attestation": "📧 Attestation", "actualiser_mails": "📬 Mails",
     "changer_statut_candidat": "🧑‍💼 Candidat", "envoyer_mail_candidat": "📧 Candidat",
+    "ajouter_candidat": "🧑‍💼 Candidat", "noter_entretien_candidat": "📝 Candidat",
+    "analyser_cv_candidat": "🤖 Analyse CV",
     "memoriser": "🧠 Mémoire", "oublier": "🧠 Mémoire",
 }
 
@@ -2648,7 +2734,10 @@ BRIEF_RONDE = (
     "(fin de CDD, période d'essai, visite médicale, retour d'absence) sans rien écrire ; "
     "6) documents_manquants_equipe — signale les dossiers incomplets, et propose "
     "d'envoyer un e-mail (envoyer_mail) au salarié pour réclamer ce qui manque quand "
-    "un document obligatoire est absent. "
+    "un document obligatoire est absent ; "
+    "7) candidats_dormants — signale les candidatures « Reçu / À contacter » restées "
+    "sans activité depuis 7 jours ou plus, SANS rien écrire : propose simplement une "
+    "convocation, un refus ou une note au journal pour chacune. "
     "Termine par un compte-rendu court et structuré : ce que tu as fait, ce qui attend "
     "ma décision, ce à quoi je dois penser. Si tout est en ordre, dis-le en une phrase. "
     "Ne touche pas à la paie (aucune correction/validation de relevé, aucun envoi au "

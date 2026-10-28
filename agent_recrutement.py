@@ -65,6 +65,18 @@ OUTILS_SPECS = [
                     "candidat. Ne l'envoie PAS.",
      "params": {"candidat": ("string", "Nom ou prénom du candidat")},
      "requis": ["candidat"]},
+    {"nom": "candidats_dormants",
+     "description": "Candidats « Reçu » ou « À contacter » sans aucune activité (note, "
+                    "analyse, changement) depuis N jours : les dossiers oubliés à relancer. "
+                    "Défaut : 7 jours.",
+     "params": {"jours": ("integer", "Ancienneté minimale en jours (défaut 7)")},
+     "requis": []},
+    {"nom": "preparer_promesse",
+     "description": "Prépare la PROMESSE D'EMBAUCHE d'un candidat : pré-remplit le courrier "
+                    "(contrat, poste, validité) et donne le lien de la page où la relire, "
+                    "l'ajuster et générer le PDF. Ne génère PAS le PDF directement.",
+     "params": {"candidat": ("string", "Nom ou prénom du candidat")},
+     "requis": ["candidat"]},
 ]
 
 

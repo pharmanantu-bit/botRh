@@ -992,8 +992,10 @@ TYPES_EVENEMENT = ["Entretien", "Augmentation", "Avertissement",
                    "Changement de poste", "Formation", "Congés", "Autre"]
 
 # Checklists d'arrivée (onboarding) et de départ (offboarding)
-TACHES_ARRIVEE = ["Contrat signé", "RIB reçu", "Badge / clés remis", "Blouse fournie",
-                  "Accès logiciel créé", "Visite médicale d'embauche", "Présentation à l'équipe"]
+TACHES_ARRIVEE = ["DPAE faite (URSSAF, avant la prise de poste)", "Contrat signé", "RIB reçu",
+                  "Registre unique du personnel mis à jour", "Badge / clés remis",
+                  "Blouse fournie", "Accès logiciel créé", "Visite médicale d'embauche",
+                  "Mutuelle / prévoyance proposée", "Présentation à l'équipe"]
 TACHES_DEPART = ["Badge / clés récupérés", "Blouse rendue", "Accès logiciel désactivés",
                  "Solde de tout compte", "Attestation employeur remise", "Certificat de travail remis"]
 

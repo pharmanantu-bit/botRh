@@ -123,10 +123,15 @@ SYSTEM_DOMAINES = {
     "- RECRUTEMENT : les CANDIDATS sont désignés par leur vrai nom (jamais par une "
     "étiquette Employé X) et gérés uniquement avec les outils candidats "
     "(lister_candidats, fiche_candidat, rechercher_candidat, classer_candidats, "
-    "preparer_mail_convocation, preparer_mail_refus, changer_statut_candidat, "
-    "envoyer_mail_candidat). Ne confonds jamais un candidat et un salarié : n'utilise "
-    "jamais un outil salarié pour un candidat, ni l'inverse. L'analyse IA d'un CV est "
-    "consultative : la décision (entretien, refus, embauche) est toujours humaine.\n"),
+    "ajouter_candidat, noter_entretien_candidat, analyser_cv_candidat, "
+    "candidats_dormants, preparer_promesse, preparer_mail_convocation, "
+    "preparer_mail_refus, changer_statut_candidat, envoyer_mail_candidat). Ne confonds "
+    "jamais un candidat et un salarié : n'utilise jamais un outil salarié pour un "
+    "candidat, ni l'inverse. L'analyse IA d'un CV est consultative : la décision "
+    "(entretien, refus, embauche) est toujours humaine. candidats_dormants liste les "
+    "candidatures oubliées ; propose alors une convocation, un refus ou une note. "
+    "preparer_promesse pré-remplit la promesse d'embauche et donne le lien de la page "
+    "(relecture humaine avant le PDF).\n"),
     "pj": (
     "- PIÈCES JOINTES : quand l'utilisateur dépose un fichier ou une photo, un message "
     "« 📎 Pièce jointe déposée » arrive avec son identifiant (pj_…), son type probable "
@@ -670,6 +675,37 @@ OUTILS_SPECS += list(OUTILS_SPECS_RECRUTEMENT) + [
                    "corps": ("string", "Corps du mail (texte brut)")},
         "requis": ["candidat", "sujet", "corps"],
     },
+    {
+        "nom": "ajouter_candidat",
+        "description": "RECRUTEMENT — crée une fiche candidat (candidature spontanée, "
+                       "appel, dépôt au comptoir…). Statut initial « Reçu ». Anti-doublon "
+                       "par e-mail et par nom complet.",
+        "params": {"prenom": ("string", "Prénom"),
+                   "nom": ("string", "Nom"),
+                   "email": ("string", "E-mail (optionnel)"),
+                   "telephone": ("string", "Téléphone (optionnel)"),
+                   "poste": ("string", "Poste visé (optionnel)"),
+                   "source": ("string", "Source : spontané, Indeed, comptoir… (optionnel)")},
+        "requis": ["prenom", "nom"],
+    },
+    {
+        "nom": "noter_entretien_candidat",
+        "description": "RECRUTEMENT — ajoute une note datée au journal d'un candidat "
+                       "(entretien téléphonique ou physique, test, échange, remarque).",
+        "params": {"candidat": ("string", "Nom ou prénom du candidat"),
+                   "note": ("string", "La note (compte-rendu, impression, suite à donner)"),
+                   "type_note": ("string", "Entretien téléphonique / Entretien physique / "
+                                           "Test-essai / Échange e-mail / Autre (optionnel)")},
+        "requis": ["candidat", "note"],
+    },
+    {
+        "nom": "analyser_cv_candidat",
+        "description": "RECRUTEMENT — lance l'analyse IA du CV d'un candidat (résumé, "
+                       "score d'adéquation au poste visé, points forts/attention). AIDE à "
+                       "la décision, consultative — jamais une décision automatique.",
+        "params": {"candidat": ("string", "Nom ou prénom du candidat")},
+        "requis": ["candidat"],
+    },
 ]
 
 # --- Outils MÉMOIRE (phase 5) ---
@@ -740,6 +776,7 @@ OUTILS_ECRITURE = {
     "appliquer_suggestion", "ignorer_suggestion", "analyser_documents", "cocher_checklist",
     "changer_statut", "valider_document", "retyper_document", "generer_attestation",
     "envoyer_attestation", "actualiser_mails", "changer_statut_candidat", "envoyer_mail_candidat",
+    "ajouter_candidat", "noter_entretien_candidat", "analyser_cv_candidat",
     "memoriser", "oublier", "ranger_piece_jointe",
 }
 # Décisions RH sur une personne (AI Act) : validation humaine obligatoire, même en autonome.
@@ -775,7 +812,9 @@ DOMAINE_OUTILS = {
               "preparer_mail", "envoyer_mail"},
     "recrutement": {"lister_candidats", "fiche_candidat", "rechercher_candidat",
                     "classer_candidats", "preparer_mail_convocation", "preparer_mail_refus",
-                    "changer_statut_candidat", "envoyer_mail_candidat"},
+                    "changer_statut_candidat", "envoyer_mail_candidat", "ajouter_candidat",
+                    "noter_entretien_candidat", "analyser_cv_candidat", "candidats_dormants",
+                    "preparer_promesse"},
     "pj": {"pieces_en_attente", "ranger_piece_jointe"},
 }
 
@@ -792,7 +831,7 @@ MOTS_DOMAINES = {
                r"adresse|telephone|archiv|avenant|certificat|entretien|arret\b|arrets\b|"
                r"embauch|onboard|recrue|nouveau|nouvelle|arrive|integr)",
     "mails": r"\b(?:mail|courriel|synthese|comptable|boite|message)",
-    "recrutement": r"\b(?:candidat|cv\b|recrut|entretien|embauche|convoc|refus|postul|annonce)",
+    "recrutement": r"\b(?:candidat|cv\b|recrut|entretien|embauche|convoc|refus|postul|annonce|promesse|dormant)",
     "pj": r"(?:\b(?:piece|fichier|photo|rang|depos|scan)|pj_)",
 }
 

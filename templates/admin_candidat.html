@@ -136,7 +136,7 @@
   <div class="bloc">
     <h2>🤖 Analyse IA du CV</h2>
     <div class="ia-legal">⚖️ {{ disclaimer_ia }}</div>
-    <div class="transp">⚠️ « Analyser » envoie le texte du CV à l'IA (moteur configuré : Gemini/Google, secours Mistral/UE) pour le résumé/score.</div>
+    <div class="transp">⚠️ Le CV d'une candidature reçue par e-mail est analysé automatiquement à l'arrivée ; « Analyser » (re)lance l'analyse. Le texte du CV est envoyé à l'IA (moteur configuré : Gemini/Google, secours Mistral/UE) pour le résumé/score.</div>
     {% if c.analyse_ia %}
       {% set a = c.analyse_ia %}
       {% set cls = 'bon' if a.score >= 70 else ('moy' if a.score >= 45 else 'bas') %}

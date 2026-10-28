@@ -654,6 +654,54 @@ def _mail_action(args, refus=False):
     return {"resultat": f"Brouillon de {quoi} préparé pour {c.get('prenom')} {c.get('nom')} (à relire et envoyer).",
             "action": {"type": "mailto", "label": label, "to": c["email"], "subject": sujet, "body": corps}}
 
+JOURS_DORMANT_DEFAUT = 7
+
+
+def candidats_dormants(jours=JOURS_DORMANT_DEFAUT):
+    """Candidats « Reçu » / « À contacter » sans activité (note, analyse, ajout)
+    depuis au moins N jours. Renvoie [(cid, c, jours_inactif)], le plus ancien
+    d'abord. Sert à l'outil de l'agent et à la ronde quotidienne."""
+    seuil = datetime.now() - timedelta(days=jours)
+    out = []
+    for cid, c in charger_candidats().items():
+        if c.get("anonymise") or c.get("statut") not in ("Reçu", "À contacter"):
+            continue
+        dc = _dernier_contact(c)
+        if dc and dc < seuil:
+            out.append((cid, c, (datetime.now() - dc).days))
+    out.sort(key=lambda x: -x[2])
+    return out
+
+
+def _o_dormants(args):
+    try:
+        jours = max(1, int(args.get("jours") or JOURS_DORMANT_DEFAUT))
+    except (TypeError, ValueError):
+        jours = JOURS_DORMANT_DEFAUT
+    dormants = candidats_dormants(jours)
+    if not dormants:
+        return f"Aucun candidat dormant (« Reçu » / « À contacter » sans activité depuis {jours} j ou plus)."
+    lignes = [f"- {c.get('prenom')} {c.get('nom')} — {c.get('poste_vise') or '—'} — "
+              f"« {c.get('statut')} » depuis {n} j sans activité"
+              for _, c, n in dormants]
+    return (f"{len(dormants)} candidat(s) dormant(s) (≥ {jours} j) :\n" + "\n".join(lignes)
+            + "\nÀ traiter : convocation, refus, ou note au journal.")
+
+
+def _o_preparer_promesse(args):
+    cid, c = _resoudre_candidat(args.get("candidat"))
+    if not cid:
+        return {"resultat": _msg_resolution(c), "action": None}
+    p = promesse_embauche.valeurs_par_defaut(c)
+    nom = f"{c.get('prenom')} {c.get('nom')}".strip()
+    return {"resultat": f"Promesse d'embauche pré-remplie pour {nom} "
+                        f"({p.get('type_contrat') or 'contrat à préciser'}, "
+                        f"{p.get('poste') or 'poste à préciser'}, valable jusqu'au "
+                        f"{p.get('validite') or '—'}). À relire, ajuster et générer en PDF sur la page.",
+            "action": {"type": "lien", "label": f"📄 Promesse d'embauche de {nom}",
+                       "url": f"/admin/recrutement/promesse?id={cid}"}}
+
+
 _OUTILS_RECRUTEMENT = {
     "lister_candidats": _o_lister,
     "fiche_candidat": _o_fiche,
@@ -661,6 +709,8 @@ _OUTILS_RECRUTEMENT = {
     "classer_candidats": _o_classer,
     "preparer_mail_convocation": lambda a: _mail_action(a, refus=False),
     "preparer_mail_refus": lambda a: _mail_action(a, refus=True),
+    "candidats_dormants": _o_dormants,
+    "preparer_promesse": _o_preparer_promesse,
 }
 
 def executer_outil_recrutement(nom, args):
@@ -769,7 +819,26 @@ def candidat_push():
                 "libelle": nom_orig, "taille": humaniser_taille(len(contenu)),
                 "date_ajout": datetime.now().strftime("%d/%m/%Y %H:%M")})
             sauvegarder_candidats_docs_index(idx)
-    return current_app.response_class(json.dumps({"status": "ajoute", "id": cid}), mimetype="application/json")
+    # Analyse IA AUTOMATIQUE du CV entrant (non bloquante : en cas d'échec le
+    # candidat est créé sans analyse, le bouton « Analyser » de la fiche reste là).
+    analyse_faite = False
+    texte_cv = (data.get("cv_texte") or "").strip()
+    if texte_cv:
+        try:
+            analyse = recrutement_ia.analyser_cv(
+                texte_cv[:20000], "", moteur=os.getenv("ASSISTANT_MOTEUR", "mistral"),
+                modele=os.getenv("ASSISTANT_MODELE") or None)
+            analyse["genere_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            candidats = charger_candidats()
+            if cid in candidats:
+                candidats[cid]["analyse_ia"] = analyse
+                sauvegarder_candidats(candidats)
+                analyse_faite = True
+        except Exception:
+            current_app.logger.exception("Analyse IA auto du CV entrant échouée (non bloquant)")
+    return current_app.response_class(json.dumps({"status": "ajoute", "id": cid,
+                                                  "analyse": analyse_faite}),
+                                      mimetype="application/json")
 
 
 @bp.route("/candidat_accuse_push", methods=["POST"])
@@ -835,6 +904,16 @@ def embaucher():
     prof.setdefault("date_entree", datetime.now().strftime("%d/%m/%Y"))
     if not prof.get("notes"):
         prof["notes"] = "Ancien candidat (issu du recrutement)."
+    # Formalités légales d'embauche : rappel tracé au journal, suivi dans la
+    # checklist d'arrivée (DPAE, registre du personnel, visite médicale, mutuelle).
+    prof.setdefault("journal", []).append({
+        "id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%d/%m/%Y"),
+        "type": "Décision RH",
+        "note": ("📋 Formalités d'embauche à faire (suivies dans la checklist d'arrivée) : "
+                 "DPAE sur urssaf.fr AVANT la prise de poste, contrat écrit signé, "
+                 "registre unique du personnel, visite d'information et de prévention "
+                 "(médecine du travail, dans les 3 mois), mutuelle/prévoyance."),
+    })
     profils[email] = prof
     sauvegarder_profils(profils)
     # 3) Copie des documents candidat -> salarié
