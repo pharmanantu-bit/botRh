@@ -859,7 +859,7 @@ PROFILS_FILE = os.path.join(BASE_DIR, "profils_rh.json")
 # Intitulés de poste (menu déroulant) — champ UNIQUE `poste`, utilisé partout :
 # dossier salarié, cartes équipe, attestation ET planning équipe. Fusion de
 # l'ancien `fonction_planning` (encore lu en secours pour les anciens profils).
-POSTES = ["Pharmacien", "Préparateur", "Préparatrice", "Apprentie", "Étudiant",
+POSTES = ["Pharmacien", "Préparateur", "Apprentie", "Étudiant",
           "Conseillère", "Rayonniste", "Resp Merch & logistique", "Resp ménage"]
 
 # Champs du profil RH (clé interne -> libellé affiché). NB : `couleur_planning`
@@ -1084,8 +1084,23 @@ def sauvegarder_profils(profils):
 
 def poste_de(profil):
     """Intitulé de poste affiché partout — retombe sur l'ancien champ
-    `fonction_planning` pour les profils d'avant la fusion (2026-07)."""
-    return (profil.get("poste") or profil.get("fonction_planning") or "").strip()
+    `fonction_planning` pour les profils d'avant la fusion (2026-07).
+    NORMALISE les anciennes variantes au passage (« Préparatrice »,
+    « Préparatrice en pharmacie »… → « Préparateur » ; idem Conseillère,
+    Pharmacien) : un seul intitulé par métier, sans toucher au stockage.
+    Les apprenti(e)s gardent leur intitulé (détection « apprent » utilisée
+    par le calcul d'heures sup structurelles)."""
+    p = (profil.get("poste") or profil.get("fonction_planning") or "").strip()
+    pl = p.lower()
+    if "apprent" in pl:
+        return p
+    if "prépar" in pl or "prepar" in pl:
+        return "Préparateur"
+    if "conseil" in pl:
+        return "Conseillère"
+    if "pharmacien" in pl:
+        return "Pharmacien"
+    return p
 
 
 def profil_de(email):
