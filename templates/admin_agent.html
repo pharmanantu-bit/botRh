@@ -35,6 +35,8 @@
     .b.sys { align-self: center; background: #fff8dc; color: #6b5300; font-size: 0.82em; max-width: 92%; text-align: center; box-shadow: none; }
     .b.err { background: #ffe0e0; color: #9C0006; }
     .b .ts { display: block; text-align: right; font-size: 0.68em; color: #8a8a8a; margin-top: 2px; }
+    .b code { background: #f0f4f8; border-radius: 4px; padding: 0 4px; font-size: 0.9em; }
+    .b a { color: #1F4E79; word-break: break-all; }
     .b .origine { font-size: 0.7em; color: #1F4E79; font-weight: bold; display: block; margin-bottom: 2px; }
     .outils { font-size: 0.7em; color: #6b8aa3; margin: -2px 0 2px 6px; align-self: flex-start; }
 
@@ -240,12 +242,32 @@
   const btn = document.getElementById('btn');
   function bas() { fil.scrollTop = fil.scrollHeight; }
   function heure() { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
+  // Markdown LÉGER des bulles de l'agent : **gras**, *italique*, `code`, URL
+  // cliquables. Tout est échappé AVANT la mise en forme (aucune injection HTML).
+  function mdHtml(s) {
+    s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/gm, '$1<em>$2</em>');
+    s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    s = s.replace(/(https?:\/\/[^\s&]+[^\s&.,;:)!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
   function bulle(cls, texte, ts) {
     const v = fil.querySelector('.vide'); if (v) v.remove();
-    const b = document.createElement('div'); b.className = 'b ' + cls; b.textContent = texte;
+    const b = document.createElement('div'); b.className = 'b ' + cls;
+    if (cls === 'bot') { b.innerHTML = mdHtml(texte); } else { b.textContent = texte; }
     const t = document.createElement('span'); t.className = 'ts'; t.textContent = ts || heure(); b.appendChild(t);
     fil.appendChild(b); bas(); return b;
   }
+  // Historique rendu côté serveur en texte brut -> même mise en forme au chargement.
+  document.querySelectorAll('.b.bot').forEach(function (b) {
+    Array.prototype.slice.call(b.childNodes).forEach(function (n) {
+      if (n.nodeType === 3 && n.textContent.trim()) {
+        const s = document.createElement('span'); s.innerHTML = mdHtml(n.textContent);
+        b.replaceChild(s, n);
+      }
+    });
+  });
   function carte(msgId, idx, a) {
     const c = document.createElement('div'); c.className = 'carte'; c.dataset.id = msgId; c.dataset.idx = idx;
     if (a.type === 'confirmer') {

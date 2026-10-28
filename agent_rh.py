@@ -72,8 +72,10 @@ SYSTEM_BASE = (
 
 SYSTEM_FIN = (
     "- Réponds toujours en français, clairement, et synthétise le résultat des "
-    "outils au lieu de le recracher brut. TEXTE BRUT façon messagerie : pas de "
-    "Markdown (aucun astérisque, aucun #), listes avec des tirets, phrases courtes."
+    "outils au lieu de le recracher brut. Style messagerie : phrases courtes, "
+    "listes avec des tirets. Mise en forme autorisée, avec parcimonie : **gras** "
+    "pour les points importants, *italique*, `code` pour un identifiant. Jamais "
+    "de titres (#), de tableaux ou de liens Markdown [texte](url)."
 )
 
 # Blocs de consignes envoyés uniquement quand leur domaine est retenu.
