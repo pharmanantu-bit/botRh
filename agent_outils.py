@@ -15,8 +15,9 @@ Les implémentations reçoivent l'annuaire {étiquette: employé} et travaillent
 local. Les cartes de confirmation (jamais envoyées au modèle) sont ré-identifiées
 pour l'affichage ; à la confirmation, le salarié est retrouvé par prénom/étiquette.
 
-Réseau : api.mistral.ai et api.anthropic.com sont dans la liste blanche de
-PythonAnywhere gratuit (proxy HTTP), donc la boucle agent tourne sur le serveur.
+Réseau : api.mistral.ai, api.anthropic.com et generativelanguage.googleapis.com
+(Gemini) sont dans la liste blanche de PythonAnywhere gratuit (proxy HTTP), donc
+la boucle agent tourne sur le serveur quel que soit le moteur.
 Les e-mails partent via le runner GitHub (repository_dispatch « mail_agent »),
 le SMTP sortant étant bloqué sur le serveur ; en local (sans GITHUB_TOKEN), envoi
 SMTP direct avec les identifiants Gmail du .env.
@@ -2577,7 +2578,8 @@ def confirmer_action(outil, args, origine="carte"):
 
 # --- Boucle de conversation ------------------------------------------------------
 
-MODELE_AGENT_DEFAUT = {"mistral": "mistral-medium-latest", "claude": "claude-sonnet-4-5"}
+MODELE_AGENT_DEFAUT = {"mistral": "mistral-medium-latest", "claude": "claude-sonnet-4-5",
+                       "gemini": "gemini-2.5-flash"}
 
 
 def _moteur():
@@ -2668,8 +2670,8 @@ def _detail_erreur_ia(e):
     """Message lisible pour l'utilisateur selon l'erreur du moteur IA."""
     import urllib.error
     if isinstance(e, urllib.error.HTTPError):
-        return {401: "clé API refusée (vérifie MISTRAL_API_KEY / ANTHROPIC_API_KEY)",
-                429: "limite de débit Mistral atteinte (palier gratuit : 25 000 tokens/minute) — attends une minute et réessaie, ou active la facturation sur console.mistral.ai",
+        return {401: "clé API refusée (vérifie GEMINI_API_KEY / MISTRAL_API_KEY / ANTHROPIC_API_KEY)",
+                429: "limite de débit du moteur IA atteinte (quota gratuit) — attends une minute et réessaie",
                 }.get(e.code, f"erreur HTTP {e.code} du moteur IA") + "."
     if isinstance(e, (RuntimeError, TimeoutError)):
         return f"{e}"

@@ -10,6 +10,10 @@ Le moteur d'analyse est interchangeable via le paramètre `moteur` :
   - "fake"    : aucune requête réseau (test de la chaîne, coût nul)
   - "mistral" : API Mistral (hébergée en UE) — MISTRAL_API_KEY
   - "claude"  : API Anthropic — ANTHROPIC_API_KEY
+  - "gemini"  : API Google (endpoint compatible OpenAI) — GEMINI_API_KEY ;
+                quota gratuit bien plus large que Mistral (le 429 de la ronde).
+                Secours automatique : si Gemini échoue et que MISTRAL_API_KEY
+                existe, l'appel est retenté en Mistral.
 """
 import os
 import re
@@ -212,6 +216,13 @@ def _post_json(url, headers, charge, timeout=60, essais=4):
 
 # --- Moteurs interchangeables ---
 
+# Endpoint Gemini COMPATIBLE OpenAI : mêmes formats messages/tools/tool_calls que
+# Mistral -> tout le transport (_post_json, 429/Retry-After, budget) est partagé.
+# generativelanguage.googleapis.com est sur la liste blanche PythonAnywhere gratuit.
+GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+MODELE_GEMINI_DEFAUT = "gemini-2.5-flash"
+
+
 def _moteur_fake(system, prompt, modele):
     return {"resume_texte": "(FAKE) analyse simulée — aucun appel réseau, coût nul.",
             "taches_a_faire": [], "a_mettre_en_place": [], "echeances": [], "alertes": []}
@@ -244,7 +255,37 @@ def _moteur_claude(system, prompt, modele):
     return _extraire_json(rep["content"][0]["text"])
 
 
-MOTEURS = {"fake": _moteur_fake, "mistral": _moteur_mistral, "claude": _moteur_claude}
+def _moteur_gemini(system, prompt, modele):
+    cle = os.getenv("GEMINI_API_KEY")
+    if not cle:
+        raise RuntimeError("GEMINI_API_KEY manquante.")
+    rep = _post_json(GEMINI_OPENAI_URL,
+                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
+                     {"model": modele or MODELE_GEMINI_DEFAUT,
+                      "messages": [{"role": "system", "content": system},
+                                   {"role": "user", "content": prompt}],
+                      "response_format": {"type": "json_object"},
+                      "temperature": 0.2, "max_tokens": 2000})
+    return _extraire_json(rep["choices"][0]["message"]["content"])
+
+
+def _avec_secours(principal, secours):
+    """Moteur de secours : si le principal échoue (clé absente, quota, panne) et
+    que MISTRAL_API_KEY est disponible, on retente en Mistral au lieu d'échouer.
+    Le modèle explicite n'est PAS transmis au secours (un nom de modèle Gemini
+    ferait un 400 chez Mistral) : chaque moteur garde son défaut."""
+    def wrapper(system, prompt, modele):
+        try:
+            return principal(system, prompt, modele)
+        except Exception:
+            if not os.getenv("MISTRAL_API_KEY"):
+                raise
+            return secours(system, prompt, None)
+    return wrapper
+
+
+MOTEURS = {"fake": _moteur_fake, "mistral": _moteur_mistral, "claude": _moteur_claude,
+           "gemini": _avec_secours(_moteur_gemini, _moteur_mistral)}
 
 
 # --- Agent conversationnel RH / juridique ---
@@ -290,6 +331,17 @@ def _chat_claude(messages, modele):
     return rep["content"][0]["text"].strip()
 
 
+def _chat_gemini(messages, modele):
+    cle = os.getenv("GEMINI_API_KEY")
+    if not cle:
+        raise RuntimeError("GEMINI_API_KEY manquante.")
+    rep = _post_json(GEMINI_OPENAI_URL,
+                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
+                     {"model": modele or MODELE_GEMINI_DEFAUT, "messages": messages,
+                      "temperature": 0.3, "max_tokens": 1200})
+    return rep["choices"][0]["message"]["content"].strip()
+
+
 def chat(messages, moteur="mistral", modele=None):
     """messages: [{role:'user'|'assistant', content}]. Renvoie la réponse texte de l'assistant RH."""
     full = [{"role": "system", "content": SYSTEM_CHAT}] + [
@@ -298,6 +350,13 @@ def chat(messages, moteur="mistral", modele=None):
     ]
     if moteur == "claude":
         return _chat_claude(full, modele)
+    if moteur == "gemini":
+        try:
+            return _chat_gemini(full, modele)
+        except Exception:
+            if not os.getenv("MISTRAL_API_KEY"):
+                raise
+            return _chat_mistral(full, None)
     if moteur == "fake":
         return "(mode fake) Réponse simulée — configure un moteur (Mistral) pour de vraies réponses."
     return _chat_mistral(full, modele)

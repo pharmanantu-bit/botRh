@@ -5,11 +5,12 @@ VRAI CV → pas de pseudonymisation. ⚠️ Le texte du CV est donc envoyé au m
 (Mistral, hébergé UE, par défaut) : à mentionner dans l'UI (transparence RGPD).
 
 Moteur interchangeable comme assistant_rh : "fake" (hors-ligne, coût nul),
-"mistral", "claude". Réutilise le transport `_post_json`/`_extraire_json`.
+"mistral", "claude", "gemini" (secours Mistral automatique). Réutilise le
+transport `_post_json`/`_extraire_json`.
 """
 import os
 
-from assistant_rh import _post_json, _extraire_json
+from assistant_rh import _post_json, _extraire_json, GEMINI_OPENAI_URL, MODELE_GEMINI_DEFAUT
 
 SYSTEM_CV = (
     "Tu es un recruteur RH expérimenté en pharmacie d'officine en France. On te donne "
@@ -69,6 +70,20 @@ def _claude(texte, poste, modele):
     return _extraire_json(rep["content"][0]["text"])
 
 
+def _gemini(texte, poste, modele):
+    cle = os.getenv("GEMINI_API_KEY")
+    if not cle:
+        raise RuntimeError("GEMINI_API_KEY manquante.")
+    rep = _post_json(GEMINI_OPENAI_URL,
+                     {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"},
+                     {"model": modele or MODELE_GEMINI_DEFAUT,
+                      "messages": [{"role": "system", "content": SYSTEM_CV},
+                                   {"role": "user", "content": _prompt(texte, poste)}],
+                      "response_format": {"type": "json_object"},
+                      "temperature": 0.2, "max_tokens": 1200})
+    return _extraire_json(rep["choices"][0]["message"]["content"])
+
+
 def analyser_cv(texte, poste, moteur="mistral", modele=None):
     """Analyse un CV face à un poste. Renvoie un dict normalisé
     {resume, score, adequation, points_forts[], points_attention[]}."""
@@ -76,6 +91,13 @@ def analyser_cv(texte, poste, moteur="mistral", modele=None):
         brut = _claude(texte, poste, modele)
     elif moteur == "fake":
         brut = _fake(texte, poste)
+    elif moteur == "gemini":
+        try:
+            brut = _gemini(texte, poste, modele)
+        except Exception:
+            if not os.getenv("MISTRAL_API_KEY"):
+                raise
+            brut = _mistral(texte, poste, None)
     else:
         brut = _mistral(texte, poste, modele)
     try:

@@ -18,11 +18,13 @@ SEND_DAY = 20
 
 # --- Assistant RH (lecture Gmail + analyse IA, exécuté sur le runner GitHub) ---
 # Moteur d'analyse interchangeable : "fake" (test, sans réseau), "mistral" (UE),
-# "claude" (Anthropic). Les identités salariés sont pseudonymisées avant tout envoi.
+# "claude" (Anthropic), "gemini" (Google, quota gratuit large, secours Mistral
+# automatique). Les identités salariés sont pseudonymisées avant tout envoi.
 ASSISTANT_MOTEUR = os.getenv("ASSISTANT_MOTEUR", "fake")
 ASSISTANT_MODELE = os.getenv("ASSISTANT_MODELE", "")  # vide = défaut du moteur choisi
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Expéditeurs surveillés (séparés par des virgules ; "@domaine" = tout le domaine)
 COMPTA_EMAILS = os.getenv("COMPTA_EMAILS", "")        # ex : jan@expertise-compta.com
 PLANNING_SENDER = os.getenv("PLANNING_SENDER", "")    # ex : noreply@monplanningpharma.fr

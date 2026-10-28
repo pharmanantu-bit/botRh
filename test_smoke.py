@@ -247,6 +247,57 @@ if employes:
         print(f"{statut}[--] agent fake (pseudonymisation + ré-identification) "
               f"· outils={res['outils_utilises']}")
 
+# --- Moteur Gemini : câblage hors-ligne (aucun appel réseau) ---
+# Vérifie : l'entrée dans les registres, clé manquante -> RuntimeError, et le
+# SECOURS Mistral de run_agent : bascule si Gemini tombe AVANT tout outil, mais
+# JAMAIS si un outil a déjà tourné (aucune double écriture en mode autonome).
+import assistant_rh as _AR
+import agent_outils as _AOG
+ok_g = "gemini" in _AR.MOTEURS and "gemini" in _AOG.MODELE_AGENT_DEFAUT
+_sauve_env = {k: os.environ.pop(k, None) for k in ("GEMINI_API_KEY", "MISTRAL_API_KEY")}
+_orig_bg, _orig_bm = agent_rh._boucle_gemini, agent_rh._boucle_mistral
+try:
+    try:
+        agent_rh._boucle_gemini("sys", [], {}, [], lambda *a: "", None)
+        ok_g = False
+        echecs.append("gemini : clé absente non détectée")
+    except RuntimeError:
+        pass
+    os.environ["MISTRAL_API_KEY"] = "cle-de-test"
+
+    def _g_panne(systeme, msgs, annuaire, table, executer, modele, specs=None):
+        raise TimeoutError("panne simulée avant tout outil")
+
+    def _m_secours(systeme, msgs, annuaire, table, executer, modele, specs=None):
+        return "réponse du secours", [], []
+
+    agent_rh._boucle_gemini, agent_rh._boucle_mistral = _g_panne, _m_secours
+    _r = agent_rh.run_agent([{"role": "user", "content": "bonjour"}], [],
+                            lambda *a: "", moteur="gemini")
+    if "secours" not in _r.get("reply", ""):
+        ok_g = False
+        echecs.append("gemini : secours Mistral non déclenché")
+
+    def _g_panne_apres_outil(systeme, msgs, annuaire, table, executer, modele, specs=None):
+        executer("lister_employes", {}, annuaire)  # un outil a tourné...
+        raise TimeoutError("panne simulée après un outil")
+
+    agent_rh._boucle_gemini = _g_panne_apres_outil
+    try:
+        agent_rh.run_agent([{"role": "user", "content": "bonjour"}], [],
+                           lambda *a: "", moteur="gemini")
+        ok_g = False
+        echecs.append("gemini : secours déclenché APRÈS un outil (double écriture possible)")
+    except TimeoutError:
+        pass
+finally:
+    agent_rh._boucle_gemini, agent_rh._boucle_mistral = _orig_bg, _orig_bm
+    os.environ.pop("MISTRAL_API_KEY", None)
+    for _k, _v in _sauve_env.items():
+        if _v is not None:
+            os.environ[_k] = _v
+print(("OK " if ok_g else "KO ") + "[--] moteur gemini : registre + clé manquante + secours sans double écriture")
+
 # --- Noms tolérants : accents/fautes/préfixes (pseudonymisation + résolution + outil) ---
 if employes:
     from assistant_rh import construire_table, pseudonymiser_texte, annuaire_pseudo

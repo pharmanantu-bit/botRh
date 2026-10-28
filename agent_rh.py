@@ -22,7 +22,7 @@ import unicodedata
 
 from assistant_rh import (
     construire_table, annuaire_pseudo, pseudonymiser_texte, reidentifier, _post_json,
-    definir_echeance,
+    definir_echeance, GEMINI_OPENAI_URL, MODELE_GEMINI_DEFAUT,
 )
 
 BUDGET_SECONDES = 240   # temps total max par question (cron : curl --max-time 300)
@@ -873,17 +873,14 @@ def _exec_outil(nom, args, annuaire, table, executer, outils, actions):
 
 # --- Transports par moteur ---
 
-def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None):
-    cle = os.getenv("MISTRAL_API_KEY")
-    if not cle:
-        raise RuntimeError("MISTRAL_API_KEY manquante.")
-    url = "https://api.mistral.ai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"}
+def _boucle_openai(systeme, msgs, annuaire, table, executer, modele, specs, url, headers):
+    """Boucle d'outils au format OpenAI (chat/completions + tool_calls), partagée
+    par Mistral et Gemini (endpoint compatible OpenAI). `modele` est déjà résolu."""
     convo = [{"role": "system", "content": systeme}] + msgs
     outils, actions = [], []
     for _ in range(MAX_TOURS):
         rep = _post_json(url, headers, {
-            "model": modele or "mistral-small-latest", "messages": convo,
+            "model": modele, "messages": convo,
             "tools": _tools_mistral(specs), "tool_choice": "auto",
             "temperature": 0.2, "max_tokens": 1500})
         message = rep["choices"][0]["message"]
@@ -901,9 +898,29 @@ def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None
             convo.append({"role": "tool", "tool_call_id": tc.get("id"),
                           "name": nom, "content": res})
     # Garde-fou : un dernier appel SANS outils pour forcer une réponse rédigée.
-    rep = _post_json(url, headers, {"model": modele or "mistral-small-latest",
+    rep = _post_json(url, headers, {"model": modele,
                                     "messages": convo, "temperature": 0.2, "max_tokens": 1500})
     return rep["choices"][0]["message"].get("content") or "(pas de réponse)", outils, actions
+
+
+def _boucle_mistral(systeme, msgs, annuaire, table, executer, modele, specs=None):
+    cle = os.getenv("MISTRAL_API_KEY")
+    if not cle:
+        raise RuntimeError("MISTRAL_API_KEY manquante.")
+    return _boucle_openai(systeme, msgs, annuaire, table, executer,
+                          modele or "mistral-small-latest", specs,
+                          "https://api.mistral.ai/v1/chat/completions",
+                          {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"})
+
+
+def _boucle_gemini(systeme, msgs, annuaire, table, executer, modele, specs=None):
+    cle = os.getenv("GEMINI_API_KEY")
+    if not cle:
+        raise RuntimeError("GEMINI_API_KEY manquante.")
+    return _boucle_openai(systeme, msgs, annuaire, table, executer,
+                          modele or MODELE_GEMINI_DEFAUT, specs,
+                          GEMINI_OPENAI_URL,
+                          {"Authorization": f"Bearer {cle}", "Content-Type": "application/json"})
 
 
 def _boucle_claude(systeme, msgs, annuaire, table, executer, modele, specs=None):
@@ -1064,6 +1081,24 @@ def run_agent(messages, employes, executer, moteur="mistral", modele=None, roste
                                                 modele, specs)
     elif moteur == "fake":
         texte, outils, actions = _boucle_fake(msgs, annuaire, table, executer)
+    elif moteur == "gemini":
+        # Secours Mistral — UNIQUEMENT si aucun outil n'a encore tourné : une
+        # écriture déjà exécutée (mode autonome) ne doit jamais être rejouée.
+        compteur = {"n": 0}
+
+        def _executer_compte(nom, args, ann):
+            compteur["n"] += 1
+            return executer(nom, args, ann)
+
+        try:
+            texte, outils, actions = _boucle_gemini(systeme, msgs, annuaire, table,
+                                                    _executer_compte, modele, specs)
+        except Exception:
+            if compteur["n"] or not os.getenv("MISTRAL_API_KEY"):
+                raise
+            texte, outils, actions = _boucle_mistral(systeme, msgs, annuaire, table,
+                                                     executer, "mistral-medium-latest", specs)
+            texte = (texte or "") + "\n\n⚠️ Gemini indisponible — réponse du moteur de secours Mistral."
     else:
         texte, outils, actions = _boucle_mistral(systeme, msgs, annuaire, table, executer,
                                                  modele, specs)

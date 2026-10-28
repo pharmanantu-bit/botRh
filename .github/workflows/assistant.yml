@@ -1,9 +1,9 @@
 name: Assistant RH botRh
 
 # Tourne ICI (runner GitHub, accès Internet complet) car le serveur PythonAnywhere
-# gratuit n'a pas d'Internet sortant (ni IMAP ni API IA). Le runner lit la boîte
-# Gmail (LECTURE SEULE), analyse les mails RH via Mistral après PSEUDONYMISATION des
-# identités, puis pousse le résumé sur la page /admin/assistant du serveur.
+# gratuit n'a pas d'IMAP (liste blanche HTTP uniquement). Le runner lit la boîte
+# Gmail (LECTURE SEULE), analyse les mails RH via Gemini (secours Mistral) après
+# PSEUDONYMISATION des identités, puis pousse le résumé sur /admin/assistant.
 
 on:
   schedule:
@@ -33,8 +33,10 @@ jobs:
           # pas encore, la valeur est vide -> les scripts retombent sur le défaut
           # « botRh-trigger-2026 » (cohérent avec un serveur encore par défaut).
           API_CLE: ${{ secrets.API_CLE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Mistral reste le moteur de SECOURS automatique si Gemini échoue.
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          ASSISTANT_MOTEUR: mistral
+          ASSISTANT_MOTEUR: gemini
           COMPTA_EMAILS: ${{ secrets.COMPTA_EMAILS }}
           ADMIN_RH_DOMAINS: ${{ secrets.ADMIN_RH_DOMAINS }}
           EXTRA_NOMS: ${{ secrets.EXTRA_NOMS }}
