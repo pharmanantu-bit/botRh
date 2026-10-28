@@ -90,7 +90,7 @@ def sauvegarder_options(o):
 
 # --- Changements ponctuels (surcharge de la trame pour une date réelle) ------
 CHANGEMENTS_FILE = os.path.join(BASE_DIR, "planning_changements.json")
-MOTIFS = ["Non catégorisé", "Heures sup/récup/échanges", "Contrat ponctuel",
+MOTIFS = ["Non catégorisé", "Échange de jours", "Heures sup/récup/échanges", "Contrat ponctuel",
           "Repos compensatoire", "Garde", "Fermeture exceptionnelle",
           "Rattrapage d'heures", "Congés payés", "Arrêt maladie",
           "Accident du travail", "Congé maternité", "Congé parental",
@@ -2648,6 +2648,56 @@ def supprimer_changement():
         return redirect(url_for(".vue", onglet="changements", mois=request.form.get("mois", "")))
     return redirect(url_for(".vue", onglet="planning", date=date_iso,
                             _anchor=f"j-{date_iso}"))
+
+
+@bp.route("/admin/planning-equipe/deplacer-jour", methods=["POST"])
+def deplacer_jour():
+    """🔁 Échange de jours en un geste : vide le jour d'origine et pose les
+    créneaux à la date cible — deux changements ponctuels motif « Échange de
+    jours » (neutre : jamais décompté des congés payés). La cible doit être
+    LIBRE (ni horaires de trame, ni changement, ni absence) : rien n'est écrasé."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    email = request.form.get("email", "")
+    date_iso = request.form.get("date", "")
+    try:
+        d_src = datetime.strptime(date_iso, "%Y-%m-%d").date()
+        d_dst = datetime.strptime(request.form.get("cible", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                msg="deplace_date"))
+    if d_dst == d_src or not any(e["email"] == email for e in employes_planning()):
+        return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                msg="deplace_date", _anchor=f"j-{date_iso}"))
+    creneaux = []
+    for s in (1, 2):
+        deb = _norm_hhmm(request.form.get(f"h{s}d"))
+        fin = _norm_hhmm(request.form.get(f"h{s}f"))
+        if creneau_incoherent(deb, fin):
+            return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                    msg="creneau_invalide", _anchor=f"j-{date_iso}"))
+        if deb and fin:
+            creneaux.append({"debut": deb, "fin": fin})
+    if not creneaux:
+        return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                msg="deplace_vide", _anchor=f"j-{date_iso}"))
+    creneaux.sort(key=lambda c: _minutes(c["debut"]) if _minutes(c["debut"]) is not None else 0)
+    data = charger_changements()
+    absences = charger_absences()
+    act_dst = trame_active_pour(charger_trames(), d_dst)
+    if (changement_de(data, d_dst.isoformat(), email) is not None
+            or absence_active(absences, email, d_dst)
+            or creneaux_trame_jour(act_dst, email, d_dst)):
+        return redirect(url_for(".vue", onglet="planning", date=date_iso,
+                                msg="deplace_occupe", _anchor=f"j-{date_iso}"))
+    maj = datetime.now().strftime("%d/%m/%Y %H:%M")
+    data.setdefault(d_src.isoformat(), {})[email] = {
+        "motif": "Échange de jours", "creneaux": [], "maj": maj}
+    data.setdefault(d_dst.isoformat(), {})[email] = {
+        "motif": "Échange de jours", "creneaux": creneaux, "maj": maj}
+    sauvegarder_changements(data)
+    return redirect(url_for(".vue", onglet="planning", date=d_dst.isoformat(),
+                            msg="deplace_ok", _anchor=f"j-{d_dst.isoformat()}"))
 
 
 @bp.route("/admin/planning-equipe/saisie-ponctuelle", methods=["POST"])

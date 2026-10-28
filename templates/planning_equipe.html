@@ -155,6 +155,10 @@
   {% if msg == 'no_trame' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">Aucune trame sélectionnée — crée-en une d'abord.</div>{% endif %}
   {% if msg == 'effectifs_ok' %}<div class="msg">Effectifs minimums enregistrés.</div>{% endif %}
   {% if msg == 'freelance_ok' %}<div class="msg">🧳 Carnet des freelances mis à jour.</div>{% endif %}
+  {% if msg == 'deplace_ok' %}<div class="msg">🔁 Jour déplacé — l'origine est vidée et les horaires posés à la nouvelle date (motif « Échange de jours »).</div>{% endif %}
+  {% if msg == 'deplace_occupe' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Déplacement refusé : la date choisie a déjà des horaires (trame), un changement ou une absence pour ce collaborateur. Rien n'a été modifié.</div>{% endif %}
+  {% if msg == 'deplace_date' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Déplacement impossible : date invalide (ou identique au jour d'origine).</div>{% endif %}
+  {% if msg == 'deplace_vide' %}<div class="msg" style="background:#FFD6D6; color:#9C0006;">⚠️ Déplacement impossible : aucun créneau saisi pour la nouvelle date.</div>{% endif %}
   {% if msg == 'freelance_invalide' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Freelance invalide — le prénom est obligatoire.</div>{% endif %}
   {% if msg == 'conges_ok' %}<div class="msg">Droits de congés enregistrés.</div>{% endif %}
   {% if msg == 'cp_acceptee' %}<div class="msg">Demande acceptée — l'absence « Congés payés » est au planning, les compteurs sont à jour.</div>{% endif %}
@@ -1657,6 +1661,32 @@
       </div>
     </form>
     <p class="meta" style="margin-top:10px; font-size:0.74em;">Ajuste le réel du jour (retard, départ anticipé, absence). Vide = rien saisi ; « Non travaillé » force l'absence. « Rétablir » remet les horaires de la trame.</p>
+    <details id="depBloc" style="margin-top:12px; border-top:1px solid #e6ebf2; padding-top:10px;">
+      <summary style="cursor:pointer; color:#1F4E79; font-size:0.86em; font-weight:bold;">🔁 Déplacer ce jour vers une autre date</summary>
+      <form method="POST" action="{{ url_for('.deplacer_jour') }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="email" id="depEmail">
+        <input type="hidden" name="date" id="depDate">
+        <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">Nouvelle date</label>
+        <input type="date" name="cible" id="depCible" required style="padding:7px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.9em; margin-bottom:10px;">
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1d" id="depH1d" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+            <span style="color:#889;">–</span>
+            <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h1f" id="depH1f" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+            <span style="color:#aab; font-size:0.78em; margin-left:4px;">créneau&nbsp;1</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2d" id="depH2d" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+            <span style="color:#889;">–</span>
+            <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" name="h2f" id="depH2f" style="width:74px; padding:7px 6px; border:1px solid #ccd4e0; border-radius:6px; font-size:0.95em; text-align:center;">
+            <span style="color:#aab; font-size:0.78em; margin-left:4px;">créneau&nbsp;2</span>
+          </div>
+        </div>
+        <button class="btn" type="submit">🔁 Déplacer</button>
+        <p class="meta" style="margin-top:8px; font-size:0.74em;">Vide ce jour et pose ces horaires à la nouvelle date (motif « Échange de jours », jamais décompté des congés). Refusé si la nouvelle date a déjà des horaires, un changement ou une absence.</p>
+      </form>
+    </details>
   </div>
 </div>
 <script>
@@ -1712,6 +1742,17 @@
         // bouton « Annuler ce changement » seulement si la ligne est déjà modifiée
         document.getElementById('chgSuppr').style.display =
           row.querySelector('.fr-label span[title^="Modifié"]') ? 'inline-block' : 'none';
+        // 🔁 Déplacer ce jour : pré-rempli avec les horaires effectifs du jour
+        // (sinon la trame), refermé à chaque ouverture de la modale.
+        var dep = document.getElementById('depBloc');
+        if (dep) {
+          dep.open = false;
+          var src = (cr[0].debut || cr[0].fin || cr[1].debut || cr[1].fin) ? cr : tr;
+          set('depEmail', row.dataset.email); set('depDate', row.dataset.date);
+          set('depCible', '');
+          set('depH1d', src[0].debut); set('depH1f', src[0].fin);
+          set('depH2d', src[1].debut); set('depH2f', src[1].fin);
+        }
         modal.style.display = 'flex';
       });
     });
