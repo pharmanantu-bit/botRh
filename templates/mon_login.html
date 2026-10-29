@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Connexion — Mon espace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 32px 26px; max-width: 420px; margin: 50px auto 0; }
+    h1 { color: #1F4E79; font-size: 1.2em; text-align: center; margin-bottom: 6px; }
+    .sous { color: #778; font-size: 0.85em; text-align: center; margin-bottom: 20px; }
+    label { display: block; font-size: 0.8em; color: #556; margin: 12px 0 4px; }
+    input[type=email], input[type=password] { width: 100%; padding: 10px; border: 1px solid #ccd4e0; border-radius: 8px; font-size: 1em; }
+    .rester { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; font-size: 0.88em; color: #445; }
+    .btn { width: 100%; margin-top: 16px; padding: 12px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+    .err { background: #fde8e8; border: 1px solid #f5b5b5; color: #9C0006; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; margin-bottom: 14px; }
+    .aide { text-align: center; font-size: 0.8em; color: #9aa7b5; margin-top: 16px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <h1>🔐 Mon espace</h1>
+  <div class="sous">Pharmacie Apothical — planning, relevés et congés</div>
+  {% if erreur %}<div class="err">E-mail ou mot de passe incorrect.</div>{% endif %}
+  <form method="POST" action="/mon-espace/login">
+    <label for="email">E-mail</label>
+    <input type="email" id="email" name="email" value="{{ email or '' }}" required autocomplete="username" autofocus>
+    <label for="password">Mot de passe</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <label class="rester"><input type="checkbox" name="rester" value="1" checked> Rester connecté sur cet appareil</label>
+    <button class="btn" type="submit">Se connecter</button>
+  </form>
+  <div class="aide">Première connexion ou mot de passe oublié ?<br>Utilisez le lien reçu par e-mail, ou demandez-le à la pharmacie.</div>
+</div>
+</body>
+</html>

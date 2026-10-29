@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <title>Créer mon mot de passe — Mon espace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 32px 26px; max-width: 420px; margin: 50px auto 0; }
+    h1 { color: #1F4E79; font-size: 1.2em; text-align: center; margin-bottom: 6px; }
+    .sous { color: #778; font-size: 0.85em; text-align: center; margin-bottom: 20px; }
+    label { display: block; font-size: 0.8em; color: #556; margin: 12px 0 4px; }
+    input[type=password] { width: 100%; padding: 10px; border: 1px solid #ccd4e0; border-radius: 8px; font-size: 1em; }
+    .btn { width: 100%; margin-top: 18px; padding: 12px; background: #1F4E79; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; }
+    .btn:hover { background: #163d60; }
+    .err { background: #fde8e8; border: 1px solid #f5b5b5; color: #9C0006; border-radius: 8px; padding: 10px 14px; font-size: 0.88em; margin-bottom: 14px; }
+    .note { font-size: 0.78em; color: #9aa7b5; margin-top: 6px; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <h1>Bienvenue {{ prenom }} 👋</h1>
+  <div class="sous">Choisissez votre mot de passe pour accéder à votre espace.</div>
+  {% if erreur %}<div class="err">Les deux mots de passe doivent être identiques et faire au moins 6 caractères.</div>{% endif %}
+  <form method="POST" action="/mon-espace/creer-mdp">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label for="password">Mot de passe</label>
+    <input type="password" id="password" name="password" required minlength="6" autocomplete="new-password" autofocus>
+    <label for="password2">Confirmez le mot de passe</label>
+    <input type="password" id="password2" name="password2" required minlength="6" autocomplete="new-password">
+    <div class="note">Au moins 6 caractères.</div>
+    <button class="btn" type="submit">Valider et accéder à mon espace</button>
+  </form>
+</div>
+</body>
+</html>

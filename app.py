@@ -54,7 +54,11 @@ CSRF_EXEMPT = {"/envoyer", "/assistant_push", "/document_push", "/candidat_push"
                "/push_envoyees",  # runner GitHub (clé API), confirme l'envoi des push
                # Formulaires employés authentifiés par jeton signé (pas de session).
                "/mon-espace/conges/demander", "/mon-espace/conges/annuler",
-               "/mon-espace/demandes/repondre"}
+               "/mon-espace/demandes/repondre",
+               # Connexion / création de mot de passe de l'espace collaborateur
+               # (pas de session admin → pas de jeton CSRF ; protégés par
+               # mot de passe haché / jeton signé).
+               "/mon-espace/login", "/mon-espace/creer-mdp"}
 
 def csrf_token():
     tok = session.get("_csrf_token")
@@ -670,6 +674,55 @@ def appareil_expire_le():
         return ""
     exp = request.cookies.get(APPAREIL_COOKIE, "").split(".", 1)[0]
     return datetime.fromtimestamp(int(exp)).strftime("%d/%m/%Y")
+
+
+# --- Espace collaborateur : connexion email + mot de passe -------------------
+# Un collaborateur se connecte avec son e-mail + un mot de passe (haché dans son
+# profil). « Rester connecté » pose un cookie signé HMAC valable 30 JOURS (=
+# reconnexion mensuelle imposée : l'échéance signée est toujours à 30 j, même
+# pour un cookie de session) ; sinon le cookie dure le temps du navigateur. Le
+# jeton signé (liens e-mail, QR) reste accepté en secours (ex. relevé mensuel).
+ESP_COOKIE = "botrh_espace"
+ESP_DUREE_J = 30
+
+
+def _esp_signature(email, exp):
+    import hmac as _hmac
+    return _hmac.new(str(app.secret_key or "botrh").encode(),
+                     f"espace|{email}|{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def poser_cookie_espace(resp, email, rester):
+    """Pose le cookie de session de l'espace collaborateur sur la réponse."""
+    import hmac as _hmac  # noqa: F401 (cohérence avec le reste du module)
+    exp = int(_time.time() + ESP_DUREE_J * 86400)
+    resp.set_cookie(ESP_COOKIE, f"{email}|{exp}|{_esp_signature(email, exp)}",
+                    max_age=(ESP_DUREE_J * 86400 if rester else None),
+                    httponly=True, samesite="Lax", secure=EST_PROD, path="/")
+    return resp
+
+
+def espace_emp():
+    """Collaborateur connecté via le cookie signé de l'espace, ou None."""
+    import hmac as _hmac
+    val = request.cookies.get(ESP_COOKIE, "")
+    try:
+        email, exp, sig = val.split("|", 2)
+    except (ValueError, AttributeError):
+        return None
+    if not (exp.isdigit() and int(exp) > int(_time.time())
+            and _hmac.compare_digest(sig, _esp_signature(email, exp))):
+        return None
+    return next((e for e in charger_employes() if e["email"] == email), None)
+
+
+def page_espace():
+    """Collaborateur d'une page de l'espace, authentifié par le COOKIE DE
+    SESSION uniquement (mot de passe). Le jeton signé ne donne PAS accès aux
+    pages de l'espace — sinon il contournerait le mot de passe et la
+    reconnexion mensuelle ; il ne sert qu'à créer/réinitialiser le mot de passe
+    (/mon-espace/creer-mdp) et au formulaire de relevé (/releve, inchangé)."""
+    return espace_emp()
 
 
 def _sur_mobile():
@@ -1378,7 +1431,7 @@ def manifest_espace():
     prenom = request.args.get("prenom", "")
     import json as _json
     m = {"name": "Pharmacie — Mon espace", "short_name": "Mon espace",
-         "start_url": f"/mon-espace?token={token}&prenom={prenom}",
+         "start_url": "/mon-espace",   # cookie valide → espace ; sinon → connexion
          "scope": "/", "display": "standalone",
          "background_color": "#f0f4f8", "theme_color": "#1F4E79",
          "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
@@ -1402,14 +1455,12 @@ def sw_espace():
 @app.route("/mon-espace/conges")
 def mon_espace_conges():
     """Onglet Congés de l'espace collaborateur : solde de CP, demande de
-    congés, suivi des demandes (jeton signé)."""
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    if not token or not prenom:
-        abort(404)
-    emp = resoudre_employe(token, charger_employes())
+    congés, suivi des demandes."""
+    emp = page_espace()
     if not emp:
-        abort(404)
+        return redirect(url_for("mon_espace_login"))
+    token = generer_token(emp["prenom"], emp["email"])
+    prenom = emp["prenom"]
     from planning_equipe import (bilan_cp, charger_absences, charger_changements,
                                  charger_conges, periode_conges, charger_demandes_cp,
                                  STATUTS_CP)
@@ -1434,13 +1485,11 @@ def mon_espace_conges():
 def mon_espace_demandes():
     """Onglet Demandes de l'espace collaborateur : les demandes de la pharmacie
     (congés proposés / heures supplémentaires) à accepter ou refuser."""
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    if not token or not prenom:
-        abort(404)
-    emp = resoudre_employe(token, charger_employes())
+    emp = page_espace()
     if not emp:
-        abort(404)
+        return redirect(url_for("mon_espace_login"))
+    token = generer_token(emp["prenom"], emp["email"])
+    prenom = emp["prenom"]
     from planning_equipe import (charger_demandes_admin, TYPES_DEMANDE_ADMIN,
                                  STATUTS_DEMANDE_ADMIN, _quand_demande_admin)
     demandes_pharma = []
@@ -1458,23 +1507,71 @@ def mon_espace_demandes():
                            dem_msg=request.args.get("dem", ""))
 
 
+@app.route("/mon-espace/login", methods=["GET", "POST"])
+def mon_espace_login():
+    """Connexion de l'espace collaborateur : e-mail + mot de passe + « rester
+    connecté ». Déjà connecté (cookie valide) → direct au planning."""
+    from werkzeug.security import check_password_hash
+    if request.method == "GET" and espace_emp():
+        return redirect(url_for("planning_equipe.mon_planning"))
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        mdp = request.form.get("password", "")
+        emp = next((e for e in charger_employes()
+                    if (e["email"] or "").strip().lower() == email), None)
+        hashe = charger_profils().get(emp["email"], {}).get("espace_pwd", "") if emp else ""
+        if emp and hashe and check_password_hash(hashe, mdp):
+            resp = redirect(url_for("planning_equipe.mon_planning"))
+            return poser_cookie_espace(resp, emp["email"],
+                                       bool(request.form.get("rester")))
+        return render_template("mon_login.html", erreur=True, email=email)
+    return render_template("mon_login.html")
+
+
+@app.route("/mon-espace/creer-mdp", methods=["GET", "POST"])
+def mon_espace_creer_mdp():
+    """Création / réinitialisation du mot de passe via le lien signé envoyé par
+    la pharmacie (jeton). L'employé choisit son mot de passe, puis il est
+    connecté."""
+    from werkzeug.security import generate_password_hash
+    token = request.values.get("token", "")
+    emp = resoudre_employe(token, charger_employes()) if token else None
+    if not emp:
+        abort(404)
+    if request.method == "POST":
+        p1 = request.form.get("password", "")
+        p2 = request.form.get("password2", "")
+        if len(p1) < 6 or p1 != p2:
+            return render_template("mon_creer_mdp.html", token=token,
+                                   prenom=emp["prenom"], erreur=True)
+        profils = charger_profils()
+        prof = profils.get(emp["email"], {})
+        prof["espace_pwd"] = generate_password_hash(p1)
+        profils[emp["email"]] = prof
+        sauvegarder_profils(profils)
+        resp = redirect(url_for("planning_equipe.mon_planning"))
+        return poser_cookie_espace(resp, emp["email"], True)
+    return render_template("mon_creer_mdp.html", token=token, prenom=emp["prenom"])
+
+
 @app.route("/mon-espace/deconnexion")
 def mon_espace_deconnexion():
-    """« Déconnexion » de l'espace collaborateur : l'accès se fait par lien
-    signé (pas de session) — cette page neutre, SANS jeton dans l'adresse,
-    permet de quitter proprement l'espace sur un appareil partagé."""
-    return render_template("mon_deconnexion.html")
+    """Déconnexion de l'espace collaborateur : le cookie de session est effacé
+    (utile sur un appareil partagé). Revenir = page de connexion."""
+    resp = app.make_response(render_template("mon_deconnexion.html"))
+    resp.delete_cookie(ESP_COOKIE, path="/")
+    return resp
 
 
 @app.route("/mon-espace")
 def mon_espace():
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    if not token or not prenom:
-        abort(404)
-
-    emp = resoudre_employe(token, charger_employes())
-    token_canon = generer_token(emp["prenom"], emp["email"]) if emp else token
+    emp = page_espace()
+    if not emp:
+        return redirect(url_for("mon_espace_login"))
+    # Jeton canonique régénéré : les liens des templates fonctionnent que la
+    # personne soit venue par le cookie de session ou par un lien signé.
+    token = token_canon = generer_token(emp["prenom"], emp["email"])
+    prenom = emp["prenom"]
 
     historique = []
     for fichier in sorted(os.listdir(BASE_DIR), reverse=True):

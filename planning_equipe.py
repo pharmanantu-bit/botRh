@@ -1525,17 +1525,22 @@ def vue():
             import urllib.parse
             from tokens import generer_token
             tok_sel = generer_token(selected["prenom"], selected["email"])
-            lien_espace = (request.url_root.rstrip("/")
-                           + f"/mon-espace?token={tok_sel}&prenom="
-                           + urllib.parse.quote(selected["prenom"]))
-            su = "Ton espace personnel — planning et relevés d'heures"
+            base = request.url_root.rstrip("/")
+            lien_mdp = f"{base}/mon-espace/creer-mdp?token={tok_sel}"
+            lien_login = f"{base}/mon-espace/login"
+            su = "Ton espace personnel — planning, relevés et congés"
             body = (f"Bonjour {selected['prenom']},\n\n"
-                    "Voici le lien de ton espace personnel à la pharmacie "
-                    "(ton planning et tes relevés d'heures) :\n"
-                    f"{lien_espace}\n\n"
-                    "Astuce : ouvre ce lien sur ton téléphone puis choisis "
-                    "« Ajouter à l'écran d'accueil » — ton espace s'installe "
-                    "comme une application.\n\n"
+                    "Ton espace personnel à la pharmacie est prêt (planning, "
+                    "relevés d'heures et congés).\n\n"
+                    "1) Crée ton mot de passe avec ce lien (valable pour toi) :\n"
+                    f"{lien_mdp}\n\n"
+                    "2) Ensuite, connecte-toi quand tu veux avec ton e-mail "
+                    f"({selected['email']}) et ton mot de passe :\n"
+                    f"{lien_login}\n\n"
+                    "Astuce : ouvre l'espace sur ton téléphone puis « Ajouter à "
+                    "l'écran d'accueil » — il s'installe comme une application, "
+                    "et « Rester connecté » t'évite de ressaisir ton mot de passe "
+                    "chaque jour (reconnexion une fois par mois).\n\n"
                     "Réponds à ce mail si tu as la moindre question.\n\n"
                     "Cordialement,\n\n" + SIGNATURE)
             selected["mail_invit"] = ("https://mail.google.com/mail/?view=cm&fs=1&to="
@@ -2631,19 +2636,24 @@ def vie_equipe_maj():
 
 
 def _emp_espace():
-    """Résout le collaborateur d'une page de l'espace (jeton signé) ou 404."""
-    from tokens import resoudre_employe
-    token = request.args.get("token", "")
-    emp = resoudre_employe(token, charger_employes()) if token else None
+    """Résout le collaborateur d'une page de l'espace : cookie de session OU
+    jeton signé (via app.page_espace). Renvoie (token_canon, prenom, emp) ;
+    emp est None si non connecté (la page doit alors rediriger vers la
+    connexion)."""
+    from app import page_espace
+    from tokens import generer_token
+    emp = page_espace()
     if not emp:
-        abort(404)
-    return token, request.args.get("prenom", ""), emp
+        return None, None, None
+    return generer_token(emp["prenom"], emp["email"]), emp["prenom"], emp
 
 
 @bp.route("/mon-espace/memo")
 def mon_memo():
     """Mémos de la pharmacie pour l'équipe (lecture seule)."""
-    token, prenom, _emp = _emp_espace()
+    token, prenom, emp = _emp_espace()
+    if not emp:
+        return redirect(url_for("mon_espace_login"))
     memos = sorted(charger_vie_equipe()["memos"],
                    key=lambda m: m.get("cree_le", ""), reverse=True)
     return render_template("mon_memo.html", prenom=prenom, token=token, memos=memos[:20])
@@ -2652,7 +2662,9 @@ def mon_memo():
 @bp.route("/mon-espace/evenements")
 def mon_evenements():
     """Événements de la pharmacie à venir (réunions, inventaires, animations…)."""
-    token, prenom, _emp = _emp_espace()
+    token, prenom, emp = _emp_espace()
+    if not emp:
+        return redirect(url_for("mon_espace_login"))
     auj = jour_courant()
     evs = []
     for e in sorted(charger_vie_equipe()["evenements"], key=lambda x: x.get("date", "")):
@@ -2671,7 +2683,9 @@ def mon_evenements():
 @bp.route("/mon-espace/vacances")
 def mon_vacances():
     """Vacances scolaires (zone C — Nanterre) : plages saisies côté admin."""
-    token, prenom, _emp = _emp_espace()
+    token, prenom, emp = _emp_espace()
+    if not emp:
+        return redirect(url_for("mon_espace_login"))
     auj = jour_courant()
     plages = []
     for v in sorted(charger_vie_equipe()["vacances"], key=lambda x: x.get("debut", "")):
@@ -2693,12 +2707,9 @@ def mon_equipe():
     """Trombinoscope de l'équipe pour l'espace collaborateur (jeton signé,
     lecture seule) : prénom, nom, poste et couleur du planning — aucune
     coordonnée personnelle. Salariés actifs uniquement."""
-    from tokens import resoudre_employe
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    emp = resoudre_employe(token, charger_employes()) if token else None
+    token, prenom, emp = _emp_espace()
     if not emp:
-        abort(404)
+        return redirect(url_for("mon_espace_login"))
     profils = charger_profils()
     employes_tous = employes_planning()
     couleurs = couleurs_map(employes_tous, profils)
@@ -2716,12 +2727,9 @@ def mon_equipe():
 def mon_gardes():
     """Gardes à venir pour l'espace collaborateur (jeton signé, lecture seule) :
     dates de garde + qui est de garde (changements ponctuels motif « Garde »)."""
-    from tokens import resoudre_employe
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    emp = resoudre_employe(token, charger_employes()) if token else None
+    token, prenom, emp = _emp_espace()
     if not emp:
-        abort(404)
+        return redirect(url_for("mon_espace_login"))
     emap = {e["email"]: e for e in employes_planning()}
     gardes = []
     auj = jour_courant()
@@ -2755,12 +2763,9 @@ def mon_planning():
     permission requise. Seule la VUE se règle par collaborateur (Planning ›
     Équipe) : « Son planning personnel » → seulement sa ligne ;
     « Le planning de tous » (défaut) → toute l'équipe."""
-    from tokens import resoudre_employe
-    token = request.args.get("token", "")
-    prenom = request.args.get("prenom", "")
-    emp = resoudre_employe(token, charger_employes()) if token else None
+    token, prenom, emp = _emp_espace()
     if not emp:
-        abort(404)
+        return redirect(url_for("mon_espace_login"))
     profils = charger_profils()
     prof = profils.get(emp["email"], {})
     vue_perso = prof.get("vue_planning", "Le planning de tous") == "Son planning personnel"
