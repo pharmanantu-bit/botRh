@@ -1515,10 +1515,20 @@ def vue():
         selected = next((m for m in membres if m["email"] == request.args.get("edit", "")), None)
         if selected and selected["a_email"]:
             import urllib.parse
-            su = "Invitation — planning de la pharmacie"
+            from tokens import generer_token
+            tok_sel = generer_token(selected["prenom"], selected["email"])
+            lien_espace = (request.url_root.rstrip("/")
+                           + f"/mon-espace?token={tok_sel}&prenom="
+                           + urllib.parse.quote(selected["prenom"]))
+            su = "Ton espace personnel — planning et relevés d'heures"
             body = (f"Bonjour {selected['prenom']},\n\n"
-                    "Tu es invité(e) à rejoindre / consulter le planning de l'équipe de la "
-                    "pharmacie. Réponds à ce mail si tu as la moindre question.\n\n"
+                    "Voici le lien de ton espace personnel à la pharmacie "
+                    "(ton planning et tes relevés d'heures) :\n"
+                    f"{lien_espace}\n\n"
+                    "Astuce : ouvre ce lien sur ton téléphone puis choisis "
+                    "« Ajouter à l'écran d'accueil » — ton espace s'installe "
+                    "comme une application.\n\n"
+                    "Réponds à ce mail si tu as la moindre question.\n\n"
                     "Cordialement,\n\n" + SIGNATURE)
             selected["mail_invit"] = ("https://mail.google.com/mail/?view=cm&fs=1&to="
                                       + urllib.parse.quote(selected["email"])
@@ -2521,6 +2531,53 @@ def repondre_demande_admin():
     dm["lu_admin"] = False    # notification « réponse reçue » côté pharmacie
     sauvegarder_demandes_admin(demandes)
     return redirect(retour + "&dem=repondu#demandes")
+
+
+@bp.route("/mon-espace/planning")
+def mon_planning():
+    """Planning CONSULTABLE par un collaborateur depuis son espace (jeton signé,
+    lecture seule). Respecte les réglages par collaborateur de Planning › Équipe :
+    permission « Pas d'accès » → page refusée ; vue « Son planning personnel »
+    → seulement sa ligne ; « Le planning de tous » → toute l'équipe."""
+    from tokens import resoudre_employe
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    emp = resoudre_employe(token, charger_employes()) if token else None
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    prof = profils.get(emp["email"], {})
+    if prof.get("permission_planning", "Pas d'accès") == "Pas d'accès":
+        return redirect(f"/mon-espace?token={token}&prenom={prenom}")
+    vue_perso = prof.get("vue_planning", "Le planning de tous") == "Son planning personnel"
+    try:
+        ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        ref = jour_courant()
+    lundi = _lundi(ref)
+    data = charger_trames()
+    act = trame_active_pour(data, lundi)
+    frise, titre_sem = None, ""
+    if act:
+        employes_tous = employes_planning()
+        couleurs = couleurs_map(employes_tous, profils)
+        emap = {e["email"]: e for e in employes_tous}
+        rot = semaine_rotation(act, lundi)
+        membres = membres_semaine(act, employes_tous, profils, lundi)
+        if vue_perso:
+            membres = [em for em in membres if em == emp["email"]]
+        emp_inclus = [emap[em] for em in membres if em in emap]
+        frise = _frise(act, rot, emp_inclus, couleurs, None, True,
+                       lundi, charger_changements(), charger_absences(),
+                       masquer_fermes=True)
+        titre_sem = f"Semaine {lundi.isocalendar()[1]} ({rot})"
+    return render_template(
+        "mon_planning.html", prenom=prenom, token=token, emp=emp,
+        frise=frise, vue_perso=vue_perso, titre_sem=titre_sem,
+        periode=f"{lundi.strftime('%d/%m')} – {(lundi + timedelta(days=6)).strftime('%d/%m/%Y')}",
+        prec=(lundi - timedelta(days=7)).isoformat(),
+        suiv=(lundi + timedelta(days=7)).isoformat(),
+        auj_sem=(lundi == _lundi(jour_courant())))
 
 
 @bp.route("/admin/planning-equipe/changement", methods=["POST"])

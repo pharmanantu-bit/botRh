@@ -1369,6 +1369,36 @@ def admin_infos_equipe():
     return render_template("infos_equipe.html", equipe=equipe, maj=maj, nb=len(equipe))
 
 
+@app.route("/mon-espace/manifest.webmanifest")
+def manifest_espace():
+    """Manifeste PWA de l'espace collaborateur : « Ajouter à l'écran d'accueil »
+    crée une icône qui ouvre directement SON espace (le jeton signé est dans
+    la start_url). Portée « / » pour couvrir /mon-espace ET /releve."""
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    import json as _json
+    m = {"name": "Pharmacie — Mon espace", "short_name": "Mon espace",
+         "start_url": f"/mon-espace?token={token}&prenom={prenom}",
+         "scope": "/", "display": "standalone",
+         "background_color": "#f0f4f8", "theme_color": "#1F4E79",
+         "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                   {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png",
+                    "purpose": "any maskable"}]}
+    return app.response_class(_json.dumps(m), mimetype="application/manifest+json")
+
+
+@app.route("/mon-espace-sw.js")
+def sw_espace():
+    """Service worker minimal de l'espace collaborateur (requis pour que
+    l'installation PWA soit proposée). Servi à la racine → portée « / »."""
+    js = ("self.addEventListener('install',function(){self.skipWaiting();});"
+          "self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});"
+          "self.addEventListener('fetch',function(){});")
+    rep = app.response_class(js, mimetype="application/javascript")
+    rep.headers["Cache-Control"] = "no-cache"
+    return rep
+
+
 @app.route("/mon-espace")
 def mon_espace():
     token = request.args.get("token", "")
@@ -1442,7 +1472,15 @@ def mon_espace():
                 "quand": _quand_demande_admin(dm)})
         demandes_pharma = demandes_pharma[:10]
 
+    # Onglet Planning : visible seulement si la permission (Planning › Équipe)
+    # n'est pas « Pas d'accès ».
+    acces_planning = False
+    if emp:
+        prof_e = charger_profils().get(emp["email"], {})
+        acces_planning = prof_e.get("permission_planning", "Pas d'accès") != "Pas d'accès"
+
     return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique,
+                           acces_planning=acces_planning,
                            rempli_courant=rempli_courant, modifiable=modifiable,
                            jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
                            mois_courant=f"{MOIS_FR[mois_c]} {annee_c}",

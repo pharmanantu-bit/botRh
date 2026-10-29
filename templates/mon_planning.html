@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Mon planning — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 12px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 16px; max-width: 1100px; margin: 0 auto; }
+    /* Onglets de l'espace collaborateur */
+    .app-ongs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .app-ongs a { flex: 1; text-align: center; padding: 10px 6px; border-radius: 9px; text-decoration: none; font-weight: bold; font-size: 0.92em; color: #1F4E79; background: #eef2f8; }
+    .app-ongs a.actif { background: #1F4E79; color: #fff; }
+    h1 { color: #1F4E79; font-size: 1.05em; margin-bottom: 2px; }
+    .sub { color: #778; font-size: 0.8em; margin-bottom: 12px; }
+    /* Navigation de semaine */
+    .semnav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .semnav a { padding: 7px 13px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.85em; border: 1px solid #d4deeb; color: #1F4E79; background: #fff; white-space: nowrap; }
+    .semnav a.auj { background: #1F4E79; color: #fff; border-color: #1F4E79; }
+    .semnav .pos { font-weight: bold; color: #1F4E79; font-size: 0.9em; margin: 0 4px; }
+    /* ===== Frise (mêmes classes que _frise.html, lecture seule) ===== */
+    .frise { border: none; }
+    .fr-jour { border: 1px solid #8ba0b9; border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+    .fr-jour.fr-auj { border: 2px solid #C0392B; box-shadow: 0 0 0 1px rgba(192,57,43,.25); }
+    .fr-jour-tt { background: #dde6f2; color: #1F4E79; font-weight: bold; font-size: 0.82em; padding: 4px 10px; border-bottom: 1px solid #8ba0b9; }
+    .fr-jour-tt .ferme { color: #8a94a3; font-weight: normal; }
+    .fr-row { display: flex; align-items: stretch; border-top: 1px solid #6e7f94; min-height: 26px; }
+    .fr-jour-tt + .fr-row { border-top: none; }
+    .fr-jour-axe { display: flex; align-items: flex-end; height: 20px; background: #eef3f9; border-bottom: 1px solid #a9b7c9; }
+    .fr-jour-axe .sp { width: 92px; flex: none; }
+    .fr-jour-axe .track { position: relative; flex: 1; height: 100%; border-left: 1px solid #a9b7c9; }
+    .fr-jour-axe .tick { position: absolute; bottom: 1px; transform: translateX(-50%); font-size: 0.78em; font-weight: 600; color: #4a6280; white-space: nowrap; }
+    .fr-jour-axe .tick-fin { transform: translateX(-100%); padding-right: 2px; }
+    .fr-jour-axe + .fr-row { border-top: none; }
+    .fr-label { width: 92px; flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.74em; }
+    .fr-track { position: relative; flex: 1; border-left: 1px solid #a9b7c9; }
+    .fr-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(31,78,121,.32); z-index: 2; pointer-events: none; }
+    .fr-grid-min { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(31,78,121,.10); z-index: 2; pointer-events: none; }
+    .fr-grid-demi { background: rgba(31,78,121,.18); }
+    .fr-ouv { position: absolute; top: 0; bottom: 0; background: none; }
+    .fr-bar { position: absolute; top: 0; bottom: 0; border-radius: 0; color: white; font-size: 0.76em; font-weight: 600; line-height: 1; display: flex; align-items: center; justify-content: flex-start; padding-left: 5px; overflow: hidden; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(15,30,50,.35); }
+    .vide { text-align: center; color: #888; padding: 34px 10px; font-size: 0.95em; }
+    .note { color: #9aa7b5; font-size: 0.74em; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="carte">
+  <div class="app-ongs">
+    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}" class="actif">📅 Planning</a>
+    <a href="/mon-espace?token={{ token }}&prenom={{ prenom }}">🕐 Mes relevés</a>
+  </div>
+  <h1>{{ 'Mon planning' if vue_perso else "Planning de l'équipe" }}</h1>
+  <div class="sub">{{ titre_sem }}{% if titre_sem %} · {% endif %}{{ periode }} — consultation seule</div>
+  <div class="semnav">
+    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}&date={{ prec }}">‹ Semaine préc.</a>
+    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}" class="{{ 'auj' if auj_sem else '' }}">Aujourd'hui</a>
+    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}&date={{ suiv }}">Semaine suiv. ›</a>
+  </div>
+  {% if frise and frise.jours %}
+  {% include '_frise.html' %}
+  <p class="note">Planning donné à titre indicatif — en cas de doute, rapprochez-vous de la pharmacie. Les barres sombres/claires signalent des heures modifiées par rapport à l'habitude.</p>
+  {% else %}
+  <div class="vide">Pas de planning sur cette semaine.</div>
+  {% endif %}
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

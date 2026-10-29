@@ -3,11 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>Mon espace — {{ prenom }}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
     .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 30px; max-width: 680px; margin: 0 auto; }
+    .app-ongs { display: flex; gap: 6px; margin-bottom: 18px; }
+    .app-ongs a { flex: 1; text-align: center; padding: 10px 6px; border-radius: 9px; text-decoration: none; font-weight: bold; font-size: 0.92em; color: #1F4E79; background: #eef2f8; }
+    .app-ongs a.actif { background: #1F4E79; color: #fff; }
     .entete { text-align: center; margin-bottom: 28px; }
     .entete h1 { color: #1F4E79; font-size: 1.4em; }
     .entete p { color: #555; margin-top: 6px; font-size: 0.95em; }
@@ -38,6 +47,12 @@
 </head>
 <body>
 <div class="carte">
+  {% if acces_planning %}
+  <div class="app-ongs">
+    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}">📅 Planning</a>
+    <a href="/mon-espace?token={{ token }}&prenom={{ prenom }}" class="actif">🕐 Mes relevés</a>
+  </div>
+  {% endif %}
   <div class="entete">
     <h1>Bonjour {{ prenom }} !</h1>
     <p>Voici l'historique de vos relevés d'heures.</p>
@@ -173,5 +188,8 @@
     <div class="vide">Aucun relevé soumis pour le moment.</div>
   {% endif %}
 </div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
 </body>
 </html>
