@@ -1458,6 +1458,14 @@ def mon_espace_demandes():
                            dem_msg=request.args.get("dem", ""))
 
 
+@app.route("/mon-espace/deconnexion")
+def mon_espace_deconnexion():
+    """« Déconnexion » de l'espace collaborateur : l'accès se fait par lien
+    signé (pas de session) — cette page neutre, SANS jeton dans l'adresse,
+    permet de quitter proprement l'espace sur un appareil partagé."""
+    return render_template("mon_deconnexion.html")
+
+
 @app.route("/mon-espace")
 def mon_espace():
     token = request.args.get("token", "")

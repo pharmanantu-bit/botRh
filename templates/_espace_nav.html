@@ -50,6 +50,7 @@
   {% for cle, ico, lib, url in esp_items %}
   <a href="{{ url }}?token={{ token }}&prenom={{ prenom }}" class="{{ 'actif' if nav_actif == cle else '' }}">{{ ico }} {{ lib }}</a>
   {% endfor %}
+  <a href="/mon-espace/deconnexion" style="margin-top:auto; border-top:1px solid rgba(255,255,255,.18);">🚪 Déconnexion</a>
 </nav>
 <script>
   document.addEventListener('keydown', function (e) {
