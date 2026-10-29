@@ -1417,8 +1417,13 @@ def vue():
         # --- Saisie « Horaires ponctuels » : grille éditable du jour sélectionné ---
         ponctuel = request.args.get("ponctuel") == "1"
         saisie, ponctuel_jours = None, []
+        ponctuel_prev = ponctuel_next = ""
         if ponctuel and act:
             base_lundi = _lundi(ref)
+            # Navigation au-delà de la semaine affichée (vue Mensuel/Période) :
+            # flèches ‹ › de semaine en semaine + saut direct par calendrier.
+            ponctuel_prev = (base_lundi - timedelta(days=7)).isoformat()
+            ponctuel_next = (base_lundi + timedelta(days=7)).isoformat()
             for k in range(7):
                 d = base_lundi + timedelta(days=k)
                 ponctuel_jours.append({"iso": d.isoformat(), "actif": d == ref,
@@ -1486,6 +1491,7 @@ def vue():
                    nav=nav, heures_reel=heures_reel,
                    motifs=MOTIFS, recap_chg=recap_chg, recap_collab=recap_collab,
                    ponctuel=ponctuel, saisie=saisie, ponctuel_jours=ponctuel_jours,
+                   ponctuel_prev=ponctuel_prev, ponctuel_next=ponctuel_next,
                    abs_view=abs_view, absences_list=absences_list, collabs_abs=collabs_abs,
                    ref_date=ref.isoformat(),
                    recap_changements=(opts.get("recap_changements") == "afficher"))

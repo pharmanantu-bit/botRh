@@ -266,11 +266,18 @@
     {% if trame %}
     {% if ponctuel and saisie %}
     {# ===== Saisie « Horaires ponctuels » : grille éditable du jour ===== #}
-    <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px;">
+    <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px; align-items:center;">
+      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ponctuel_prev) }}"
+         class="navitem" title="Semaine précédente" style="font-size:0.9em; font-weight:bold; padding:5px 10px;">‹</a>
       {% for d in ponctuel_jours %}
       <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=d.iso) }}"
          class="navitem {{ 'actif' if d.actif else '' }}" style="font-size:0.8em;">{{ d.label }}{% if d.ferme %} <span style="opacity:.7;">·fermé</span>{% endif %}</a>
       {% endfor %}
+      <a href="{{ url_for('.vue', onglet='planning', ponctuel=1, date=ponctuel_next) }}"
+         class="navitem" title="Semaine suivante" style="font-size:0.9em; font-weight:bold; padding:5px 10px;">›</a>
+      <input type="date" value="{{ saisie.date_iso }}" title="Aller directement à une date"
+             onchange="if (this.value) location = '{{ url_for('.vue', onglet='planning', ponctuel=1) }}&date=' + this.value;"
+             style="padding:4px 7px; border:1px solid #d4deeb; border-radius:7px; font-size:0.78em; color:#1F4E79;">
     </div>
     <form method="POST" action="{{ url_for('.saisie_ponctuelle') }}" id="formPonctuel">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
