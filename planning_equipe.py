@@ -1006,6 +1006,14 @@ SOUS_PLANNING = [("planning", "Planning"), ("effectifs", "Effectifs"), ("options
 
 FONCTIONS = POSTES   # référentiel unique : le champ `poste` du dossier salarié
 PERMISSIONS = ["Pas d'accès", "Consultation", "Gestionnaire", "Administrateur"]
+
+
+def permission_planning_de(prof):
+    """Permission planning EFFECTIVE d'un collaborateur. RÈGLE DE BASE : tout le
+    monde peut CONSULTER le planning depuis son espace — le défaut (permission
+    non réglée) est donc « Consultation » ; « Pas d'accès » doit être choisi
+    explicitement sur sa carte (Planning › Équipe)."""
+    return (prof or {}).get("permission_planning") or "Consultation"
 VUES_PLANNING = ["Le planning de tous", "Son planning personnel"]
 
 
@@ -1509,7 +1517,7 @@ def vue():
                 "couleur_choisie": prof.get("couleur_planning", ""),   # "" = auto
                 "couleur": couleurs[e["email"]],                       # effective (stable)
                 "a_email": bool((e["email"] or "").strip()),
-                "permission": prof.get("permission_planning", "Pas d'accès"),
+                "permission": permission_planning_de(prof),
                 "vue": prof.get("vue_planning", "Le planning de tous"),
             })
         selected = next((m for m in membres if m["email"] == request.args.get("edit", "")), None)
@@ -2547,7 +2555,7 @@ def mon_planning():
         abort(404)
     profils = charger_profils()
     prof = profils.get(emp["email"], {})
-    if prof.get("permission_planning", "Pas d'accès") == "Pas d'accès":
+    if permission_planning_de(prof) == "Pas d'accès":
         return redirect(f"/mon-espace?token={token}&prenom={prenom}")
     vue_perso = prof.get("vue_planning", "Le planning de tous") == "Son planning personnel"
     try:
