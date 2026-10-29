@@ -1,0 +1,55 @@
+{# Barre latérale coulissante de l'ESPACE COLLABORATEUR.
+   Attend dans le contexte : token, prenom, et `nav_actif` (clé de la page). #}
+<style>
+  body { padding-top: 54px; }
+  .esp-tete { position: fixed; top: 0; left: 0; right: 0; height: 48px; z-index: 900;
+              background: #1F4E79; color: #fff; display: flex; align-items: center;
+              gap: 12px; padding: 0 14px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+  .esp-burger { background: none; border: none; color: #fff; font-size: 1.35em;
+                cursor: pointer; line-height: 1; padding: 4px 6px; }
+  .esp-titre { font-weight: bold; font-size: 0.98em; }
+  .esp-nav { position: fixed; top: 0; left: 0; height: 100%; width: min(76vw, 270px);
+             z-index: 1001; background: #1F4E79; color: #fff; padding: 14px 0;
+             transform: translateX(-102%); transition: transform 0.2s ease;
+             box-shadow: 2px 0 14px rgba(0,0,0,.25); overflow-y: auto;
+             display: flex; flex-direction: column; }
+  body.nav-open .esp-nav { transform: none; }
+  .esp-nav-tete { display: flex; align-items: center; justify-content: space-between;
+                  padding: 4px 16px 14px; font-weight: bold; font-size: 1.02em;
+                  border-bottom: 1px solid rgba(255,255,255,.18); margin-bottom: 8px; }
+  .esp-nav-x { background: rgba(255,255,255,.14); border: none; color: #fff;
+               font-size: 1.1em; cursor: pointer; width: 28px; height: 28px;
+               border-radius: 6px; line-height: 1; }
+  .esp-nav a { display: block; padding: 12px 18px; color: rgba(255,255,255,.88);
+               text-decoration: none; font-size: 0.95em; }
+  .esp-nav a:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .esp-nav a.actif { background: #fff; color: #1F4E79; font-weight: bold; }
+  .esp-backdrop { display: none; position: fixed; inset: 0; z-index: 1000;
+                  background: rgba(15,25,40,.5); }
+  body.nav-open .esp-backdrop { display: block; }
+</style>
+{% set esp_items = [
+  ('planning', '📅', 'Planning', '/mon-espace/planning'),
+  ('releves', '🕐', 'Mes relevés', '/mon-espace'),
+  ('conges', '🏖️', 'Congés', '/mon-espace/conges'),
+  ('demandes', '📨', 'Demandes', '/mon-espace/demandes'),
+  ('equipe', '👥', 'Équipe', '/mon-espace/equipe'),
+  ('gardes', '💊', 'Gardes', '/mon-espace/gardes'),
+] %}
+<div class="esp-tete">
+  <button type="button" class="esp-burger" onclick="document.body.classList.add('nav-open')" aria-label="Menu">☰</button>
+  <span class="esp-titre">{% for c, i, l, u in esp_items %}{% if c == nav_actif %}{{ i }} {{ l }}{% endif %}{% endfor %}</span>
+</div>
+<div class="esp-backdrop" onclick="document.body.classList.remove('nav-open')"></div>
+<nav class="esp-nav">
+  <div class="esp-nav-tete"><span>👋 {{ prenom }}</span>
+    <button type="button" class="esp-nav-x" onclick="document.body.classList.remove('nav-open')" aria-label="Fermer">✕</button></div>
+  {% for cle, ico, lib, url in esp_items %}
+  <a href="{{ url }}?token={{ token }}&prenom={{ prenom }}" class="{{ 'actif' if nav_actif == cle else '' }}">{{ ico }} {{ lib }}</a>
+  {% endfor %}
+</nav>
+<script>
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.body.classList.remove('nav-open');
+  });
+</script>

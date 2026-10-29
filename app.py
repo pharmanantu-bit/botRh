@@ -1430,6 +1430,34 @@ def mon_espace_conges():
                            auj=datetime.now().strftime("%Y-%m-%d"))
 
 
+@app.route("/mon-espace/demandes")
+def mon_espace_demandes():
+    """Onglet Demandes de l'espace collaborateur : les demandes de la pharmacie
+    (congés proposés / heures supplémentaires) à accepter ou refuser."""
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    if not token or not prenom:
+        abort(404)
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(404)
+    from planning_equipe import (charger_demandes_admin, TYPES_DEMANDE_ADMIN,
+                                 STATUTS_DEMANDE_ADMIN, _quand_demande_admin)
+    demandes_pharma = []
+    for dm in sorted(charger_demandes_admin(), key=lambda x: x.get("cree_le", ""),
+                     reverse=True):
+        if dm.get("email") != emp["email"] or dm.get("statut") == "annulee":
+            continue
+        demandes_pharma.append({
+            **dm,
+            "type_label": TYPES_DEMANDE_ADMIN.get(dm.get("type", ""), dm.get("type", "")),
+            "statut_label": STATUTS_DEMANDE_ADMIN.get(dm.get("statut", ""), dm.get("statut", "")),
+            "quand": _quand_demande_admin(dm)})
+    return render_template("mon_demandes.html", prenom=prenom, token=token,
+                           demandes_pharma=demandes_pharma[:10],
+                           dem_msg=request.args.get("dem", ""))
+
+
 @app.route("/mon-espace")
 def mon_espace():
     token = request.args.get("token", "")
@@ -1468,31 +1496,13 @@ def mon_espace():
     modifiable = datetime.now().day <= JOUR_CLOTURE
     jours_restants = JOUR_CLOTURE - datetime.now().day  # date limite = jour de clôture
 
-    # Congés : déplacés dans leur propre onglet (/mon-espace/conges).
-    # Demandes de la pharmacie (congés proposés / heures sup) → notification
-    # in-app : à répondre directement ici, aucun e-mail.
-    demandes_pharma = []
-    if emp:
-        from planning_equipe import (charger_demandes_admin, TYPES_DEMANDE_ADMIN,
-                                     STATUTS_DEMANDE_ADMIN, _quand_demande_admin)
-        for dm in sorted(charger_demandes_admin(), key=lambda x: x.get("cree_le", ""),
-                         reverse=True):
-            if dm.get("email") != emp["email"] or dm.get("statut") == "annulee":
-                continue
-            demandes_pharma.append({
-                **dm,
-                "type_label": TYPES_DEMANDE_ADMIN.get(dm.get("type", ""), dm.get("type", "")),
-                "statut_label": STATUTS_DEMANDE_ADMIN.get(dm.get("statut", ""), dm.get("statut", "")),
-                "quand": _quand_demande_admin(dm)})
-        demandes_pharma = demandes_pharma[:10]
-
+    # Congés et Demandes de la pharmacie : déplacés dans leurs propres onglets
+    # (/mon-espace/conges et /mon-espace/demandes).
     return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique,
                            rempli_courant=rempli_courant, modifiable=modifiable,
                            jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
                            mois_courant=f"{MOIS_FR[mois_c]} {annee_c}",
                            lien_releve=f"/releve?token={token}&prenom={prenom}",
-                           demandes_pharma=demandes_pharma,
-                           dem_msg=request.args.get("dem", ""),
                            auj=datetime.now().strftime("%Y-%m-%d"))
 
 

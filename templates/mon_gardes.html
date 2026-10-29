@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Gardes — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 16px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 680px; margin: 0 auto; }
+    h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 12px; }
+    .garde { border: 1px solid #e4d9f2; background: #faf7ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+    .garde .date { font-weight: bold; color: #6b4fa0; font-size: 0.95em; }
+    .garde .dans { color: #888; font-size: 0.78em; font-weight: normal; }
+    .garde .pres { margin-top: 6px; font-size: 0.88em; color: #334; }
+    .garde .pres .ligne { padding: 3px 0; }
+    .moi { background: #efe9fb; border-radius: 6px; padding: 3px 7px !important; font-weight: bold; }
+    .vide { text-align: center; color: #888; padding: 34px 10px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+{% set nav_actif = 'gardes' %}
+{% include '_espace_nav.html' %}
+<div class="carte">
+  <h2>💊 Gardes à venir</h2>
+  {% if gardes %}
+  {% for g in gardes %}
+  <div class="garde">
+    <div class="date">{{ g.label }}{% if g.ferie %} <span class="dans">· férié ({{ g.ferie }})</span>{% endif %}
+      <span class="dans">— {% if g.dans == 0 %}aujourd'hui{% elif g.dans == 1 %}demain{% else %}dans {{ g.dans }} jours{% endif %}</span></div>
+    <div class="pres">
+      {% for p in g.pres %}
+      <div class="ligne{% if p.moi %} moi{% endif %}">{{ p.prenom }}{% if p.moi %} (vous){% endif %}{% if p.creneaux %} · {{ p.creneaux }}{% endif %}</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="vide">Aucune garde planifiée pour le moment.</div>
+  {% endif %}
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

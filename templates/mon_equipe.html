@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Équipe — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 16px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 680px; margin: 0 auto; }
+    h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 12px; }
+    .grille { display: flex; flex-wrap: wrap; gap: 8px; }
+    .membre { width: calc(50% - 4px); border: 1px solid #e4eaf2; border-radius: 10px; overflow: hidden; }
+    @media (min-width: 560px) { .membre { width: calc(33.33% - 6px); } }
+    .membre .nom { padding: 8px 6px; color: #fff; font-weight: bold; font-size: 0.86em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+    .membre .poste { padding: 6px; text-align: center; font-size: 0.74em; color: #556; background: #f9fbfd; }
+    .moi { outline: 2px solid #1F4E79; outline-offset: 1px; }
+  </style>
+</head>
+<body>
+{% set nav_actif = 'equipe' %}
+{% include '_espace_nav.html' %}
+<div class="carte">
+  <h2>👥 L'équipe de la pharmacie</h2>
+  <div class="grille">
+    {% for m in equipe %}
+    <div class="membre{% if m.moi %} moi{% endif %}">
+      <div class="nom" style="background:{{ m.couleur }};">{{ m.prenom }}</div>
+      <div class="poste">{{ m.nom|upper }}{% if m.poste %}<br>{{ m.poste }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

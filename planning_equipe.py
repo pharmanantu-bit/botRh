@@ -2490,13 +2490,13 @@ def repondre_demande_admin():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
-    retour = f"/mon-espace?token={token}&prenom={emp['prenom']}"
+    retour = f"/mon-espace/demandes?token={token}&prenom={emp['prenom']}"
     action = request.form.get("action", "")
     demandes = charger_demandes_admin()
     dm = next((x for x in demandes if x.get("id") == request.form.get("id", "")
                and x.get("email") == emp["email"]), None)
     if not dm or dm.get("statut") != "en_attente" or action not in ("accepter", "refuser"):
-        return redirect(retour + "&dem=deja#demandes")
+        return redirect(retour + "&dem=deja")
     if action == "accepter":
         if dm.get("type") == "conges":
             absences = charger_absences()
@@ -2538,7 +2538,67 @@ def repondre_demande_admin():
     dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     dm["lu_admin"] = False    # notification « réponse reçue » côté pharmacie
     sauvegarder_demandes_admin(demandes)
-    return redirect(retour + "&dem=repondu#demandes")
+    return redirect(retour + "&dem=repondu")
+
+
+@bp.route("/mon-espace/equipe")
+def mon_equipe():
+    """Trombinoscope de l'équipe pour l'espace collaborateur (jeton signé,
+    lecture seule) : prénom, nom, poste et couleur du planning — aucune
+    coordonnée personnelle. Salariés actifs uniquement."""
+    from tokens import resoudre_employe
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    emp = resoudre_employe(token, charger_employes()) if token else None
+    if not emp:
+        abort(404)
+    profils = charger_profils()
+    employes_tous = employes_planning()
+    couleurs = couleurs_map(employes_tous, profils)
+    equipe = [{"prenom": e["prenom"], "nom": e["nom"],
+               "poste": poste_de(profils.get(e["email"], {})),
+               "couleur": couleurs.get(e["email"], "#888"),
+               "moi": e["email"] == emp["email"]}
+              for e in employes_tous
+              if not e.get("freelance") and actif_planning(e, profils)]
+    equipe.sort(key=lambda x: x["prenom"].lower())
+    return render_template("mon_equipe.html", prenom=prenom, token=token, equipe=equipe)
+
+
+@bp.route("/mon-espace/gardes")
+def mon_gardes():
+    """Gardes à venir pour l'espace collaborateur (jeton signé, lecture seule) :
+    dates de garde + qui est de garde (changements ponctuels motif « Garde »)."""
+    from tokens import resoudre_employe
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    emp = resoudre_employe(token, charger_employes()) if token else None
+    if not emp:
+        abort(404)
+    emap = {e["email"]: e for e in employes_planning()}
+    gardes = []
+    auj = jour_courant()
+    for diso, parem in sorted(charger_changements().items()):
+        try:
+            d = datetime.strptime(diso, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d < auj:
+            continue
+        pres = []
+        for em, ch in (parem or {}).items():
+            if (ch or {}).get("motif") == "Garde" and em in emap:
+                crx = " · ".join(f'{c["debut"]}–{c["fin"]}'
+                                 for c in ch.get("creneaux", []) if creneau_valide(c))
+                pres.append({"prenom": emap[em]["prenom"], "creneaux": crx,
+                             "moi": em == emp["email"]})
+        if pres:
+            pres.sort(key=lambda x: x["prenom"].lower())
+            gardes.append({"label": f"{JOURS_NOMS[d.isoweekday()]} {d.strftime('%d/%m/%Y')}",
+                           "dans": (d - auj).days, "pres": pres,
+                           "ferie": ferie_de(d)})
+    return render_template("mon_gardes.html", prenom=prenom, token=token,
+                           gardes=gardes[:12])
 
 
 @bp.route("/mon-espace/planning")

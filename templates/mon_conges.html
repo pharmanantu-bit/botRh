@@ -31,13 +31,9 @@
   </style>
 </head>
 <body>
+{% set nav_actif = 'conges' %}
+{% include '_espace_nav.html' %}
 <div class="carte">
-  <div class="app-ongs">
-    <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}">📅 Planning</a>
-    <a href="/mon-espace?token={{ token }}&prenom={{ prenom }}">🕐 Mes relevés</a>
-    <a href="/mon-espace/conges?token={{ token }}&prenom={{ prenom }}" class="actif">🏖️ Congés</a>
-  </div>
-
   <h2>🏖️ Mes congés payés</h2>
   <p style="color:#888; font-size:0.78em; margin-bottom:12px;">Période du {{ cp.periode }} · comptés en jours ouvrables (lundi-samedi, hors fériés)</p>
 
