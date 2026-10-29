@@ -55,6 +55,7 @@
   <div class="app-ongs">
     <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}" class="actif">📅 Planning</a>
     <a href="/mon-espace?token={{ token }}&prenom={{ prenom }}">🕐 Mes relevés</a>
+    <a href="/mon-espace/conges?token={{ token }}&prenom={{ prenom }}">🏖️ Congés</a>
   </div>
   <h1>{{ 'Mon planning' if vue_perso else "Planning de l'équipe" }}</h1>
   <div class="sub">{{ titre_sem }}{% if titre_sem %} · {% endif %}{{ periode }} — consultation seule</div>

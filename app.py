@@ -1399,6 +1399,37 @@ def sw_espace():
     return rep
 
 
+@app.route("/mon-espace/conges")
+def mon_espace_conges():
+    """Onglet Congés de l'espace collaborateur : solde de CP, demande de
+    congés, suivi des demandes (jeton signé)."""
+    token = request.args.get("token", "")
+    prenom = request.args.get("prenom", "")
+    if not token or not prenom:
+        abort(404)
+    emp = resoudre_employe(token, charger_employes())
+    if not emp:
+        abort(404)
+    from planning_equipe import (bilan_cp, charger_absences, charger_changements,
+                                 charger_conges, periode_conges, charger_demandes_cp,
+                                 STATUTS_CP)
+    p1, p2 = periode_conges()
+    cp = bilan_cp(emp["email"], charger_absences(), charger_changements(),
+                  charger_conges(), p1, p2)
+    cp["periode"] = f"{p1.strftime('%d/%m/%Y')} → {p2.strftime('%d/%m/%Y')}"
+    demandes_cp = []
+    for dm in sorted(charger_demandes_cp(), key=lambda x: x.get("demande_le", ""),
+                     reverse=True):
+        if dm.get("email") != emp["email"]:
+            continue
+        demandes_cp.append({**dm, "statut_label": STATUTS_CP.get(dm.get("statut", ""),
+                                                                 dm.get("statut", ""))})
+    return render_template("mon_conges.html", prenom=prenom, token=token,
+                           cp=cp, demandes_cp=demandes_cp[:10],
+                           cp_msg=request.args.get("cp", ""),
+                           auj=datetime.now().strftime("%Y-%m-%d"))
+
+
 @app.route("/mon-espace")
 def mon_espace():
     token = request.args.get("token", "")
@@ -1437,24 +1468,7 @@ def mon_espace():
     modifiable = datetime.now().day <= JOUR_CLOTURE
     jours_restants = JOUR_CLOTURE - datetime.now().day  # date limite = jour de clôture
 
-    # Congés payés : solde + demandes de l'employé (module planning).
-    cp, demandes_cp = None, []
-    if emp:
-        from planning_equipe import (bilan_cp, charger_absences, charger_changements,
-                                     charger_conges, periode_conges, charger_demandes_cp,
-                                     STATUTS_CP)
-        p1, p2 = periode_conges()
-        cp = bilan_cp(emp["email"], charger_absences(), charger_changements(),
-                      charger_conges(), p1, p2)
-        cp["periode"] = f"{p1.strftime('%d/%m/%Y')} → {p2.strftime('%d/%m/%Y')}"
-        for dm in sorted(charger_demandes_cp(), key=lambda x: x.get("demande_le", ""),
-                         reverse=True):
-            if dm.get("email") != emp["email"]:
-                continue
-            demandes_cp.append({**dm, "statut_label": STATUTS_CP.get(dm.get("statut", ""),
-                                                                     dm.get("statut", ""))})
-        demandes_cp = demandes_cp[:10]
-
+    # Congés : déplacés dans leur propre onglet (/mon-espace/conges).
     # Demandes de la pharmacie (congés proposés / heures sup) → notification
     # in-app : à répondre directement ici, aucun e-mail.
     demandes_pharma = []
@@ -1477,8 +1491,6 @@ def mon_espace():
                            jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
                            mois_courant=f"{MOIS_FR[mois_c]} {annee_c}",
                            lien_releve=f"/releve?token={token}&prenom={prenom}",
-                           cp=cp, demandes_cp=demandes_cp,
-                           cp_msg=request.args.get("cp", ""),
                            demandes_pharma=demandes_pharma,
                            dem_msg=request.args.get("dem", ""),
                            auj=datetime.now().strftime("%Y-%m-%d"))

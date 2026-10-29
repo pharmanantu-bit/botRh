@@ -2363,14 +2363,14 @@ def demander_conges():
     emp = resoudre_employe(token, charger_employes())
     if not emp:
         abort(403)
-    retour = f"/mon-espace?token={token}&prenom={emp['prenom']}"
+    retour = f"/mon-espace/conges?token={token}&prenom={emp['prenom']}"
     try:
         d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
         d2 = datetime.strptime(request.form.get("fin", ""), "%Y-%m-%d").date()
     except ValueError:
-        return redirect(retour + "&cp=dates#conges")
+        return redirect(retour + "&cp=dates")
     if d2 < d1 or d1 < date.today():
-        return redirect(retour + "&cp=dates#conges")
+        return redirect(retour + "&cp=dates")
     demandes = charger_demandes_cp()
     demandes.append({"id": uuid.uuid4().hex[:10], "email": emp["email"],
                      "debut": d1.isoformat(), "fin": d2.isoformat(),
@@ -2393,7 +2393,7 @@ def demander_conges():
                 declencher_workflow("push_admin", {"origine": "conges"})
     except Exception:
         current_app.logger.exception("Notification push demande de congés (non bloquant)")
-    return redirect(retour + "&cp=ok#conges")
+    return redirect(retour + "&cp=ok")
 
 
 @bp.route("/mon-espace/conges/annuler", methods=["POST"])
@@ -2412,7 +2412,7 @@ def annuler_demande_conges():
             dm["traite_le"] = datetime.now().strftime("%d/%m/%Y %H:%M")
             sauvegarder_demandes_cp(demandes)
             break
-    return redirect(f"/mon-espace?token={token}&prenom={emp['prenom']}&cp=annulee#conges")
+    return redirect(f"/mon-espace/conges?token={token}&prenom={emp['prenom']}&cp=annulee")
 
 
 @bp.route("/admin/planning-equipe/demandes/creer", methods=["POST"])
