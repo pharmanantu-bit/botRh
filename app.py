@@ -1472,16 +1472,7 @@ def mon_espace():
                 "quand": _quand_demande_admin(dm)})
         demandes_pharma = demandes_pharma[:10]
 
-    # Onglet Planning : visible par DÉFAUT (tout le monde consulte — règle de
-    # base) ; masqué seulement si « Pas d'accès » a été choisi explicitement.
-    acces_planning = False
-    if emp:
-        from planning_equipe import permission_planning_de
-        acces_planning = permission_planning_de(
-            charger_profils().get(emp["email"], {})) != "Pas d'accès"
-
     return render_template("mon_espace.html", prenom=prenom, token=token, historique=historique,
-                           acces_planning=acces_planning,
                            rempli_courant=rempli_courant, modifiable=modifiable,
                            jours_restants=jours_restants, jour_cloture=JOUR_CLOTURE,
                            mois_courant=f"{MOIS_FR[mois_c]} {annee_c}",

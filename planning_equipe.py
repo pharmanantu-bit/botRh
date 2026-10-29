@@ -2544,9 +2544,10 @@ def repondre_demande_admin():
 @bp.route("/mon-espace/planning")
 def mon_planning():
     """Planning CONSULTABLE par un collaborateur depuis son espace (jeton signé,
-    lecture seule). Respecte les réglages par collaborateur de Planning › Équipe :
-    permission « Pas d'accès » → page refusée ; vue « Son planning personnel »
-    → seulement sa ligne ; « Le planning de tous » → toute l'équipe."""
+    lecture seule). RÈGLE DE BASE : tout le monde peut consulter — aucune
+    permission requise. Seule la VUE se règle par collaborateur (Planning ›
+    Équipe) : « Son planning personnel » → seulement sa ligne ;
+    « Le planning de tous » (défaut) → toute l'équipe."""
     from tokens import resoudre_employe
     token = request.args.get("token", "")
     prenom = request.args.get("prenom", "")
@@ -2555,8 +2556,6 @@ def mon_planning():
         abort(404)
     profils = charger_profils()
     prof = profils.get(emp["email"], {})
-    if permission_planning_de(prof) == "Pas d'accès":
-        return redirect(f"/mon-espace?token={token}&prenom={prenom}")
     vue_perso = prof.get("vue_planning", "Le planning de tous") == "Son planning personnel"
     try:
         ref = datetime.strptime(request.args.get("date", ""), "%Y-%m-%d").date()

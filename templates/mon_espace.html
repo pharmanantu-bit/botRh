@@ -47,12 +47,10 @@
 </head>
 <body>
 <div class="carte">
-  {% if acces_planning %}
   <div class="app-ongs">
     <a href="/mon-espace/planning?token={{ token }}&prenom={{ prenom }}">📅 Planning</a>
     <a href="/mon-espace?token={{ token }}&prenom={{ prenom }}" class="actif">🕐 Mes relevés</a>
   </div>
-  {% endif %}
   <div class="entete">
     <h1>Bonjour {{ prenom }} !</h1>
     <p>Voici l'historique de vos relevés d'heures.</p>
