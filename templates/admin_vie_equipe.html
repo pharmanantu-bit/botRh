@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vie d'équipe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 18px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 900px; margin: 0 auto; }
+    h1 { color: #1F4E79; font-size: 1.3em; margin-bottom: 4px; }
+    h2 { color: #1F4E79; font-size: 1em; margin: 0 0 10px; }
+    .meta { color: #9aa7b5; font-size: 0.8em; }
+    .msg { padding: 9px 14px; border-radius: 8px; font-size: 0.86em; margin: 12px 0; background: #C6EFCE; color: #276221; }
+    .bloc { border: 1px solid #dde3ed; border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+    .ligne { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid #eef2f8; font-size: 0.9em; }
+    .ligne:first-of-type { border-top: none; }
+    input[type=text], input[type=date], textarea { padding: 8px; border: 1px solid #ccd4e0; border-radius: 6px; font-size: 0.9em; font-family: inherit; }
+    .btn { background: #1F4E79; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.88em; }
+    .btn:hover { background: #163d60; }
+    .btn-suppr { background: none; border: 1px solid #e3b3ad; color: #C0392B; border-radius: 6px; padding: 3px 9px; cursor: pointer; font-size: 0.8em; }
+    .form-ajout { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #dde3ed; }
+    label { font-size: 0.76em; color: #556; display: block; margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+{% include '_admin_nav.html' %}
+<div class="carte">
+  <h1>📣 Vie d'équipe</h1>
+  <p class="meta">Ce que tu saisis ici s'affiche dans l'application des collaborateurs (Mémo, Événements, Vacances scolaires).</p>
+  {% if msg == 'ok' %}<div class="msg">Enregistré — visible immédiatement dans l'app de l'équipe.</div>{% endif %}
+  {% if msg == 'supprime' %}<div class="msg" style="background:#eef1f5; color:#555;">Supprimé.</div>{% endif %}
+  {% if msg == 'incomplet' %}<div class="msg" style="background:#FFE0A3; color:#7a5b00;">⚠️ Saisie incomplète ou dates invalides — rien n'a été enregistré.</div>{% endif %}
+
+  <div class="bloc">
+    <h2>📝 Mémos <span class="meta">— messages de la pharmacie à l'équipe (le plus récent en premier)</span></h2>
+    {% for m in memos %}
+    <div class="ligne">
+      <span style="flex:1; min-width:220px; white-space:pre-line;">{{ m.texte }}</span>
+      <span class="meta">{{ m.cree_le }}</span>
+      <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" style="margin:0;" onsubmit="return confirm('Supprimer ce mémo ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="bloc" value="memos"><input type="hidden" name="action" value="supprimer"><input type="hidden" name="id" value="{{ m.id }}">
+        <button type="submit" class="btn-suppr">Supprimer</button>
+      </form>
+    </div>
+    {% else %}<p class="meta">Aucun mémo.</p>{% endfor %}
+    <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" class="form-ajout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="bloc" value="memos">
+      <span style="flex:1; min-width:260px;"><label>Nouveau mémo</label>
+        <textarea name="texte" rows="2" maxlength="1000" style="width:100%;" placeholder="ex. Pensez à badger vos pauses ; nouveau protocole TROD au comptoir…"></textarea></span>
+      <button type="submit" class="btn">Publier</button>
+    </form>
+  </div>
+
+  <div class="bloc">
+    <h2>🎉 Événements <span class="meta">— réunions, inventaires, animations…</span></h2>
+    {% for e in evenements %}
+    <div class="ligne{% if e.date < auj %} meta{% endif %}">
+      <strong style="min-width:92px;">{{ e.date[8:10] }}/{{ e.date[5:7] }}/{{ e.date[:4] }}</strong>
+      <span style="flex:1; min-width:180px;">{{ e.titre }}{% if e.note %} <span class="meta">— {{ e.note }}</span>{% endif %}{% if e.date < auj %} <span class="meta">(passé)</span>{% endif %}</span>
+      <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" style="margin:0;" onsubmit="return confirm('Supprimer cet événement ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="bloc" value="evenements"><input type="hidden" name="action" value="supprimer"><input type="hidden" name="id" value="{{ e.id }}">
+        <button type="submit" class="btn-suppr">Supprimer</button>
+      </form>
+    </div>
+    {% else %}<p class="meta">Aucun événement.</p>{% endfor %}
+    <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" class="form-ajout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="bloc" value="evenements">
+      <span><label>Date</label><input type="date" name="date" required></span>
+      <span style="min-width:180px;"><label>Titre</label><input type="text" name="titre" maxlength="120" required placeholder="ex. Réunion d'équipe" style="width:100%;"></span>
+      <span style="flex:1; min-width:160px;"><label>Note (optionnel)</label><input type="text" name="note" maxlength="300" placeholder="ex. 19h30, salle de pause" style="width:100%;"></span>
+      <button type="submit" class="btn">Ajouter</button>
+    </form>
+  </div>
+
+  <div class="bloc">
+    <h2>🏫 Vacances scolaires <span class="meta">— zone C (Nanterre) ; complète hiver / printemps / été</span></h2>
+    {% for v in vacances %}
+    <div class="ligne">
+      <span style="flex:1; min-width:200px;"><strong>{{ v.label }}</strong> · du {{ v.debut[8:10] }}/{{ v.debut[5:7] }}/{{ v.debut[:4] }} au {{ v.fin[8:10] }}/{{ v.fin[5:7] }}/{{ v.fin[:4] }}</span>
+      <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" style="margin:0;" onsubmit="return confirm('Supprimer cette période ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="bloc" value="vacances"><input type="hidden" name="action" value="supprimer"><input type="hidden" name="id" value="{{ v.id }}">
+        <button type="submit" class="btn-suppr">Supprimer</button>
+      </form>
+    </div>
+    {% else %}<p class="meta">Aucune période saisie.</p>{% endfor %}
+    <form method="POST" action="{{ url_for('.vie_equipe_maj') }}" class="form-ajout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="bloc" value="vacances">
+      <span style="min-width:150px;"><label>Période</label><input type="text" name="label" maxlength="80" required placeholder="ex. Hiver (zone C)" style="width:100%;"></span>
+      <span><label>Du</label><input type="date" name="debut" required></span>
+      <span><label>Au (inclus)</label><input type="date" name="fin" required></span>
+      <button type="submit" class="btn">Ajouter</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

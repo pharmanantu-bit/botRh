@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Vacances scolaires — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 16px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 680px; margin: 0 auto; }
+    h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 4px; }
+    .vac { border: 1px solid #d8e8d8; background: #f6fbf6; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+    .vac .label { font-weight: bold; color: #1F7A3D; font-size: 0.95em; }
+    .vac .dates { color: #445; font-size: 0.88em; margin-top: 3px; }
+    .badge { display: inline-block; border-radius: 10px; padding: 1px 9px; font-size: 0.74em; font-weight: bold; margin-left: 8px; vertical-align: middle; }
+    .encours { background: #C6EFCE; color: #276221; }
+    .avenir { background: #e8f0fe; color: #1F4E79; }
+    .vide { text-align: center; color: #888; padding: 34px 10px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+{% set nav_actif = 'vacances' %}
+{% include '_espace_nav.html' %}
+<div class="carte">
+  <h2>🏫 Vacances scolaires</h2>
+  <p style="color:#888; font-size:0.78em; margin-bottom:12px;">Zone C (Nanterre) — périodes renseignées par la pharmacie.</p>
+  {% for v in plages %}
+  <div class="vac">
+    <div class="label">{{ v.label }}{% if v.en_cours %}<span class="badge encours">en cours</span>{% else %}<span class="badge avenir">dans {{ v.dans }} jour{{ 's' if v.dans > 1 else '' }}</span>{% endif %}</div>
+    <div class="dates">Du {{ v.du }} au {{ v.au }} (inclus)</div>
+  </div>
+  {% else %}
+  <div class="vide">Aucune période à venir renseignée.</div>
+  {% endfor %}
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

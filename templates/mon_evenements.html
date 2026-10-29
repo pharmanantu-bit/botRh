@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Événements — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 16px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 680px; margin: 0 auto; }
+    h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 12px; }
+    .ev { border: 1px solid #d4e4f2; background: #f6faff; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+    .ev .date { font-weight: bold; color: #1F4E79; font-size: 0.95em; }
+    .ev .dans { color: #888; font-size: 0.78em; font-weight: normal; }
+    .ev .titre { margin-top: 4px; font-size: 0.92em; color: #333; }
+    .ev .note { color: #667; font-size: 0.84em; margin-top: 2px; }
+    .vide { text-align: center; color: #888; padding: 34px 10px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+{% set nav_actif = 'evenements' %}
+{% include '_espace_nav.html' %}
+<div class="carte">
+  <h2>🎉 Événements à venir</h2>
+  {% for e in evenements %}
+  <div class="ev">
+    <div class="date">{{ e.label }} <span class="dans">— {% if e.dans == 0 %}aujourd'hui{% elif e.dans == 1 %}demain{% else %}dans {{ e.dans }} jours{% endif %}</span></div>
+    <div class="titre">{{ e.titre }}</div>
+    {% if e.note %}<div class="note">{{ e.note }}</div>{% endif %}
+  </div>
+  {% else %}
+  <div class="vide">Aucun événement prévu pour le moment.</div>
+  {% endfor %}
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

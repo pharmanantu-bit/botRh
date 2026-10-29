@@ -2541,6 +2541,153 @@ def repondre_demande_admin():
     return redirect(retour + "&dem=repondu")
 
 
+# --- Vie d'équipe : mémos, événements, vacances scolaires ---------------------
+# Saisis côté admin (/admin/vie-equipe), consultés dans l'app collaborateur.
+# Store planning_* → inclus d'office dans la sauvegarde quotidienne.
+VIE_EQUIPE_FILE = os.path.join(BASE_DIR, "planning_vie_equipe.json")
+# Pré-remplissage des vacances (zone C — Nanterre) : plages nationales connues ;
+# l'admin complète hiver/printemps/été depuis /admin/vie-equipe.
+VACANCES_DEFAUT = [
+    {"id": "v1", "label": "Toussaint", "debut": "2026-10-17", "fin": "2026-11-02"},
+    {"id": "v2", "label": "Noël", "debut": "2026-12-19", "fin": "2027-01-04"},
+]
+
+
+def charger_vie_equipe():
+    d = _lire_json(VIE_EQUIPE_FILE)
+    if not isinstance(d, dict):
+        d = {}
+    d.setdefault("memos", [])
+    d.setdefault("evenements", [])
+    if "vacances" not in d:
+        d["vacances"] = [dict(v) for v in VACANCES_DEFAUT]
+    return d
+
+
+def sauvegarder_vie_equipe(d):
+    _ecrire_json(VIE_EQUIPE_FILE, d)
+
+
+@bp.route("/admin/vie-equipe")
+def vie_equipe_admin():
+    """Saisie admin des mémos, événements et vacances scolaires affichés dans
+    l'app des collaborateurs."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    d = charger_vie_equipe()
+    memos = sorted(d["memos"], key=lambda m: m.get("cree_le", ""), reverse=True)
+    evenements = sorted(d["evenements"], key=lambda e: e.get("date", ""))
+    vacances = sorted(d["vacances"], key=lambda v: v.get("debut", ""))
+    return render_template("admin_vie_equipe.html", memos=memos,
+                           evenements=evenements, vacances=vacances,
+                           auj=date.today().isoformat(),
+                           msg=request.args.get("msg", ""))
+
+
+@bp.route("/admin/vie-equipe/maj", methods=["POST"])
+def vie_equipe_maj():
+    """Ajoute ou supprime un élément de la vie d'équipe (mémo / événement /
+    vacances) selon `bloc` + `action`."""
+    if not _admin():
+        return redirect(url_for("admin"))
+    bloc = request.form.get("bloc", "")
+    action = request.form.get("action", "ajouter")
+    d = charger_vie_equipe()
+    if bloc not in d:
+        return redirect(url_for(".vie_equipe_admin"))
+    if action == "supprimer":
+        d[bloc] = [x for x in d[bloc] if x.get("id") != request.form.get("id", "")]
+        sauvegarder_vie_equipe(d)
+        return redirect(url_for(".vie_equipe_admin", msg="supprime"))
+    item = {"id": uuid.uuid4().hex[:10]}
+    if bloc == "memos":
+        texte = (request.form.get("texte") or "").strip()[:1000]
+        if not texte:
+            return redirect(url_for(".vie_equipe_admin", msg="incomplet"))
+        item.update(texte=texte, cree_le=datetime.now().strftime("%d/%m/%Y %H:%M"))
+    elif bloc == "evenements":
+        titre = (request.form.get("titre") or "").strip()[:120]
+        try:
+            dte = datetime.strptime(request.form.get("date", ""), "%Y-%m-%d").date()
+        except ValueError:
+            dte = None
+        if not titre or not dte:
+            return redirect(url_for(".vie_equipe_admin", msg="incomplet"))
+        item.update(titre=titre, date=dte.isoformat(),
+                    note=(request.form.get("note") or "").strip()[:300])
+    else:                                        # vacances
+        label = (request.form.get("label") or "").strip()[:80]
+        try:
+            d1 = datetime.strptime(request.form.get("debut", ""), "%Y-%m-%d").date()
+            d2 = datetime.strptime(request.form.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            d1 = d2 = None
+        if not label or not d1 or not d2 or d2 < d1:
+            return redirect(url_for(".vie_equipe_admin", msg="incomplet"))
+        item.update(label=label, debut=d1.isoformat(), fin=d2.isoformat())
+    d[bloc].append(item)
+    sauvegarder_vie_equipe(d)
+    return redirect(url_for(".vie_equipe_admin", msg="ok"))
+
+
+def _emp_espace():
+    """Résout le collaborateur d'une page de l'espace (jeton signé) ou 404."""
+    from tokens import resoudre_employe
+    token = request.args.get("token", "")
+    emp = resoudre_employe(token, charger_employes()) if token else None
+    if not emp:
+        abort(404)
+    return token, request.args.get("prenom", ""), emp
+
+
+@bp.route("/mon-espace/memo")
+def mon_memo():
+    """Mémos de la pharmacie pour l'équipe (lecture seule)."""
+    token, prenom, _emp = _emp_espace()
+    memos = sorted(charger_vie_equipe()["memos"],
+                   key=lambda m: m.get("cree_le", ""), reverse=True)
+    return render_template("mon_memo.html", prenom=prenom, token=token, memos=memos[:20])
+
+
+@bp.route("/mon-espace/evenements")
+def mon_evenements():
+    """Événements de la pharmacie à venir (réunions, inventaires, animations…)."""
+    token, prenom, _emp = _emp_espace()
+    auj = jour_courant()
+    evs = []
+    for e in sorted(charger_vie_equipe()["evenements"], key=lambda x: x.get("date", "")):
+        try:
+            dte = datetime.strptime(e.get("date", ""), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if dte < auj:
+            continue
+        evs.append({**e, "label": f"{JOURS_NOMS[dte.isoweekday()]} {dte.strftime('%d/%m/%Y')}",
+                    "dans": (dte - auj).days})
+    return render_template("mon_evenements.html", prenom=prenom, token=token,
+                           evenements=evs[:15])
+
+
+@bp.route("/mon-espace/vacances")
+def mon_vacances():
+    """Vacances scolaires (zone C — Nanterre) : plages saisies côté admin."""
+    token, prenom, _emp = _emp_espace()
+    auj = jour_courant()
+    plages = []
+    for v in sorted(charger_vie_equipe()["vacances"], key=lambda x: x.get("debut", "")):
+        try:
+            d1 = datetime.strptime(v.get("debut", ""), "%Y-%m-%d").date()
+            d2 = datetime.strptime(v.get("fin", ""), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d2 < auj:
+            continue
+        plages.append({**v,
+                       "du": d1.strftime("%d/%m/%Y"), "au": d2.strftime("%d/%m/%Y"),
+                       "en_cours": d1 <= auj <= d2, "dans": max((d1 - auj).days, 0)})
+    return render_template("mon_vacances.html", prenom=prenom, token=token, plages=plages)
+
+
 @bp.route("/mon-espace/equipe")
 def mon_equipe():
     """Trombinoscope de l'équipe pour l'espace collaborateur (jeton signé,

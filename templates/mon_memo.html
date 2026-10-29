@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F4E79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mon espace">
+  <link rel="manifest" href="/mon-espace/manifest.webmanifest?token={{ token }}&prenom={{ prenom }}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <title>Mémo — {{ prenom }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 16px; }
+    .carte { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 22px; max-width: 680px; margin: 0 auto; }
+    h2 { color: #1F4E79; font-size: 1.05em; margin-bottom: 12px; }
+    .memo { border: 1px solid #f0e4c0; background: #fffbef; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+    .memo .texte { font-size: 0.92em; color: #333; white-space: pre-line; }
+    .memo .date { color: #998; font-size: 0.74em; margin-top: 6px; }
+    .vide { text-align: center; color: #888; padding: 34px 10px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+{% set nav_actif = 'memo' %}
+{% include '_espace_nav.html' %}
+<div class="carte">
+  <h2>📝 Mémos de la pharmacie</h2>
+  {% for m in memos %}
+  <div class="memo">
+    <div class="texte">{{ m.texte }}</div>
+    <div class="date">Publié le {{ m.cree_le }}</div>
+  </div>
+  {% else %}
+  <div class="vide">Aucun mémo pour le moment.</div>
+  {% endfor %}
+</div>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/mon-espace-sw.js').catch(function () {}); }
+</script>
+</body>
+</html>
