@@ -131,7 +131,9 @@ app.logger.addHandler(_err_handler)
 app.logger.setLevel(logging.INFO)
 
 SECRET = os.getenv("TOKEN_SECRET", "pharmacie-nanterre-2026")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pharma92")
+# Aucun mot de passe par défaut : sans ADMIN_PASSWORD dans l'environnement, la
+# connexion admin est refusée (un défaut écrit dans le code serait public).
+ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
 # 2FA (TOTP, application d'authentification). 2FA ACTIVE uniquement si cette clé est
 # définie dans le .env (anti-lock-out : la retirer = retour au mot de passe seul).
 ADMIN_TOTP_SECRET = (os.getenv("ADMIN_TOTP_SECRET", "") or "").strip()
@@ -750,7 +752,7 @@ def admin():
             return render_template("admin_login.html", erreur=True, bloque=True), 429
         mdp = request.form.get("password", "")
         # Appareil de confiance : le code n'est pas exigé (le mot de passe, toujours).
-        if mdp == ADMIN_PASSWORD and (not twofa or confiance
+        if ADMIN_PASSWORD and mdp == ADMIN_PASSWORD and (not twofa or confiance
                                       or _verifier_totp(request.form.get("code", ""))):
             login_reset(ip)
             session.permanent = True
@@ -3169,8 +3171,11 @@ def notifier_releve(donnees):
 @app.route("/deploy")
 def deploy():
     import subprocess
-    cle = request.args.get("cle", "")
-    if cle != "botRh-deploy-2026":
+    # Clé lue dans l'environnement du serveur (DEPLOY_KEY), envoyée en en-tête
+    # par le workflow GitHub. Absente côté serveur = déploiement distant désactivé.
+    cle_attendue = (os.getenv("DEPLOY_KEY") or "").strip()
+    cle = request.headers.get("X-Deploy-Key", "")
+    if not cle_attendue or not secrets.compare_digest(cle, cle_attendue):
         abort(403)
     try:
         result = subprocess.run(["git", "pull"], cwd="/home/pharmacie92000/botRh",
@@ -3922,7 +3927,7 @@ def healthcheck():
     # Détecteur de secrets restés à leur valeur PAR DÉFAUT (aucune valeur révélée,
     # uniquement des booléens). True = secret encore par défaut -> à changer.
     _defauts = {
-        "ADMIN_PASSWORD": "pharma92",
+        "ADMIN_PASSWORD": "",
         "FLASK_SECRET_KEY": "botRh-admin-2026",
         "API_CLE": "botRh-trigger-2026",
         "TOKEN_SECRET": "pharmacie-nanterre-2026",

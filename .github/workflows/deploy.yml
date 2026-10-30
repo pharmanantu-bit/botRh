@@ -12,9 +12,11 @@ jobs:
       - name: Trigger deploy on PythonAnywhere
         # PythonAnywhere a parfois des trous de disponibilité (vécu 2026-07-22) :
         # 3 tentatives espacées de 30 s avant de déclarer l'échec.
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
           for i in 1 2 3; do
-            curl -f --max-time 60 "https://pharmacie92000.pythonanywhere.com/deploy?cle=botRh-deploy-2026" && exit 0
+            curl -f --max-time 60 -H "X-Deploy-Key: $DEPLOY_KEY" "https://pharmacie92000.pythonanywhere.com/deploy" && exit 0
             echo "Tentative $i/3 échouée — nouvel essai dans 30 s…"
             sleep 30
           done
